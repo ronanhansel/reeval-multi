@@ -1,0 +1,5 @@
+Factor,Skill,Items,Mean_Loading,Top_Scenario,Scenario_Diversity
+Factor_1,Common Sense Reasoning,3,0.12295116311927212,commonsense,3
+Factor_2,Medical Knowledge,3,0.14641219781165402,med_qa,1
+Factor_3,Air Bench 2024-Thai Exam Skills,10,0.21424140507279663,air_bench_2024,5
+Factor_4,Air Bench 2024-Civil Comments Skills,9,0.19308487185610806,air_bench_2024,3
