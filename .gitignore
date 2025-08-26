@@ -3,3 +3,8 @@ __pycache__
 .ipynb_aml_checkpoints
 .DSD_store
 result
+*.amlignore
+*.amlignore.amltmp
+.ipynb_aml_checkpoints/ 
+*.amltmp 
+*.amltemp
