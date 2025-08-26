@@ -1,160 +1,182 @@
 import numpy as np
-import torch
+import pandas as pd
+from scipy.special import expit
+from scipy.optimize import minimize
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
-# ===================================================================
-# == 1. Setup PyTorch and GPU Device
-# ===================================================================
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    print("GPU found. Using CUDA.")
-else:
-    device = torch.device("cpu")
-    print("No GPU found. Using CPU.")
+# =============================================================================
+# 1. LOAD & STANDARDIZE SVD DATA
+# =============================================================================
+print("Step 1: Loading and standardizing SVD factors...")
 
-# ===================================================================
-# == 2. Load Data and Move to GPU
-# ===================================================================
-print("\nStep 1: Loading data and moving to GPU...")
-item_factors = torch.from_numpy(np.nan_to_num(np.load("../data/all_item_factors.npy"), nan=0)).float().to(device)
-true_thetas_observed = torch.from_numpy(np.nan_to_num(np.load("../data/subject_scores.npy"), nan=0)).float().to(device)
+# --- Load your SVD factors (from CSV) ---
+item_factors_raw = pd.read_csv("../data/all_item_factors.csv").to_numpy()
+true_thetas_observed_raw = pd.read_csv("../data/subject_scores.csv").to_numpy()
 
+# Clean any potential NaN/Inf values
+item_factors_raw = np.nan_to_num(item_factors_raw, nan=0.0)
+true_thetas_observed_raw = np.nan_to_num(true_thetas_observed_raw, nan=0.0)
+
+# --- CRITICAL FIX: Standardize the SVD Factors for Numerical Stability ---
+scaler_items = StandardScaler()
+scaler_thetas = StandardScaler()
+
+item_factors = scaler_items.fit_transform(item_factors_raw)
+true_thetas_observed = scaler_thetas.fit_transform(true_thetas_observed_raw)
+# -------------------------------------------------------------------------
+
+# --- Dynamically configure parameters ---
 N_ITEMS, N_FACTORS = item_factors.shape
-print(f"  - Loaded {N_ITEMS} items with {N_FACTORS} factors.")
-
-# ===================================================================
-# == 3. Generate New Simulated Users
-# ===================================================================
 N_SIM_PEOPLE = 5
-theta_mean = torch.mean(true_thetas_observed, axis=0)
-theta_cov = torch.from_numpy(np.cov(true_thetas_observed.cpu().numpy(), rowvar=False)).float().to(device)
-prior_dist = torch.distributions.MultivariateNormal(theta_mean, theta_cov)
+np.random.seed(42)
 
-torch.manual_seed(42)
-true_thetas_simulated = prior_dist.sample((N_SIM_PEOPLE,))
-print(f"\nStep 2: Generated {N_SIM_PEOPLE} new simulated users.")
+print(f"  - Loaded and standardized {N_ITEMS} items with {N_FACTORS} factors.")
 
-# ===================================================================
-# == 4. CAT Configuration
-# ===================================================================
-SEM_THRESHOLD = 0.45
+# --- Generate simulated users based on the STANDARDIZED distribution ---
+theta_mean = np.mean(true_thetas_observed, axis=0)
+theta_cov = np.cov(true_thetas_observed, rowvar=False)
+true_thetas_simulated = np.random.multivariate_normal(mean=theta_mean, cov=theta_cov, size=N_SIM_PEOPLE)
+
+print(f"Step 2: Generated {N_SIM_PEOPLE} new simulated users.")
+
+# --- CAT Configuration ---
 MAX_TEST_LENGTH = 100
-ITEM_SAMPLE_SIZE = 2000
+SEM_THRESHOLD = 0.5
+ITEM_SAMPLE_SIZE = 1500
 
-# ===================================================================
-# == 5. Core CAT Functions (These are correct)
-# ===================================================================
+# =============================================================================
+# 2. CUSTOM SVD-BASED CAT FUNCTIONS
+# =============================================================================
 
-def simulate_response_torch(true_theta, item_factor):
-    logit = torch.dot(true_theta, item_factor)
-    prob_correct = torch.sigmoid(logit)
-    return torch.bernoulli(prob_correct).item()
+def svd_prob(theta, item_factor):
+    """Calculates probability of correct response using the SVD model."""
+    logit = np.dot(theta, item_factor)
+    return expit(logit)
 
-def select_next_item_fisher_trace(current_theta, candidate_factors, candidate_indices):
-    logits = torch.matmul(candidate_factors, current_theta)
-    probs = torch.sigmoid(logits)
-    info_weights = probs * (1 - probs)
-    item_infos = info_weights * torch.sum(candidate_factors**2, dim=1)
-    best_local_index = torch.argmax(item_infos)
+def simulate_response(true_theta, item_factor):
+    """Simulates a 0/1 response."""
+    prob = svd_prob(true_theta, item_factor)
+    return np.random.binomial(1, prob)
+
+def calculate_fisher_matrix(item_factors_subset, theta):
+    """Calculates the Fisher Information Matrix for a set of items."""
+    info_matrix = np.zeros((N_FACTORS, N_FACTORS))
+    if item_factors_subset.shape[0] == 0:
+        return info_matrix
+    
+    for factor in item_factors_subset:
+        prob = svd_prob(theta, factor)
+        weight = prob * (1.0 - prob)
+        info_matrix += weight * np.outer(factor, factor)
+    return info_matrix
+
+def estimate_theta_map(responses, factors, initial_theta, prior_mean, prior_cov_inv):
+    """Estimates theta using MAP with a numerical optimizer."""
+    def neg_log_posterior(theta, responses, factors, prior_mean, prior_cov_inv):
+        logits = factors @ theta
+        # Numerically stable log-likelihood for Bernoulli
+        log_likelihood = np.sum(responses * logits - np.log(1 + np.exp(logits)))
+        
+        diff = theta - prior_mean
+        log_prior = -0.5 * diff.T @ prior_cov_inv @ diff
+        
+        return -(log_likelihood + log_prior)
+
+    result = minimize(
+        fun=neg_log_posterior,
+        x0=initial_theta,
+        args=(responses, factors, prior_mean, prior_cov_inv),
+        method='L-BFGS-B'
+    )
+    return result.x
+
+def select_next_item_mdet(current_theta, answered_factors, candidate_factors, candidate_indices):
+    """Selects the next item using the Maximum Determinant (MDET) method."""
+    current_info_matrix = calculate_fisher_matrix(answered_factors, current_theta)
+    identity_matrix = np.eye(N_FACTORS) * 1e-5
+    
+    determinants = []
+    for factor in candidate_factors:
+        prob = svd_prob(current_theta, factor)
+        weight = prob * (1.0 - prob)
+        candidate_info = weight * np.outer(factor, factor)
+        potential_total_info = current_info_matrix + candidate_info
+        determinants.append(np.linalg.det(potential_total_info + identity_matrix))
+        
+    best_local_index = np.argmax(determinants)
     return candidate_indices[best_local_index]
 
-def estimate_theta_map(answered_responses, answered_factors, initial_theta, prior):
-    theta = initial_theta.clone().detach().requires_grad_(True)
-    optimizer = torch.optim.LBFGS([theta], lr=0.75, max_iter=30)
-    
-    def closure():
-        optimizer.zero_grad()
-        logits = torch.mv(answered_factors, theta)
-        log_likelihood = torch.nn.functional.binary_cross_entropy_with_logits(
-            logits, answered_responses, reduction='sum'
-        )
-        log_prior = prior.log_prob(theta)
-        loss = log_likelihood - log_prior
-        loss.backward()
-        return loss
+# =============================================================================
+# 3. MAIN SIMULATION LOOP
+# =============================================================================
+print("Step 3: Running M-CAT simulation...")
 
-    optimizer.step(closure)
-    return theta.detach()
-
-def calculate_sem_torch(answered_item_factors, current_theta):
-    if answered_item_factors.shape[0] < N_FACTORS:
-        return torch.tensor(float('inf'), device=device)
-
-    logits = torch.mv(answered_item_factors, current_theta)
-    probs = torch.sigmoid(logits)
-    weights = probs * (1 - probs)
-    information_matrices = weights[:, None, None] * torch.bmm(answered_item_factors.unsqueeze(2), answered_item_factors.unsqueeze(1))
-    information_matrix = torch.sum(information_matrices, dim=0)
-
-    try:
-        var_cov_matrix = torch.linalg.inv(information_matrix)
-        variances = torch.diag(var_cov_matrix)
-        if torch.any(variances < 0): return torch.tensor(float('inf'), device=device)
-        return torch.sqrt(variances)
-    except torch.linalg.LinAlgError:
-        return torch.tensor(float('inf'), device=device)
-
-# ===================================================================
-# == 6. Main Simulation Loop (With Critical Bug Fix)
-# ===================================================================
-print(f"\nStep 3: Running stable CAT simulation...")
-estimated_thetas = torch.zeros_like(true_thetas_simulated)
+estimated_thetas = np.zeros_like(true_thetas_simulated)
 final_test_lengths = np.zeros(N_SIM_PEOPLE)
+prior_cov_inverse = np.linalg.inv(theta_cov)
 
-for i in tqdm(range(N_SIM_PEOPLE)):
-    person_true_theta = true_thetas_simulated[i]
-    current_theta_estimate = theta_mean.clone()
+for p in tqdm(range(N_SIM_PEOPLE)):
+    person_true_theta = true_thetas_simulated[p]
+    current_theta_estimate = np.copy(theta_mean)
     
-    # --- CRITICAL FIX: Initialize a stable list for responses ---
-    answered_item_indices = []
-    answered_responses_list = [] # Store responses here
+    answered_indices = []
+    answered_responses = []
     
-    sem = torch.tensor(float('inf'), device=device)
-    while torch.any(sem > SEM_THRESHOLD) and len(answered_item_indices) < MAX_TEST_LENGTH:
-        candidate_indices_np = np.random.choice(
-            np.setdiff1d(np.arange(N_ITEMS), answered_item_indices), 
-            ITEM_SAMPLE_SIZE, 
+    sem = np.inf
+    while np.any(sem > SEM_THRESHOLD) and len(answered_indices) < MAX_TEST_LENGTH:
+        remaining_indices = np.setdiff1d(np.arange(N_ITEMS), answered_indices)
+        candidate_indices = np.random.choice(
+            remaining_indices, 
+            size=min(ITEM_SAMPLE_SIZE, len(remaining_indices)), 
             replace=False
         )
-        candidate_indices = torch.from_numpy(candidate_indices_np).long().to(device)
         
-        item_to_administer_idx = select_next_item_fisher_trace(
-            current_theta_estimate, item_factors[candidate_indices], candidate_indices
+        answered_factors_matrix = item_factors[answered_indices]
+        
+        item_to_administer_idx = select_next_item_mdet(
+            current_theta_estimate, answered_factors_matrix, item_factors[candidate_indices], candidate_indices
         )
         
-        # --- CRITICAL FIX: Simulate response ONCE and store it ---
-        response = simulate_response_torch(person_true_theta, item_factors[item_to_administer_idx])
-        answered_item_indices.append(item_to_administer_idx.item())
-        answered_responses_list.append(response) # Add the stable response to our list
+        response = simulate_response(person_true_theta, item_factors[item_to_administer_idx])
         
-        # Convert the STABLE, CUMULATIVE history to tensors for estimation
-        answered_factors_tensor = item_factors[answered_item_indices]
-        answered_responses_tensor = torch.tensor(answered_responses_list, dtype=torch.float, device=device)
-
+        answered_indices.append(item_to_administer_idx)
+        answered_responses.append(response)
+        
         current_theta_estimate = estimate_theta_map(
-             answered_responses_tensor, answered_factors_tensor, current_theta_estimate, prior_dist
+            np.array(answered_responses), 
+            item_factors[answered_indices], 
+            current_theta_estimate, 
+            theta_mean, 
+            prior_cov_inverse
         )
         
-        sem = calculate_sem_torch(answered_factors_tensor, current_theta_estimate)
+        total_info_matrix = calculate_fisher_matrix(item_factors[answered_indices], current_theta_estimate)
+        try:
+            var_cov = np.linalg.inv(total_info_matrix)
+            if np.any(np.diag(var_cov) < 0):
+                sem = np.inf
+            else:
+                sem = np.sqrt(np.diag(var_cov))
+        except np.linalg.LinAlgError:
+            sem = np.inf
 
-    estimated_thetas[i] = current_theta_estimate
-    final_test_lengths[i] = len(answered_item_indices)
+    estimated_thetas[p] = current_theta_estimate
+    final_test_lengths[p] = len(answered_indices)
 
-print("\nSimulation complete!")
+print("Simulation complete!")
 
-# ===================================================================
-# == 7. Evaluation
-# ===================================================================
+# =============================================================================
+# 4. EVALUATION
+# =============================================================================
 print("\nStep 4: Evaluating the results...")
-true_thetas_simulated_np = true_thetas_simulated.cpu().numpy()
-estimated_thetas_np = estimated_thetas.cpu().numpy()
 
-rmse = np.sqrt(np.mean((true_thetas_simulated_np - estimated_thetas_np)**2))
+rmse = np.sqrt(np.mean((true_thetas_simulated - estimated_thetas)**2))
 print(f"\nOverall RMSE: {rmse:.4f}")
 
 print("\nCorrelation between True and Estimated Thetas (by dimension):")
 for d in range(N_FACTORS):
-    correlation = np.corrcoef(true_thetas_simulated_np[:, d], estimated_thetas_np[:, d])[0, 1]
+    correlation = np.corrcoef(true_thetas_simulated[:, d], estimated_thetas[:, d])[0, 1]
     print(f"  - Dimension {d+1}: {correlation:.4f}")
 
 print("\nTest Length Statistics:")
