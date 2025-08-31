@@ -10,3 +10,4 @@ result
 *.amltemp
 output/
 output-*/
+helm_jsons/
