@@ -8,3 +8,6 @@ result
 .ipynb_aml_checkpoints/ 
 *.amltmp 
 *.amltemp
+output/
+output-*/
+helm_jsons/
