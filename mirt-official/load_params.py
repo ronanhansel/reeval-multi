@@ -2,13 +2,13 @@ import torch
 import numpy as np
 from factor_analyzer.rotator import Rotator
 
-def load_and_rotate():
+def load_and_rotate(model_path='./output/mirt_model_k6.pt'):
     """
     Rotate the item parameters (a) and person parameters (theta) using Varimax rotation.
     Returns the rotated and standardized parameters (theta, a, b).
     """
     # 1) Load parameters
-    model_data = torch.load('./output/mirt_model_k6.pt', map_location=torch.device('cpu'))
+    model_data = torch.load(model_path, map_location=torch.device('cpu'))
     theta = model_data['theta']          # shape: (n_people, k)
     a = model_data['a']                  # shape: (n_items,  k)
     b = model_data['b']
