@@ -53,7 +53,7 @@ train_weights_t = torch.from_numpy(train_weights).float().to(device)
 # ===================================================================
 # C) Experiment Loop with Verbose Logging + Early Stopping
 # ===================================================================
-k_values_to_test = [2, 3, 4, 5, 6, 7, 8, 10, 12, 15]
+k_values_to_test = [19]
 results_path = os.path.join(RESULT_DIR, "mirt_comparison.csv")
 
 try:
