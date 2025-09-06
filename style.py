@@ -11,7 +11,7 @@ rcparams = {
   'figure.autolayout': False,
   'savefig.pad_inches': 0.015,
   'font.size': 12,
-  'axes.labelsize': 12,
+  'axes.labelsize': 15,
   'legend.fontsize': 12,
   'xtick.labelsize': 12,
   'ytick.labelsize': 12,

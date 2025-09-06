@@ -14,7 +14,7 @@ from load_params import load_and_rotate
 
 resmat = pd.read_pickle("../data/resmat.pkl")
 
-theta, a, b = load_and_rotate("../mirt-official/output/mirt_model_k6.pt")
+theta, a, b = load_and_rotate("../mirt-official/output/mirt_model_k19.pt")
 
 # Step 1: Get the final theta tensor into a NumPy array
 theta_abilities = theta
@@ -47,8 +47,8 @@ theta_cov = np.cov(true_thetas_observed, rowvar=False)
 print(f"\nStep 2: Will simulate {N_SIM_PEOPLE} users to test the naive CAT.")
 
 # --- CAT Configuration ---
-MAX_TEST_LENGTH = 500
-ITEM_SAMPLE_SIZE = 100
+MAX_TEST_LENGTH = 1500
+ITEM_SAMPLE_SIZE = 78712
 
 # =============================================================================
 # 2. CUSTOM SVD-BASED CAT FUNCTIONS
