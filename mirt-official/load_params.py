@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from factor_analyzer.rotator import Rotator
 
-def load_and_rotate(model_path='./output/mirt_model_k19.pt'):
+def load_and_rotate(model_path='./output/mirt_model_k19.pt', rotation='varimax'):
     """
     Rotate the item parameters (a) and person parameters (theta) using Varimax rotation.
     Returns the rotated and standardized parameters (theta, a, b).
@@ -20,18 +20,26 @@ def load_and_rotate(model_path='./output/mirt_model_k19.pt'):
     a_numpy = a.detach().cpu().numpy()
     theta_numpy = theta.detach().cpu().numpy()
 
-    # 2) Rotate 'a'
-    rotator = Rotator(method='varimax')  # orthogonal
-    a_rotated_numpy = rotator.fit_transform(a_numpy)
-    print("--- After Rotation of 'a' ---")
-    print(f"Rotated 'a' matrix shape: {a_rotated_numpy.shape}\n")
+    # 2) Rotate 'a' (if rotation is specified)
+    if rotation is not None:
+        rotator = Rotator(method=rotation)  # orthogonal
+        a_rotated_numpy = rotator.fit_transform(a_numpy)
+        print("--- After Rotation of 'a' ---")
+        print(f"Rotated 'a' matrix shape: {a_rotated_numpy.shape}\n")
 
-    # 3) Transform theta using the SAME rotation matrix from Rotator
-    T = rotator.rotation_                # <- correct attribute on Rotator
-    theta_transformed_numpy = theta_numpy @ T  # for orthogonal varimax, use R (not inv(R))
+        # 3) Transform theta using the SAME rotation matrix from Rotator
+        T = rotator.rotation_                # <- correct attribute on Rotator
+        theta_transformed_numpy = theta_numpy @ T  # for orthogonal varimax, use R (not inv(R))
 
-    print("--- After Transformation of 'theta' ---")
-    print(f"Transformed theta shape: {theta_transformed_numpy.shape}\n")
+        print("--- After Transformation of 'theta' ---")
+        print(f"Transformed theta shape: {theta_transformed_numpy.shape}\n")
+    else:
+        # No rotation - use original parameters
+        a_rotated_numpy = a_numpy.copy()
+        theta_transformed_numpy = theta_numpy.copy()
+        print("--- No Rotation Applied ---")
+        print(f"Using original 'a' matrix shape: {a_rotated_numpy.shape}")
+        print(f"Using original theta shape: {theta_transformed_numpy.shape}\n")
 
     # (Optional) Sanity check: inner products preserved (up to numerical tolerance)
     # err = np.max(np.abs(a_numpy @ theta_numpy.T - a_rotated_numpy @ theta_transformed_numpy.T))
