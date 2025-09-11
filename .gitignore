@@ -11,3 +11,4 @@ result
 output/
 output-*/
 helm_jsons/
+.env
