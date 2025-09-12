@@ -10,7 +10,7 @@ import os
 # ===================================================================
 # A) Configuration & Device Setup
 # ===================================================================
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
 RESULT_DIR = "./output"
 os.makedirs(RESULT_DIR, exist_ok=True)
@@ -99,20 +99,24 @@ for k in k_values_to_test:
         print(f"Results for K={k} already exist. Skipping.")
         continue
 
-    # --- Initialize Bi-Factor Model Parameters ---
+    # --- Initialize Bi-Factor Model Parameters (use nn.Parameter to make them leaf) ---
     # theta_general: (n_persons, 1)
-    theta_general = torch.randn(n_persons, 1, device=device, requires_grad=True)
+    theta_general = torch.nn.Parameter(torch.randn(n_persons, 1, device=device) * 0.01)
     # theta_group: (n_persons, N_GROUPS)
-    theta_group = torch.randn(n_persons, N_GROUPS, device=device, requires_grad=True)
+    theta_group = torch.nn.Parameter(torch.randn(n_persons, N_GROUPS, device=device) * 0.01)
 
     # a_general: (n_items, 1)
-    a_general = torch.randn(n_items, 1, device=device, requires_grad=True)
+    a_general = torch.nn.Parameter(torch.randn(n_items, 1, device=device) * 0.1)
     # a_group: (n_items, N_GROUPS) but non-assigned entries will be masked to zero via mask_torch
-    # we keep them as parameters but they will be multiplied by mask in forward pass
-    a_group = torch.randn(n_items, N_GROUPS, device=device, requires_grad=True) * 0.1
+    a_group = torch.nn.Parameter(torch.randn(n_items, N_GROUPS, device=device))
+    # scale a_group small in-place to keep stable initialization (still a leaf)
+    with torch.no_grad():
+        a_group.data.mul_(0.1)
 
-    b = torch.randn(n_items, device=device, requires_grad=True)
+    # b: (n_items,)
+    b = torch.nn.Parameter(torch.randn(n_items, device=device) * 0.1)
 
+    # Put all parameters into optimizer
     optimizer = torch.optim.Adam([theta_general, theta_group, a_general, a_group, b], lr=0.01)
     N_EPOCHS = 20
     BATCH_SIZE = 65536
@@ -129,7 +133,7 @@ for k in k_values_to_test:
     
     print(f"Starting bifactor optimization (1 general + {N_GROUPS} groups)...")
     for epoch in range(N_EPOCHS):
-        epoch_loss = 0
+        epoch_loss = 0.0
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{N_EPOCHS}")
         
         for batch_rows, batch_cols, batch_ys, batch_wts in pbar:
