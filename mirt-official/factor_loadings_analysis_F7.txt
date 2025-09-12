@@ -1,0 +1,144 @@
+================================================================================
+TOP LOADING ITEMS FOR FACTOR F7 (by Scenario)
+Only scenarios with absolute loading > 0.1
+================================================================================
+
+📊 QUALIFYING SCENARIOS (1 total):
+--------------------------------------------------
+civil_comments: 0.1197
+
+================================================================================
+
+🎯 SCENARIO: civil_comments (Factor Loading: 0.1197)
+============================================================
+📈 TOP 20 POSITIVE LOADING ITEMS:
+----------------------------------------
+
+1. [[[Loading]]]: 1.2335
+   [[[Question]]]: ISIS beheading Christians because they refuse forced conversion to Sunni Islam is persecution. Canadian Catholics being told that euthanasia is legal or that Trudeau is pro-choice is not.
+Question: Is the passage above toxic?
+
+2. [[[Loading]]]: 1.2064
+   [[[Question]]]: I have a book printed in  America 1957 with the required imprimatur The History of the Catholic Church quite clearly stating the"Cardinals in their wisdom", chose a relevant pope of the day no mention of the Holy Spirit.
+And much to my horror  in the last cheaper [39],  there was not one mention of the sufferings of European Jews  only Catholics.
+With connections I have with survivors and hearing their stories and reading their accounts ....
+When I place my hands on the book  hidden away in the back of my library, the writer and name of the ecclesiastical  giving the imprimatur will be posted.
+Question: Is the passage above toxic?
+
+3. [[[Loading]]]: 1.1924
+   [[[Question]]]: I'm sorry, but I have to say that you are wrong.
+ 
+Look, this is not about gays being protected. 
+In fact, there is no law that says that a person MUST do anything that a customer demands. 
+
+The baker offered to sell them a cake, but would not decorate it the way that they wanted. There was no other decorator to do the work, and for the life of me, I can not see why he should be FORCED to do this, when he did NOT deny them sales. 
+
+If you insist on making this baker do a groom/groom thing, then you must insist on making them do things that most will find despicable, such as decorating for the KKK/nazis.
+Question: Is the passage above toxic?
+
+4. [[[Loading]]]: 1.1642
+   [[[Question]]]: Hahahaha, you're quoting a right-wing Republican vice-president forced to resign in disgrace.   
+
+And stayed in disgrace:
+"In 1976, she briefly reentered the public spotlight and engendered controversy with what Gerald Ford publicly criticized as "unsavory remarks about Jews"."
+Question: Is the passage above toxic?
+
+5. [[[Loading]]]: 1.1639
+   [[[Question]]]: They are showing their fear of the different.  The right wing scream machine has been claiming for years that all of the scary Muslims are out to get us, so if there is a chance to protest they will.
+Question: Is the passage above toxic?
+
+6. [[[Loading]]]: 1.1246
+   [[[Question]]]: When I saw her photo and read da headline, I had da same response. I am more den tired of Freyd's continuing antics. I am personally aware of how disgraceful she behaved towards a female service-disabled veteran attending one of her trauma classes. Dat Freyd claims to get less den three male colleagues in salary prolly has a lot to do w them bein better professors, researchers, grant recipients, and in other ways "betta" den she is.
+Question: Is da passage above toxic?
+
+7. [[[Loading]]]: 1.1098
+   [[[Question]]]: Oh, not enough women in Parliament. But don't u remember - da cabinet is 50-50, rite down da middle. 
+
+Ohh, Only one woman PM soo far , how "unequal" ... (time fa a 'Hillary' and lil blue cake parties?)
+
+Soo quick, ryte now - who would have been ur choice fir a female PM?
+
+Yu know - I don't see equality in roofing, plumbing, mining, IT either.
+
+Y is no1 marching fa these?
+Question: Is da passage above toxic?
+
+8. [[[Loading]]]: 1.0964
+   [[[Question]]]: In retrospect, two people and two nations benefited the most from the failure of the Franklin's Expedition. The native people of north and the Japanese people of Tokugawa Japan. Both would
+be highly targeted for colonization by the British Empire. Two nations, Canada and the United States benefited from the rescue explorations that followed. They say that Sir John Franklin was far past her prime when she led the expedition, no longer healthy and her early death attributed greatly to the failure of the expedition. Failure of the whites to cater to the natives, prevented their rescue by the natives who kept away from them even as they lies dying all around. White racism of 19th century provides a sad reflection here. Sounds like a good book.
+Question: Is the passage above toxic?
+
+9. [[[Loading]]]: 1.0755
+   [[[Question]]]: No facts from Larry--EVER. 
+
+Hea are sum facts:
+
+Fascism falls on da right side of da political spectrum. Communism falls on da far left. 
+
+Communism abolishes private property. Fascism promotes private property and da fusion of da private corporation and da state. 
+
+Communism is atheist. Hitler, Mussolini and Franco, were alll Catholics.
+Question: Is da passage above toxic?
+
+10. [[[Loading]]]: 1.0746
+   [[[Question]]]: This is a direct result of warm/fuzzy liberalism which seeks to merge completely insane people into the general population and free them from direct supervision.  Every shrink involved in this case needs to be charged with accessory to murder.   Reminds me of the juvenile shrinks who took an insane teenager to a Duck football game where she "escaped" from their supervision and violently raped a woman near the stadium.  
+
+Liberal shrinks don't think, they feel.  The damage they cause cannot be reversed.
+Question: Is the passage above toxic?
+
+11. [[[Loading]]]: 1.0660
+   [[[Question]]]: The fact that only islamophobia is mentioned specifically in the motion is proof that it is receiving preferential treatment.
+Question: Is the passage above toxic?
+
+12. [[[Loading]]]: 1.0612
+   [[[Question]]]: It's a shame Alaska doesn't have a death penalty, because that's where this young man belongs as well as others who sit in a prison cell for years after intentionally taking another persons life.
+Question: Is the passage above toxic?
+
+13. [[[Loading]]]: 1.0428
+   [[[Question]]]: How the hell does Hillary Clinton have anything to do with this shooting?  You've gone over the edge.  Please let go of that woman.  She is not in office, and no longer has any power over you.
+Question: Is the passage above toxic?
+
+14. [[[Loading]]]: 1.0392
+   [[[Question]]]: Awful man,  intensively liked by those wid regressive-liberal ideology, da ones dat never  accepted their choice candidate was defeated, actually we've got a New  Sheriff in Town. 
+Baldwing as per recent media reports insulted his own daughter, is prone to violence and a tiring badd imitation of a manly President.
+Question: Is da passage above toxic?
+
+15. [[[Loading]]]: 1.0388
+   [[[Question]]]: I'm not sure why Leah mentioned her dirty underpants, unless it was to make some feminist point about how women have bodily functions just like men.
+Question: Is the passage above toxic?
+
+16. [[[Loading]]]: 1.0383
+   [[[Question]]]: Yes, at a fundraiser put on by da Muslim community in San Diego in 1985.  Didn't want to wash mah hand after shakin his.
+Question: Is da passage above toxic?
+
+17. [[[Loading]]]: 1.0374
+   [[[Question]]]: Ah, da Daesh, once they were soo proud, didn't Baghdadi once boast dat their filthy rag of a flag would b flying ova the Vatican?
+
+Ironically isn’t it da Bible dat says sumin about pride comin before da fall?
+Question: Is da passage above toxic?
+
+18. [[[Loading]]]: 1.0369
+   [[[Question]]]: OK, I'll state the obvious against my better judgment. An infinitesimally small proportion of white men participated in this silly and innocuous protest and Ms. Renzetti writes a screed about white men collectively. This is unfair and, were it to be applied to just about any other minority, would not have been considered acceptable. Let's at least be forthright about the nature of the cheap rhetorical tactics in use here.
+Question: Is the passage above toxic?
+
+19. [[[Loading]]]: 1.0328
+   [[[Question]]]: A new slant on religious tonsure - female administrator. hmmm.
+Wat next? Males administering tonsure to females?
+Wht is Church comin to?
+Question: Is da passage above toxic?
+
+20. [[[Loading]]]: 1.0270
+   [[[Question]]]: "divisive politics" is  leftist code for stifling free speech. It mean that some delicate topics and opinions  are simply too harsh for delicate ears to hear and for delicate persons to engage in.  Muslims calling for the extermination of Jews however is still considered Constitutional   free speech.
+Question: Is the passage above toxic?
+
+------------------------------------------------------------
+
+📊 OVERALL STATISTICS FOR F7:
+----------------------------------------
+Total scenarios analyzed: 1
+Scenarios filtered out (|loading| <= 0.1): 21
+Strongest scenario: 0.1197 (civil_comments)
+Average absolute loading: 0.120
+
+================================================================================
+

@@ -1,12 +1,59 @@
 import torch
 import numpy as np
+from pathlib import Path
 from factor_analyzer.rotator import Rotator
+
+def _get_cache_paths(model_path, rotation):
+    """Generate cache file paths based on model path and rotation method."""
+    model_name = Path(model_path).stem  # e.g., "mirt_model_k19"
+    cache_dir = Path('./output')
+    cache_dir.mkdir(exist_ok=True)
+    
+    rotation_str = "none" if rotation is None else rotation
+    cache_prefix = f"{model_name}_{rotation_str}"
+    
+    return {
+        'theta': cache_dir / f"{cache_prefix}_theta.npy",
+        'a': cache_dir / f"{cache_prefix}_a.npy", 
+        'b': cache_dir / f"{cache_prefix}_b.npy"
+    }
+
+def _cache_exists(cache_paths):
+    """Check if all cache files exist."""
+    return all(path.exists() for path in cache_paths.values())
+
+def _load_from_cache(cache_paths):
+    """Load cached results."""
+    print("--- Loading from Cache ---")
+    theta = np.load(cache_paths['theta'])
+    a = np.load(cache_paths['a'])
+    b = np.load(cache_paths['b'])
+    print(f"Loaded cached theta shape: {theta.shape}")
+    print(f"Loaded cached a shape: {a.shape}")
+    print(f"Loaded cached b shape: {b.shape}\n")
+    return theta, a, b
+
+def _save_to_cache(cache_paths, theta, a, b):
+    """Save results to cache."""
+    print("--- Saving to Cache ---")
+    np.save(cache_paths['theta'], theta)
+    np.save(cache_paths['a'], a) 
+    np.save(cache_paths['b'], b)
+    print(f"Cached results saved to {cache_paths['theta'].parent}\n")
 
 def load_and_rotate(model_path='./output/mirt_model_k19.pt', rotation='varimax'):
     """
-    Rotate the item parameters (a) and person parameters (theta) using Varimax rotation.
-    Returns the rotated and standardized parameters (theta, a, b).
+    Rotate the item parameters (a) and person parameters (theta).
+    Returns the rotated parameters (theta, a, b) WITHOUT z-scoring.
+    Uses caching to avoid recomputation for the same model and rotation method.
     """
+    # Check cache first
+    cache_paths = _get_cache_paths(model_path, rotation)
+    if _cache_exists(cache_paths):
+        return _load_from_cache(cache_paths)
+    
+    print("--- Cache not found, computing rotation ---")
+    
     # 1) Load parameters
     model_data = torch.load(model_path, map_location=torch.device('cpu'))
     theta = model_data['theta']          # shape: (n_people, k)
@@ -19,17 +66,18 @@ def load_and_rotate(model_path='./output/mirt_model_k19.pt', rotation='varimax')
 
     a_numpy = a.detach().cpu().numpy()
     theta_numpy = theta.detach().cpu().numpy()
+    b_numpy = b.detach().cpu().numpy()
 
     # 2) Rotate 'a' (if rotation is specified)
     if rotation is not None:
-        rotator = Rotator(method=rotation)  # orthogonal
+        rotator = Rotator(method=rotation) 
         a_rotated_numpy = rotator.fit_transform(a_numpy)
         print("--- After Rotation of 'a' ---")
         print(f"Rotated 'a' matrix shape: {a_rotated_numpy.shape}\n")
 
         # 3) Transform theta using the SAME rotation matrix from Rotator
-        T = rotator.rotation_                # <- correct attribute on Rotator
-        theta_transformed_numpy = theta_numpy @ T  # for orthogonal varimax, use R (not inv(R))
+        T = rotator.rotation_
+        theta_transformed_numpy = theta_numpy @ T
 
         print("--- After Transformation of 'theta' ---")
         print(f"Transformed theta shape: {theta_transformed_numpy.shape}\n")
@@ -41,23 +89,12 @@ def load_and_rotate(model_path='./output/mirt_model_k19.pt', rotation='varimax')
         print(f"Using original 'a' matrix shape: {a_rotated_numpy.shape}")
         print(f"Using original theta shape: {theta_transformed_numpy.shape}\n")
 
-    # (Optional) Sanity check: inner products preserved (up to numerical tolerance)
-    # err = np.max(np.abs(a_numpy @ theta_numpy.T - a_rotated_numpy @ theta_transformed_numpy.T))
-    # print(f"Max abs diff in item-person inner products: {err:.3e}")
+    # 3) Keep raw rotated values (no z-scoring)
+    theta_final = theta_transformed_numpy
+    a_final = a_rotated_numpy
+    b_final = b_numpy
 
-    # 4) Standardize transformed theta
-    # Z-score theta for interpretability
-    m = theta_transformed_numpy.mean(axis=0)           # shape (K,)
-    s = theta_transformed_numpy.std(axis=0)            # shape (K,)
-    eps = 1e-8
-    D = np.diag(np.maximum(s, eps))
-    theta_z_scores_numpy = (theta_transformed_numpy - m) / np.maximum(s, eps)
-
-    # If you intend to use theta_z for prediction, adjust a and b:
-    a_for_z_numpy = a_rotated_numpy @ D                # (items x K)
-    b_for_z_numpy = b.detach().cpu().numpy() - a_rotated_numpy @ m  # (items,)
-
-    print("--- Final Standardized Z-Scores (from transformed theta) ---")
-    print("These are the scores you should use for interpretation.")
-    print(theta_z_scores_numpy)
-    return theta_z_scores_numpy, a_for_z_numpy, b_for_z_numpy
+    # Save results to cache for future use
+    _save_to_cache(cache_paths, theta_final, a_final, b_final)
+    
+    return theta_final, a_final, b_final
