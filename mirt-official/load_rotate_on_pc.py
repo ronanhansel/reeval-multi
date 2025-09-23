@@ -198,3 +198,64 @@ def load_and_rotate_pc1_targeted(model_path='./output/mirt_model_k19.pt',
     
     print("Done. Results computed and cached.")
     return theta_df, a_df, top_items_df, Q_final
+
+def load_and_rotate_pc1_reckase(model_path='./output/mirt_model_k19.pt', 
+                               top_k=20,
+                               model_names=None,
+                               item_names=None):
+    """
+    Perform Reckase-style targeted rotation:
+    Align the first axis with PC1 and apply the same rotation 
+    to the entire factor space. No subspace rotation.
+    """
+    # Load model
+    model_data = torch.load(model_path, map_location=torch.device('cpu'))
+    theta = model_data['theta'].detach().cpu().numpy()
+    a = model_data['a'].detach().cpu().numpy()
+    
+    n_items, D = a.shape
+    n_persons = theta.shape[0]
+    
+    # PCA PC1
+    pca = PCA(n_components=1)
+    pc1_scores = pca.fit_transform(theta)[:, 0]
+    pc1_vec = pca.components_[0]
+    pc1_unit = pc1_vec / (np.linalg.norm(pc1_vec) + 1e-12)
+    
+    # Construct rotation matrix to align F1 with PC1
+    rng = np.random.RandomState(12345)
+    random_mat = rng.normal(size=(D, D-1))
+    M = np.column_stack([pc1_unit.reshape(-1, 1), random_mat])
+    Q, _ = np.linalg.qr(M)
+    
+    # Fix sign
+    if np.dot(Q[:, 0], pc1_unit) < 0:
+        Q[:, 0] *= -1.0
+    
+    # Apply rotation to all axes
+    a_rot = a @ Q
+    theta_rot = theta @ Q
+    
+    # Orient factors for interpretability
+    for d in range(D):
+        if np.sum(a_rot[:, d]) < 0:
+            a_rot[:, d] *= -1
+            theta_rot[:, d] *= -1
+    
+    # Build DataFrames
+    factor_names = [f"F{d+1}" for d in range(D)]
+    theta_df = pd.DataFrame(theta_rot, index=model_names, columns=factor_names)
+    a_df = pd.DataFrame(a_rot, index=item_names, columns=factor_names)
+    
+    # Extract top items
+    top_items = {}
+    for d in range(D):
+        order = np.argsort(-np.abs(a_rot[:, d]))[:top_k]
+        top_items[f"F{d+1}"] = [(item_names[i], float(a_rot[i, d])) for i in order]
+    
+    top_items_df = pd.DataFrame([
+        {"factor": k, "top_items": "; ".join([f"{name}({load:.3f})" for name, load in v])}
+        for k, v in top_items.items()
+    ])
+    
+    return theta_df, a_df, top_items_df, Q
