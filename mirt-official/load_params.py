@@ -41,7 +41,7 @@ def _save_to_cache(cache_paths, theta, a, b):
     np.save(cache_paths['b'], b)
     print(f"Cached results saved to {cache_paths['theta'].parent}\n")
 
-def load_and_rotate(model_path='./output/mirt_model_k19.pt', rotation='varimax'):
+def load_and_rotate(model_path='./output/mirt_model_k19_rep2.pt', rotation='varimax'):
     """
     Rotate the item parameters (a) and person parameters (theta).
     Returns the rotated parameters (theta, a, b) WITHOUT z-scoring.
