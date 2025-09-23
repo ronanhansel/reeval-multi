@@ -39,6 +39,19 @@ train_ys_t = torch.from_numpy(train_ys).float().to(device)
 
 print(f"n_persons: {n_persons}, n_items: {n_items}, n_train_obs: {len(train_ys)}")
 
+# Item mean
+item_mean = np.nanmean(resmat.values, axis=0)
+preds_item_mean = item_mean[test_cols]
+auc_item = roc_auc_score(test_ys, preds_item_mean)
+
+# Person mean
+person_mean = np.nanmean(resmat.values, axis=1)
+preds_person_mean = person_mean[test_rows]
+auc_person = roc_auc_score(test_ys, preds_person_mean)
+
+print("Baseline AUCs: item_mean =", auc_item, ", person_mean =", auc_person)
+
+
 # ===================================================================
 # B2) NEW: Compute per-item weights (factor-aware balancing)
 # ===================================================================
@@ -66,9 +79,9 @@ except FileNotFoundError:
 for k in k_values_to_test:
     print(f"\n{'='*20} PROCESSING K = {k} {'='*20}")
     
-    if not results_df.empty and k in results_df['K'].values:
-        print(f"Results for K={k} already exist. Skipping.")
-        continue
+    # if not results_df.empty and k in results_df['K'].values:
+    #     print(f"Results for K={k} already exist. Skipping.")
+    #     continue
 
     # --- Initialize Model Parameters ---
     theta = torch.randn(n_persons, k, device=device, requires_grad=True)
