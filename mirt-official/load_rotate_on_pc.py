@@ -46,7 +46,7 @@ def _save_to_cache(cache_paths, theta_df, a_df, top_items_df, Q_final):
     np.save(cache_paths['Q_final'], Q_final)
     print(f"Cached results saved to {cache_paths['theta'].parent}\n")
 
-def load_and_rotate_pc1_targeted(model_path='./output/mirt_model_k19_rep2.pt', 
+def load_and_rotate_pc1_targeted(model_path='./output/mirt_model_k19_auc89.pt', 
                                 rotation_method='oblimax', 
                                 top_k=20,
                                 model_names=None,
@@ -199,7 +199,7 @@ def load_and_rotate_pc1_targeted(model_path='./output/mirt_model_k19_rep2.pt',
     print("Done. Results computed and cached.")
     return theta_df, a_df, top_items_df, Q_final
 
-def load_and_rotate_pc1_reckase(model_path='./output/mirt_model_k19_rep2.pt', 
+def load_and_rotate_pc1_reckase(model_path='./output/mirt_model_k19_auc89.pt', 
                                top_k=20,
                                model_names=None,
                                item_names=None):

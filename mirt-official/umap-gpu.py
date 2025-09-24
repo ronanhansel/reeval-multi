@@ -83,7 +83,7 @@ class UMAPAnalyzer:
             # If you haven't saved scenario_factors.npy yet, load from your MIRT model
             sys.path.append('/home/azureuser/cloudfiles/code/Users/manhductranvu/reeval-multi/mirt-official')
             from load_params import load_and_rotate
-            _, self.scenario_factors, _ = load_and_rotate('./output/mirt_model_k19_rep2.pt')
+            _, self.scenario_factors, _ = load_and_rotate('./output/mirt_model_k19_auc89.pt')
             np.save(f"{self.result_path}scenario_factors.npy", self.scenario_factors)
             print(f"Loaded and saved scenario factors: {self.scenario_factors.shape}")
         
