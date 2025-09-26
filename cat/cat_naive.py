@@ -14,7 +14,7 @@ from load_params import load_and_rotate
 
 resmat = pd.read_pickle("../data/resmat.pkl")
 
-theta, a, b = load_and_rotate("../mirt-official/output/mirt_model_k19_auc89.pt")
+theta, a, b = load_and_rotate("../data/mirt_model_k19_auc89.pt")
 
 # Step 1: Get the final theta tensor into a NumPy array
 theta_abilities = theta

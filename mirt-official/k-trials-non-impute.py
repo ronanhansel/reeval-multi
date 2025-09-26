@@ -12,7 +12,7 @@ import os
 # ===================================================================
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
-RESULT_DIR = "./output"
+RESULT_DIR = "../data"
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 # --- NEW: Define the number of repetitions ---
