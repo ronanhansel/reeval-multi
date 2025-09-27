@@ -13,10 +13,14 @@ import os
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 RESULT_DIR = "../data"
+N_EPOCHS = 20
+BATCH_SIZE = 65536
+reg_strength = 0.01
 os.makedirs(RESULT_DIR, exist_ok=True)
+k_values_to_test = [1, 2, 3]
+N_REPETITIONS = 200 # Set the number of times to repeat the experiment
 
 # --- NEW: Define the number of repetitions ---
-N_REPETITIONS = 5 # Set the number of times to repeat the experiment
 print(f"Performing {N_REPETITIONS} repetitions to assess variance.")
 
 # ===================================================================
@@ -30,7 +34,6 @@ n_persons, n_items = resmat.shape
 # ===================================================================
 # C) Experiment Loop
 # ===================================================================
-k_values_to_test = [19]
 results_path = os.path.join(RESULT_DIR, "mirt_comparison_repeated.csv")
 
 try:
@@ -42,7 +45,19 @@ except FileNotFoundError:
 
 # --- NEW: Outer loop for repetitions ---
 for repetition in range(N_REPETITIONS):
-    print(f"\n{'='*25} STARTING REPETITION {repetition + 1}/{N_REPETITIONS} {'='*25}")
+    
+    # ==================== OPTIMIZATION ====================
+    # Check if this ENTIRE repetition can be skipped BEFORE doing any work.
+    # We do this if all K values for this repetition are already in the results file.
+    if not results_df.empty:
+        # Find which K values have already been completed for this repetition
+        completed_k_for_rep = results_df[results_df['Repetition'] == repetition]['K'].unique()
+        
+        # If the set of K's to test is a subset of the completed ones, skip
+        if set(k_values_to_test).issubset(set(completed_k_for_rep)):
+            print(f"All K values for Repetition {repetition + 1} are complete. Skipping.")
+            continue
+    # ================= END OPTIMIZATION ===================
 
     # --- NEW: Set seed for this specific repetition for reproducibility ---
     # This ensures each repetition is different from the others, but the same
@@ -65,9 +80,9 @@ for repetition in range(N_REPETITIONS):
     test_rows, test_cols = test_pairs[:, 0], test_pairs[:, 1]
     test_ys = resmat.values[test_rows, test_cols]
 
-    train_rows_t = torch.from_numpy(train_rows).to(device)
-    train_cols_t = torch.from_numpy(train_cols).to(device)
-    train_ys_t = torch.from_numpy(train_ys).float().to(device)
+    train_rows_t = torch.from_numpy(train_rows)
+    train_cols_t = torch.from_numpy(train_cols)
+    train_ys_t = torch.from_numpy(train_ys).float()
 
     print(f"  n_persons: {n_persons}, n_items: {n_items}, n_train_obs: {len(train_ys)}")
     
@@ -76,12 +91,10 @@ for repetition in range(N_REPETITIONS):
     inv_freq_weights = 1.0 / (item_counts + 1e-6)
     inv_freq_weights /= inv_freq_weights.mean()
     train_weights = inv_freq_weights.iloc[train_cols].values
-    train_weights_t = torch.from_numpy(train_weights).float().to(device)
+    train_weights_t = torch.from_numpy(train_weights).float()
 
     # --- Inner loop for K values ---
     for k in k_values_to_test:
-        print(f"\n--- Processing K = {k} for Repetition {repetition + 1} ---")
-
         # --- NEW: Check if this specific (K, Repetition) combination has been run ---
         if not results_df.empty and \
            ((results_df['K'] == k) & (results_df['Repetition'] == repetition)).any():
@@ -89,17 +102,24 @@ for repetition in range(N_REPETITIONS):
             continue
 
         # --- Initialize Model Parameters ---
+
         theta = torch.randn(n_persons, k, device=device, requires_grad=True)
         a = torch.randn(n_items, k, device=device, requires_grad=True)
         b = torch.randn(n_items, device=device, requires_grad=True)
-
         optimizer = torch.optim.Adam([theta, a, b], lr=0.01)
-        N_EPOCHS = 20
-        BATCH_SIZE = 65536
-        reg_strength = 0.01
-
         train_dataset = TensorDataset(train_rows_t, train_cols_t, train_ys_t, train_weights_t)
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+        # Use multiple CPU cores to prepare data in the background.
+        # A good starting point for num_workers is 4, 8, or the number of CPU cores you have.
+        # pin_memory=True speeds up the CPU-to-GPU memory transfer.
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=True,
+            num_workers=24,
+            pin_memory=True,
+            persistent_workers=True
+        )
         
         # --- Early Stopping Setup ---
         patience = 5
@@ -113,6 +133,12 @@ for repetition in range(N_REPETITIONS):
             pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{N_EPOCHS}", leave=False)
             
             for batch_rows, batch_cols, batch_ys, batch_wts in pbar:
+                # Move the batch of data to the GPU
+                batch_rows = batch_rows.to(device)
+                batch_cols = batch_cols.to(device)
+                batch_ys = batch_ys.to(device)
+                batch_wts = batch_wts.to(device)
+
                 optimizer.zero_grad()
                 theta_r = theta[batch_rows]
                 a_c = a[batch_cols]
@@ -180,12 +206,17 @@ for repetition in range(N_REPETITIONS):
             probs_test = torch.sigmoid(logits_test).cpu().numpy()
         test_auc = roc_auc_score(test_ys, probs_test)
         print(f"Final Test AUC for K={k}, Rep {repetition + 1}: {test_auc:.4f}")
-
+        
         # --- Calculate Final Log-Likelihood, AIC, and BIC ---
         with torch.no_grad():
-            final_logits = torch.sum(theta[train_rows_t] * a[train_cols_t], axis=1) - b[train_cols_t]
+            # Move the tensors needed for this calculation to the GPU
+            train_rows_gpu = train_rows_t.to(device)
+            train_cols_gpu = train_cols_t.to(device)
+            train_ys_gpu = train_ys_t.to(device)
+
+            final_logits = torch.sum(theta[train_rows_gpu] * a[train_cols_gpu], axis=1) - b[train_cols_gpu]
             final_log_likelihood = -F.binary_cross_entropy_with_logits(
-                final_logits, train_ys_t, reduction='sum').item()
+                final_logits, train_ys_gpu, reduction='sum').item()
         
         num_params = theta.numel() + a.numel() + b.numel()
         aic = 2 * num_params - 2 * final_log_likelihood
