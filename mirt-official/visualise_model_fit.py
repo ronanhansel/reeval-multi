@@ -44,6 +44,7 @@ def create_1d_ability_plot(k=1, r=93):
     # Load data
     resmat = load_response_matrix()
     theta_se = np.load(f"../output/standard_errors_k{k}.npz")['theta_se']
+    # For 1D case, rotation has no effect, so we can use None
     theta, a, b = load_and_rotate(os.path.join(DATA_DIR, f"mirt_model_k{k}_rep{r}.pt"), rotation=None)
 
     # Prepare data
@@ -92,7 +93,8 @@ def create_2d_ability_plot(k=2, r=87):
     # Load data
     resmat = load_response_matrix()
     theta_se = np.load(f"../output/standard_errors_k{k}.npz")['theta_se']
-    theta, a, b = load_and_rotate(os.path.join(DATA_DIR, f"mirt_model_k{k}_rep{r}.pt"), rotation='oblimax')
+    # Use oblimin rotation by default (can omit rotation parameter or specify explicitly)
+    theta, a, b = load_and_rotate(os.path.join(DATA_DIR, f"mirt_model_k{k}_rep{r}.pt"))
 
     # Prepare data
     data_for_df = {

@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 rcparams = {
   'text.usetex': False,
   'font.serif': ['Times'],
@@ -17,3 +19,5 @@ rcparams = {
   'ytick.labelsize': 12,
   'axes.titlesize': 12
 }
+
+plt.rcParams.update(rcparams)

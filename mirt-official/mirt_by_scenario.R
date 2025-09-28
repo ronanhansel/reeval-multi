@@ -8,33 +8,20 @@ library(mirt)
 library(psych)
 library(GPArotation)
 library(parallel)
-
 # %% Enable parallelism inside mirt
-mirtCluster(4)   # uses 4 workers internally where possible
+mirtCluster(8)
 
 # %% Load data
-data <- read.csv("./data/resmat_by_scenario/gsm.csv", 
+data <- read.csv("/home/azureuser/cloudfiles/code/Users/manhductranvu/reeval-multi/data/resmat_by_scenario/gsm.csv", 
                  row.names = 1, na.strings = "NA")
 
 # %% Parallel model fitting across dimensions 1..10
 ks <- 1:10
-
-if(.Platform$OS.type == "windows"){
-  # Windows: use parLapply
-  cl <- makeCluster(4)   # create cluster with 4 cores
-  clusterEvalQ(cl, { library(mirt) })   # load mirt on workers
-  fits <- parLapply(cl, ks, function(k){
-    mirt(data, k, itemtype = "2PL", method = "MHRM", 
-         rotate = "oblimin", verbose = FALSE)
-  })
-  stopCluster(cl)
-} else {
-  # Linux/macOS: can use mclapply
-  fits <- mclapply(ks, function(k){
-    mirt(data, k, itemtype = "2PL", method = "MHRM", 
-         rotate = "oblimin", verbose = FALSE)
-  }, mc.cores = 4)
-}
+# Linux/macOS: can use mclapply
+fits <- mclapply(ks, function(k){
+  mirt(data, k, itemtype = "2PL", method = "EM", 
+        rotate = "oblimin", verbose = TRUE)
+}, mc.cores = 8)
 
 names(fits) <- paste0("dim", ks)
 
