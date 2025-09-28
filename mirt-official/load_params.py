@@ -88,7 +88,7 @@ def _load_procrustes_rotation(model_path):
         print(f"⚠️ Error loading rotation matrices: {e}")
         return None
 
-def load_and_rotate(model_path='./output/mirt_model_k19_auc89.pt', rotation='procrustes'):
+def load_and_rotate(model_path='./output/mirt_model_k19_auc89.pt', rotation='procrustes', weights_only=False):
     """
     Rotate the item parameters (a) and person parameters (theta).
     Returns the rotated parameters (theta, a, b) WITHOUT z-scoring.
@@ -105,7 +105,7 @@ def load_and_rotate(model_path='./output/mirt_model_k19_auc89.pt', rotation='pro
     print("--- Cache not found, computing rotation ---")
     
     # 1) Load parameters
-    model_data = torch.load(model_path, map_location=torch.device('cpu'))
+    model_data = torch.load(model_path, map_location=torch.device('cpu'), weights_only=weights_only)
     theta = model_data['theta']          # shape: (n_people, k)
     a = model_data['a']                  # shape: (n_items,  k)
     b = model_data['b']
