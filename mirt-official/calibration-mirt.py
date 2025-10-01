@@ -31,7 +31,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # Configuration
-K_VALUES = [1, 2, 3, 4, 5]  # Different numbers of dimensions to test
+K_VALUES = [1, 2, 3, 4, 5]  # Default K values to test
 N_EPOCHS = 1000
 BATCH_SIZE = 50000
 lr = 0.01
@@ -44,8 +44,6 @@ os.makedirs(RESULT_DIR, exist_ok=True)
 FULL_SEED = 86
 
 EARLY_STOPPING_THRESHOLD = 1e-4
-
-print(f"MIRT with K values: {K_VALUES}")
 
 
 # Data Loading
