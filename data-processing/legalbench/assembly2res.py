@@ -17,7 +17,7 @@ conv_questions = conv_mask.columns.get_level_values('input.text').tolist()
 
 resmat = resmat.loc[:, resmat.columns.get_level_values("input.text").isin(conv_questions)]
 
-combined_df = pd.read_pickle('legalbench_combined.pkl')
+combined_df = pd.read_pickle('../../data/legalbench/legalbench_combined.pkl')
 
 REMOVE_TOKENS = ('description', 'question', 'prompt', 'text', 'analysis', 'facts', 'fact', 'issue', 'holding', 'conclusion', 'rule', 'citation')
 
