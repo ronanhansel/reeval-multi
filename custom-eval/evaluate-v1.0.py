@@ -47,8 +47,10 @@ def normalize_answer(text: str) -> str:
     def remove_punc(t: str) -> str:
         return "".join(ch for ch in t if ch not in set(string.punctuation))
 
-    return white_space_fix(remove_articles(remove_punc(text.lower())))
+    def remove_special_tokens(t: str) -> str:
+        return t.replace("</s>", "").replace("<|eot_id|>", "")
 
+    return white_space_fix(remove_articles(remove_punc(remove_special_tokens(text.lower()))))
 
 def get_tokens(text: str) -> List[str]:
     return normalize_answer(text).split() if text else []
