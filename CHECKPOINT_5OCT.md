@@ -6,13 +6,13 @@
 
 ## MIRT Fitting results
 
-Detailed in `mirt-official/calibration.ipynb` section model fit assessment, we see Rasch models can sometimes match MIRT performance on homogeneous datasets e.g. GSM, MATH, but not on heterogeneous datasets e.g. LEGALBENCH. Statistical significance tests are performed in `mirt-official/evaluation.ipynb` which shows MIRT 2-factor significantly outperforms Rasch models on LEGALBENCH, with 6-factor (best-fit AUC) only marginally better than 2-factor at a risk of complexity and interpretability.
+Detailed in [mirt-official/calibration.ipynb](mirt-official/calibration.ipynb) section model fit assessment, we see Rasch models can sometimes match MIRT performance on homogeneous datasets e.g. GSM, MATH, but not on heterogeneous datasets e.g. LEGALBENCH. Statistical significance tests are performed in [mirt-official/evaluation.ipynb](mirt-official/evaluation.ipynb) which shows MIRT 2-factor significantly outperforms Rasch models on LEGALBENCH, with 6-factor (best-fit AUC) only marginally better than 2-factor at a risk of complexity and interpretability.
 
 Latent factors can't be used directly because they are only the product of the fitting procedure. Converting them into relative statistical measures using EAP (expected a posteriori) yields a Rasch-like ability estimate per individual.
 
 ## Rotation results
 
-Performed all oblique rotations available in `factor_analyzer` package, and selected `geomin_obl` as the most interpretable rotation. Based on `mirt-official/rotational_eval.ipynb`, to compare rotations, we look at:
+Performed all oblique rotations available in `factor_analyzer` package, and selected `geomin_obl` as the most interpretable rotation. Based on [mirt-official/rotational_eval.ipynb](mirt-official/rotational_eval.ipynb), to compare rotations, we look at:
 
 - Top loaders from each ends of each factor.
 - Their corresponding scenario categories and answers.
@@ -30,7 +30,7 @@ Although Affirmative Bias is an oversimplification of this Axis, but it's the mo
 
 ### External Validation F2
 
-Based on `mirt-official/rotational_eval.ipynb` F2 is more difficult to separate between the two ends. Their scores on each metric are very similar, not as polarised as F1. Performing additional NLP analyses in `mirt-official/validation_neg_f2.ipynb` yields more meaningful correlation based on
+Based on [mirt-official/rotational_eval.ipynb](mirt-official/rotational_eval.ipynb) F2 is more difficult to separate between the two ends. Their scores on each metric are very similar, not as polarised as F1. Performing additional NLP analyses in [mirt-official/validation_neg_f2.ipynb](mirt-official/validation_neg_f2.ipynb) yields more meaningful correlation based on
 
 ```bash
 avg_dep_depth   0.2811
@@ -50,6 +50,6 @@ To mitigate this, I hypothesised that we would need a general aptitude score to 
 
 To verify this further, I performed the same procedure on another multidisciplinary dataset `commonsense` and other homogeneous datasets `math`, `gsm`, with the latter likely include more language-related reasoning. The results are consistent, with `commonsense` showing a similar positive correlation (r=0.42) with the negative end of F2, while `math` and `gsm` show weaker correlations (r=0.11 and r=0.18 respectively). This pattern suggests that F2 indeed captures a specific ability related to in-context reasoning, as it correlates more strongly with the residual datasets that require such skills.
 
-I also fitted another LOESS model to test for non-linearity but the results are consistent. A summary table can be found in `mirt-official/validation_neg_f2.ipynb`.
+I also fitted another LOESS model to test for non-linearity but the results are consistent. A summary table can be found in [mirt-official/validation_neg_f2.ipynb](mirt-official/validation_neg_f2.ipynb).
 
 The moderate correlation is not neccessarily a bad sign if my understanding is correct, with similar psychological surveys suggests variations in the residual correlations [here](https://www.frontiersin.org/articles/10.3389/fpsyg.2020.01237/full#B64-ijpsy-11-01237) can sometimes be smaller. The correlation is not expected to be very high because specific factors in bifactor or MIRT frameworks are designed to capture residual, domain-specific variance after accounting for the general ability factor.
