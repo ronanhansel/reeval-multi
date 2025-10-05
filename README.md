@@ -14,3 +14,11 @@ To install latex-related packages (linux)
 sudo apt update
 sudo apt install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra cm-super dvipng fonts-liberation
 ```
+
+## Download existing external evaluations
+
+```bash
+hf download ronanhansel/data-reeval-multi \
+    --local-dir . \
+    --repo-type dataset
+```
