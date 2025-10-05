@@ -159,8 +159,7 @@ python json2csv.py --predictions ./output/
 # Download existing external evaluations
 
 ```bash
-hf download ronanhansel/reeval-multi \
-    --include "external-eval/squad/*" \
+hf download ronanhansel/data-reeval-multi \
     --local-dir . \
     --repo-type dataset
 ```

@@ -11,6 +11,6 @@ result
 output/
 output-*/
 helm_jsons/
-
+data-reeval-multi/
 *.pkl
 *.json

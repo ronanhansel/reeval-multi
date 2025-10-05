@@ -1,9 +1,9 @@
 import pandas as pd
 import os
 
-os.makedirs("../data/resmat_by_scenario", exist_ok=True)
+os.makedirs("../data-reeval-multi/resmat_by_scenario", exist_ok=True)
 
-resmat = pd.read_pickle("../data/resmat.pkl")
+resmat = pd.read_pickle("../data-reeval-multi/resmat.pkl")
 
 for scenario in resmat.columns.get_level_values('scenario').unique():
   print(f"Exporting {scenario}")
@@ -15,4 +15,4 @@ for scenario in resmat.columns.get_level_values('scenario').unique():
   # save to CSV for R
   # optional: reset index if you don’t want model names as rownames in R
   resmat_by_scenario.index = resmat_by_scenario.index.astype(str)
-  resmat_by_scenario.to_csv(f"../data/resmat_by_scenario/{scenario}.csv", na_rep="NA")  # R will read "NA" as missing
+  resmat_by_scenario.to_csv(f"../data-reeval-multi/resmat_by_scenario/{scenario}.csv", na_rep="NA")  # R will read "NA" as missing

@@ -8,7 +8,7 @@ sys.path.append('../../')
 from string_utils import *
 
 dataset = load_dataset("google/civil_comments")
-resmat = pd.read_pickle('../../data/resmat.pkl')
+resmat = pd.read_pickle('../../data-reeval-multi/resmat.pkl')
 r_cv = resmat.loc[:, resmat.columns.get_level_values("scenario") == "civil_comments"]
 r_cv.columns.get_level_values('input.text').tolist()
 

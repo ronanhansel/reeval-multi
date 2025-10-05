@@ -7,7 +7,7 @@ def _join_parts(parts: Iterable[str]) -> str:
     cleaned = [str(part).strip() for part in parts if pd.notna(part) and str(part).strip()]
     return "\n\n".join(cleaned)
 
-data_dir = Path('../../data/legalbench')
+data_dir = Path('../../data-reeval-multi/legalbench')
 
 # Abercrombie dataset
 abercrombie_df = pd.read_csv(data_dir / 'data_abercrombie_test.txt', sep='\t')

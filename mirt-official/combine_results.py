@@ -115,7 +115,7 @@ results_data = {
 
 # Create the results DataFrame
 results_df = pd.DataFrame(results_data)
-resmat = pd.read_pickle('../data/resmat.pkl')
+resmat = pd.read_pickle('../data-reeval-multi/resmat.pkl')
 counts_dict = resmat.columns.get_level_values('scenario').value_counts().dropna()
 scenario_sizes = {fruit: count for fruit, count in counts_dict.items() if count > 0}
 scenario_sizes
@@ -158,4 +158,4 @@ df.rename(columns={'val_auc': 'mirt', 'test_auc': 'irt'}, inplace=True)
 print(f"Available k-factors: {sorted(df['k_factor'].unique())}")
 print(f"Data shape: {df.shape}")
 df.head()
-df.to_pickle('../data/calibration_results.pkl')
+df.to_pickle('../data-reeval-multi/calibration_results.pkl')
