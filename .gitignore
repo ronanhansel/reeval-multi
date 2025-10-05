@@ -13,3 +13,4 @@ output-*/
 helm_jsons/
 
 *.pkl
+*.json

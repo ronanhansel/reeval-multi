@@ -150,3 +150,12 @@ python evaluate-v1.0.py --predictions <folder-path> --all
   "extra_predictions": 0
 }
 ```
+
+# Download existing external evaluations
+
+```bash
+hf download ronanhansel/reeval-multi \
+    --include "external-eval/squad/*" \
+    --local-dir . \
+    --repo-type dataset
+```
