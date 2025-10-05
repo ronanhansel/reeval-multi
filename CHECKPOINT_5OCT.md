@@ -26,7 +26,7 @@ Using oblique rotation, we get mostly similar results.
 
 ### External Validation F1
 
-Although Affirmative Bias is an oversimplification of this Axis, but it's the most easy to find further analyses can yield more meaning. But based on the top loaders, the structure is almost symmetrical, the question categories are balanced, only difference is the number of Yes/No answers. No focused more on the positive end of Factor 1, and Yes focused more on the negative end of Factor 1.
+Although Affirmative Bias is an oversimplification of this Axis, but it's the most easy to find (later further analyses can yield more meaning). Based on the top loaders, the structure is almost symmetrical, the question categories are balanced, only difference is the number of Yes/No answers. No focused more on the positive end of Factor 1, and Yes focused more on the negative end of Factor 1.
 
 ### External Validation F2
 
