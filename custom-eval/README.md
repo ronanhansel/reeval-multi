@@ -151,6 +151,11 @@ python evaluate-v1.0.py --predictions <folder-path> --all
 }
 ```
 
+To perform item-wise evaluation
+```bash
+python json2csv.py --predictions ./output/
+```
+
 # Download existing external evaluations
 
 ```bash
