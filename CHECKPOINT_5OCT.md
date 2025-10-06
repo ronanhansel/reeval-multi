@@ -52,7 +52,7 @@ To verify this further, I performed the same procedure on another multidisciplin
 
 I also fitted another LOESS model to test for non-linearity but the results are consistent. A summary table can be found in [mirt-official/validation_neg_f2.ipynb](mirt-official/validation_neg_f2.ipynb).
 
-The moderate correlation is not neccessarily a bad sign if my understanding is correct, with similar psychological surveys suggests variations in the residual correlations [here](https://www.frontiersin.org/articles/10.3389/fpsyg.2020.01237/full#B64-ijpsy-11-01237) can sometimes be smaller. The correlation is not expected to be very high because specific factors in bifactor or MIRT frameworks are designed to capture residual, domain-specific variance after accounting for the general ability factor.
+The moderate correlation is not neccessarily a bad sign if my understanding is correct, with similar psychological surveys suggests variations in the residual correlations [here](https://www.neurotechcenter.org/sites/default/files/misc/Modeling%20General%20and%20Specific%20Abilities:%20Evaluation%20of%20Bifactor%20Models%20for%20the%20WJ-III..pdf#page=1.80) can sometimes be smaller. The correlation is not expected to be very high because specific factors in bifactor or MIRT frameworks are designed to capture residual, domain-specific variance after accounting for the general ability factor.
 
 ## Impact
 
