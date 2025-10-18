@@ -14,3 +14,4 @@ helm_jsons/
 data-reeval-multi/
 *.pkl
 *.json
+*.parquet
