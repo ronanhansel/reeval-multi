@@ -1,21 +1,26 @@
 library(mirt)
 library(parallel)
+library.dynam('mirt', 'mirt', .libPaths()) 
 
-# --- 0. Setup ---
-# Set your file paths
-data_file_path <- "../data-reeval-multi/lsat_qa/lsat_resmat.csv"
-save_model_path <- "../data-reeval-multi/final_mirt_model_100.rds"
+# Load the model that stopped at 20000 iterations
+fit_stopped <- readRDS("../data-reeval-multi/final_mirt_model.rds") 
+print("Loaded model stopped at 20k iterations.")
 
-# --- NEW: Parallel Setup ---
-# Define number of cores (using 1 less than your max is a safe bet)
+# Get the parameter values from the loaded model
+start_values <- mod2values(fit_stopped) 
+# print(head(start_values)) # Optional: view the extracted values
+
+# --- Setup Parallel Cluster AGAIN ---
 n_cores <- parallel::detectCores() - 1 
-
-# Start the mirtCluster
-print(paste("Setting up mirtCluster with", n_cores, "cores."))
+cl <- NULL 
+print(paste("Setting up parallel cluster with", n_cores, "cores..."))
 cl <- mirtCluster(n_cores)
+print("Cluster ready.")
 
-# Read the CSV
-data <- read.csv(data_file_path, header = FALSE, row.names = 1)
+# --- Load original data and model string (needed again) ---
+print("Loading original data...")
+data <- read.csv("../data-reeval-multi/lsat_qa/lsat_resmat.csv", 
+                 header = FALSE, row.names = 1)
 colnames(data) <- paste0("Q", 1:ncol(data))
 
 # --- 1. Define Your Model Structure ---
@@ -55,6 +60,7 @@ numbers_to_ranges <- function(nums) {
 # Convert the "free" items into a compact string
 free_items_str <- numbers_to_ranges(free_items)
 
+# Create the full model string
 model_string_corrected <- paste("
   F1 = ", paste(anchors_F1, collapse = ","), ",", free_items_str, "
   F2 = ", paste(anchors_F2, collapse = ","), ",", free_items_str, "
@@ -62,32 +68,26 @@ model_string_corrected <- paste("
   COV = F1*F2, F1*F3, F2*F3
 ", sep = "")
 
-fit_corrected <- mirt(data,
+# --- Run MIRT again with warm start ---
+print("Restarting MIRT estimation with previous parameters as starting values...")
+fit_continued <- mirt(data,
                       model_string_corrected,
                       itemtype = "2PL",
                       method = "MHRM",
                       verbose = TRUE,
-                      technical = list(NCYCLES = 100000))
+                      pars = start_values,  # <-- Use extracted parameters as start values
+                      technical = list(NCYCLES = 40000)) # <-- Set a NEW, higher limit
 
-print("FINAL run complete!")
+print("Continued MIRT run finished!")
 
-# --- 6. Save the Final Model to Disk ---
-saveRDS(fit_corrected, file = save_model_path)
-print(paste("Model successfully saved to:", save_model_path))
+# --- Save the NEW, hopefully converged model ---
+saveRDS(fit_continued, file = "../data-reeval-multi/final_mirt_model_resumed.rds") # Use a new file name
+print("Newly converged model saved.")
 
-# --- 7. Check Results ---
-print("Model Summary:")
-summary(fit_corrected)
-
-print("Factor Correlations:")
-print(summary(fit_corrected)$fcor)
-
-# --- 8. How to Load the Model Later (example) ---
-# ...
-
-# --- 9. NEW: Shutdown Cluster ---
-# **CRITICAL:** Always stop the cluster when you are finished
-# to free up your computer's memory.
-print("Shutting down the cluster...")
+# --- Stop Cluster ---
+print("Shutting down cluster...")
 stopCluster(cl)
-print("Cluster shut down. R session is back to normal.")
+print("Cluster shut down.")
+
+# --- Check Results ---
+summary(fit_continued)
