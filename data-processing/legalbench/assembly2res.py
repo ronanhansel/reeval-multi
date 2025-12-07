@@ -2,10 +2,7 @@ import re
 from difflib import get_close_matches, SequenceMatcher
 import sys
 sys.path.append('../../mirt-official') 
-from load_params import load_and_rotate
 import pandas as pd
-# Concatenate math and gsm outputs for theta, a, b
-theta, a, b = load_and_rotate('../../result/mirt-fitting/mirt_model_k2_legalbench.pt', rotation=None)
 
 resmat = pd.read_pickle('../../data-reeval-multi/resmat.pkl')
 
@@ -17,7 +14,10 @@ conv_questions = conv_mask.columns.get_level_values('input.text').tolist()
 
 resmat = resmat.loc[:, resmat.columns.get_level_values("input.text").isin(conv_questions)]
 
-combined_df = pd.read_pickle('../../data-reeval-multi/legalbench/legalbench_combined.pkl')
+try:
+    combined_df = pd.read_pickle('../../data-reeval-multi/legalbench/legalbench_combined.pkl')
+except FileNotFoundError:
+    raise FileNotFoundError('combined.pkl not found. Run assembly.py to create it.')
 
 REMOVE_TOKENS = ('description', 'question', 'prompt', 'text', 'analysis', 'facts', 'fact', 'issue', 'holding', 'conclusion', 'rule', 'citation')
 
