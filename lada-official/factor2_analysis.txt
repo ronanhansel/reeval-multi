@@ -1,0 +1,76 @@
+--- Factor 2 Analysis ---
+
+Type: international_citizenship
+Loading: 0.9954
+Question: Question: Consider the country of Montenegro. Does the country provide for involuntary loss of citizenship by a person who acquired citizenship as a foundling, on the basis of apparent status as a citizen, or as a presumptively stateless person if possession of a foreign citizenship is established a...
+Answer: Yes
+--------------------
+Loading: 0.9938
+Question: Question: Consider the country of Azerbaijan. Does the country provide specific conditions for the acquisition of citizenship by a refugee in its territory (different from those for residence- based acquisition) and, if so, under which conditions?...
+Answer: Yes
+--------------------
+Loading: 0.9932
+Question: Question: Consider the country of Sudan. Does the country provide for involuntary loss of citizenship by a person who acquired citizenship as a foundling, on the basis of apparent status as a citizen, or as a presumptively stateless person if possession of a foreign citizenship is established and, i...
+Answer: Yes
+--------------------
+
+Type: corporate_lobbying
+Loading: 0.9846
+Question: Official title of bill: To provide for the coverage of medically necessary food and vitamins and individual amino acids for digestive and inherited metabolic disorders under Federal health programs and private health insurance, and for other purposes.
+Official summary of bill: Medical Nutrition Equi...
+Answer: Yes
+--------------------
+Loading: 0.9830
+Question: Official title of bill: A bill to significantly lower prescription drug prices for patients in the United States by ending government-granted monopolies for manufacturers who charge drug prices that are higher than the median prices at which the drugs are available in other countries.
+Official summa...
+Answer: Yes
+--------------------
+Loading: 0.9828
+Question: Official title of bill: To improve the safety of the air supply on commercial aircraft, and for other purposes.
+Official summary of bill: Cabin Air Safety Act of 2019
+
+This bill directs the Federal Aviation Administration (FAA) to implement regulations regarding smoke or fume incidents on commercial...
+Answer: Yes
+--------------------
+
+Type: proa
+Loading: 0.9690
+Question: Statute: The common areas and facilities shall remain undivided. A condominium unit owner or any other person may bring an action for partition or division of any part of the common areas and facilities if the property has been removed from this chapter as provided in the previous subsections....
+Answer: Yes
+--------------------
+Loading: 0.9546
+Question: Statute: The buyer or the seller may commence legal proceedings against the other party or assert a claim as a counterclaim or defense in an action brought by the seller or buyers after the receipt of the report of alternative dispute resolution as provided in....
+Answer: Yes
+--------------------
+Loading: 0.9347
+Question: Statute: A person acting as an investment adviser or investment adviser representative that provides investment advice for compensation in violation of the previous subsection  is liable to the client....
+Answer: Yes
+--------------------
+
+Type: abercrombie
+Loading: 0.9309
+Question: Description: The mark "Antilds" for plant seeds....
+Answer: fanciful
+--------------------
+Loading: 0.9305
+Question: Description: The mark "Yuteal" for cleaning wipes....
+Answer: fanciful
+--------------------
+Loading: 0.9195
+Question: Description: The mark "Oamp" for baseball bats....
+Answer: fanciful
+--------------------
+
+Type: function_of_decision_section
+Loading: 0.8958
+Question: Text: That brings us to the customer complaints. Recall that the Board found such complaints “not presumptively relevant.” Id. at 150–51. But they may be relevant “in a particular case,” so the Board remanded “for further appropriate action.” J.A. 151. The union challenges that decision on several g...
+Answer: Analysis
+--------------------
+Loading: 0.8730
+Question: Text: But once again this begs the question. True, an employer like Palace tests certification at its own peril — yet this tells us nothing about what peril should befall. That is where the Board comes in...
+Answer: Analysis
+--------------------
+Loading: 0.8659
+Question: Text: At the field, Devon Hebron stayed in his vehicle while the other four took Lyles into the field to kill him. By this point, Wheeler was noticeably scared and nervous. At the field, where the group intended to kill Lyles, Lassiter ordered Wheeler to shoot him. Wheeler refused. Lassiter grabbed ...
+Answer: Facts
+--------------------
