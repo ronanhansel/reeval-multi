@@ -1,29 +1,22 @@
 #!/usr/bin/env python3
 """
-LADA Calibration Script - JOINT OPTIMIZATION VARIANT
+LADA Calibration Script - JOINT OPTIMIZATION VARIANT (GPU OPTIMIZED)
 
-Critique of Original Implementation:
-This version replaces the Coordinate Gradient Ascent (sequential updates) 
-with Joint Optimization (simultaneous updates). 
-
-Why?
-Coordinate descent often suffers from "zig-zagging" on correlated loss surfaces 
-(e.g., Theta and Difficulty are highly correlated). Joint optimization with 
-Adam allows diagonal movement, leading to significantly faster convergence 
-and better local minima for this type of Latent Factor Model.
+Optimized for A100:
+- Pre-loads entire dataset to GPU VRAM to prevent PCIe bottlenecks.
+- Uses massive batch sizes (1M+) to maximize GPU compute utilization.
+- Replaces CPU-bound DataLoader with manual GPU tensor slicing.
 
 Usage:
     python calibration-lada-joint.py --k-values 3 4 5 --epochs 1000
     python calibration-lada-joint.py -s lsat_qa
 """
 
-# Import and Setup
 import sys
 import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
@@ -33,19 +26,24 @@ import pickle
 import json
 from collections import defaultdict
 
+# ------------------------------------------------------------------------------
+# Configuration & Setup
+# ------------------------------------------------------------------------------
+
 # Device setup
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# Configuration Defaults (can be overridden by args)
+# Configuration Defaults
 DEFAULT_K_VALUES = [3, 4, 5]  
 DEFAULT_EPOCHS = 1000
-BATCH_SIZE = 50000
+# Huge batch size for A100 (adjust if you run out of VRAM, but A100 80GB can handle this easily)
+BATCH_SIZE = 1000000 
 
-# Hyperparameters - Simplified for Joint Opt
+# Hyperparameters
 ALPHA_DIRICHLET = 1.1   
-LR_JOINT = 0.05        # Single Learning Rate for the Joint Optimizer
-REG_STRENGTH = 0.01    # Weak regularization
+LR_JOINT = 0.05        
+REG_STRENGTH = 0.01    
 
 # Prior hyperparameters
 MU_D = 0.0             
@@ -59,7 +57,9 @@ FULL_SEED = 86
 EARLY_STOPPING_THRESHOLD = 1e-4
 EARLY_STOPPING_PATIENCE = 20
 
+# ------------------------------------------------------------------------------
 # Data Loading
+# ------------------------------------------------------------------------------
 print("Loading data...")
 try:
     with open("../data-reeval-multi/resmat.pkl", "rb") as f:
@@ -68,7 +68,6 @@ except FileNotFoundError:
     print("Error: Data file '../data-reeval-multi/resmat.pkl' not found.")
     sys.exit(1)
 
-# Work directly with numpy values
 resmat_values = results.values
 n_persons, n_items = resmat_values.shape
 scenarios = results.columns.get_level_values("scenario").unique()
@@ -93,14 +92,12 @@ class LADAModel(nn.Module):
         self.phi = nn.Parameter(torch.randn(n_items, k_dims))
 
     def get_w(self, item_indices=None):
-        """Compute Dirichlet-constrained weights from phi using Softmax (Eq 11)."""
         if item_indices is not None:
             phi_subset = self.phi[item_indices]
             return F.softmax(phi_subset, dim=1)
         return F.softmax(self.phi, dim=1)
 
     def forward(self, user_indices, item_indices):
-        """P(y=1) = sigma(d_j + w_j^T theta_i)"""
         batch_theta = self.theta[user_indices]    
         batch_d = self.d[item_indices]            
         batch_w = self.get_w(item_indices)        
@@ -110,13 +107,11 @@ class LADAModel(nn.Module):
         return logits
     
     def compute_loss(self, logits, targets, weights, user_idx, item_idx, reg_strength):
-        """Computes Joint Loss = Likelihood + All Priors"""
-        # 1. Weighted Binary Cross Entropy (Likelihood)
+        # 1. Weighted Binary Cross Entropy
         nll = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
         nll_weighted = (weights * nll).mean()
         
         # 2. Theta Prior (L2)
-        # Scaled by reg_strength to keep loss balanced
         prior_theta = reg_strength * torch.mean(self.theta[user_idx]**2)
         
         # 3. Difficulty Prior (L2 around mu_d)
@@ -128,16 +123,13 @@ class LADAModel(nn.Module):
         term1 = torch.sum(phi_val, dim=1)
         lse = torch.logsumexp(phi_val, dim=1)
         term2 = self.k_dims * lse
-        # Note: Dirichlet prior is (alpha-1) * (sum(phi) - K*LSE)
-        # We negate it because we minimize loss.
-        # We scale it by reg_strength to prevent it from dominating.
         prior_phi = -reg_strength * ((self.alpha - 1) * (term1 - term2).mean())
         
         total_loss = nll_weighted + prior_theta + prior_d + prior_phi
         return total_loss, nll_weighted.item()
 
 # ------------------------------------------------------------------------------
-# Joint Fitting Function
+# Optimized Fitting Function (Entire Dataset on GPU)
 # ------------------------------------------------------------------------------
 
 def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model"):
@@ -149,7 +141,7 @@ def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model
     
     print(f"\nFitting LADA model '{name}' (JOINT) with K={k_dims}...")
     
-    # Prepare Data
+    # 1. Prepare Data Indices (CPU side first)
     n_total_persons, n_total_items = resmat_values.shape
     observed_pairs = np.argwhere(~np.isnan(resmat_values))
     np.random.shuffle(observed_pairs)
@@ -159,32 +151,30 @@ def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model
     test_pairs = observed_pairs[:n_test]
     train_pairs = observed_pairs[n_test:]
     
-    train_rows = torch.from_numpy(train_pairs[:, 0]).long()
-    train_cols = torch.from_numpy(train_pairs[:, 1]).long()
-    train_ys = torch.from_numpy(resmat_values[train_pairs[:, 0], train_pairs[:, 1]]).float()
-    
-    test_rows = torch.from_numpy(test_pairs[:, 0]).long()
-    test_cols = torch.from_numpy(test_pairs[:, 1]).long()
-    test_ys = resmat_values[test_pairs[:, 0], test_pairs[:, 1]]
-    
-    print(f"  Train observations: {len(train_ys)}, Test observations: {len(test_ys)}")
-
-    # Class Balancing Weights
+    # Calculate weights on CPU before moving to GPU
     item_counts = pd.Series(train_pairs[:, 1]).value_counts().reindex(range(n_total_items), fill_value=0)
     inv_freq_weights = 1.0 / (item_counts + 1e-6)
     inv_freq_weights /= inv_freq_weights.mean()
-    train_weights = torch.from_numpy(inv_freq_weights.iloc[train_pairs[:, 1]].values).float()
+    train_weights_cpu = inv_freq_weights.iloc[train_pairs[:, 1]].values
+
+    print(f"  Moving entire dataset ({len(train_pairs)} train, {len(test_pairs)} test) to {device}...")
+
+    # 2. Move EVERYTHING to GPU (The Critical Optimization)
+    train_rows = torch.from_numpy(train_pairs[:, 0]).long().to(device)
+    train_cols = torch.from_numpy(train_pairs[:, 1]).long().to(device)
+    train_ys = torch.from_numpy(resmat_values[train_pairs[:, 0], train_pairs[:, 1]]).float().to(device)
+    train_weights = torch.from_numpy(train_weights_cpu).float().to(device)
+    
+    test_rows = torch.from_numpy(test_pairs[:, 0]).long().to(device)
+    test_cols = torch.from_numpy(test_pairs[:, 1]).long().to(device)
+    # Keep test_ys on CPU for sklearn metric calculation later, but we can also put a copy on GPU if we want custom metrics
+    test_ys_cpu = resmat_values[test_pairs[:, 0], test_pairs[:, 1]]
     
     # Initialize Model
     model = LADAModel(n_total_persons, n_total_items, k_dims, 
                       alpha=ALPHA_DIRICHLET, mu_d=MU_D, sigma_d=SIGMA_D).to(device)
     
-    # JOINT OPTIMIZER: All parameters together
     optimizer = torch.optim.Adam(model.parameters(), lr=LR_JOINT)
-    
-    # DataLoader
-    train_dataset = TensorDataset(train_rows, train_cols, train_ys, train_weights)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True)
     
     best_auc = -np.inf
     best_state = None
@@ -192,21 +182,31 @@ def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model
     epochs_no_improve = 0
     training_history = []
     
-    # Joint Training Loop
+    num_train = len(train_rows)
+    
+    # 3. Training Loop (Manual Batching)
     for epoch in range(n_epochs):
-        epoch_nll = 0
-        pbar = tqdm(train_loader, desc=f"  Epoch {epoch+1}/{n_epochs}", leave=False)
+        model.train()
+        epoch_nll = 0.0
+        n_batches = 0
         
-        for batch_rows, batch_cols, batch_ys, batch_wts in pbar:
-            batch_rows, batch_cols = batch_rows.to(device), batch_cols.to(device)
-            batch_ys, batch_wts = batch_ys.to(device), batch_wts.to(device)
+        # Shuffle indices on GPU directly
+        permutation = torch.randperm(num_train, device=device)
+        
+        # Iterate with massive strides
+        for i in range(0, num_train, BATCH_SIZE):
+            indices = permutation[i : i + BATCH_SIZE]
+            
+            # Slice directly from GPU tensors (Zero copy overhead)
+            batch_rows = train_rows[indices]
+            batch_cols = train_cols[indices]
+            batch_ys = train_ys[indices]
+            batch_wts = train_weights[indices]
             
             optimizer.zero_grad()
             
-            # Forward Pass
+            # Forward & Loss
             logits = model(batch_rows, batch_cols)
-            
-            # Joint Loss Calculation
             loss, nll_val = model.compute_loss(
                 logits, batch_ys, batch_wts, 
                 batch_rows, batch_cols, REG_STRENGTH
@@ -216,22 +216,29 @@ def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model
             optimizer.step()
             
             epoch_nll += nll_val
-            pbar.set_postfix({'nll': f"{nll_val:.4f}"})
+            n_batches += 1
         
-        avg_nll = epoch_nll / len(train_loader)
+        avg_nll = epoch_nll / n_batches
         
-        # Validation
+        # Validation (Every 5 epochs to save time, or every epoch if fast enough)
+        # On A100, inference is instant, so we can do it every epoch.
+        model.eval()
         with torch.no_grad():
-            logits_test = model(test_rows.to(device), test_cols.to(device))
+            # Process test set (Full batch inference usually fits in A100 RAM easily)
+            logits_test = model(test_rows, test_cols)
             probs_test = torch.sigmoid(logits_test).cpu().numpy()
+            
             try:
-                val_auc = roc_auc_score(test_ys, probs_test)
+                val_auc = roc_auc_score(test_ys_cpu, probs_test)
             except ValueError:
                 val_auc = 0.5
         
         training_history.append({'epoch': epoch+1, 'train_loss': avg_nll, 'val_auc': val_auc})
-        print(f"    Epoch {epoch+1} - NLL: {avg_nll:.4f}, Val AUC: {val_auc:.4f}")
         
+        # Simple logging
+        if (epoch + 1) % 10 == 0:
+            print(f"    Epoch {epoch+1}/{n_epochs} - NLL: {avg_nll:.4f}, Val AUC: {val_auc:.4f}")
+
         # Early Stopping
         if val_auc > best_auc + EARLY_STOPPING_THRESHOLD:
             best_auc = val_auc
@@ -240,28 +247,41 @@ def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
-            if val_auc > best_auc: best_auc = val_auc # Update even if marginal
+            if val_auc > best_auc: best_auc = val_auc 
             
             if epochs_no_improve >= EARLY_STOPPING_PATIENCE:
-                print(f"    Early stopping. Best AUC: {best_auc:.4f}")
+                print(f"    Early stopping at epoch {epoch+1}. Best AUC: {best_auc:.4f}")
                 break
     
+    # Restore best state
     if best_state:
         model.load_state_dict(best_state)
     
     # Final Metrics
     final_w = model.get_w().detach().cpu()
     
-    # AIC/BIC (Approximate for full dataset)
+    # Calculate AIC/BIC (Need full train likelihood)
     with torch.no_grad():
-        full_logits = model(train_rows.to(device), train_cols.to(device))
-        final_nll_sum = F.binary_cross_entropy_with_logits(full_logits, train_ys.to(device), reduction='sum').item()
+        # Compute in chunks if necessary, but A100 usually handles it.
+        # We will use a simplified loop for memory safety on the "full likelihood" check
+        full_nll_sum = 0
+        loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
         
+        # Split into chunks to avoid OOM on the *backward* pass (though this is no_grad)
+        # just to be safe with 10M+ points.
+        chunk_size = 1000000
+        for i in range(0, num_train, chunk_size):
+            end = min(i + chunk_size, num_train)
+            chunk_rows = train_rows[i:end]
+            chunk_cols = train_cols[i:end]
+            chunk_ys = train_ys[i:end]
+            full_nll_sum += loss_fn(model(chunk_rows, chunk_cols), chunk_ys).item()
+
     num_params = sum(p.numel() for p in model.parameters())
-    aic = 2 * num_params + 2 * final_nll_sum
-    bic = np.log(len(train_ys)) * num_params + 2 * final_nll_sum
+    aic = 2 * num_params + 2 * full_nll_sum
+    bic = np.log(num_train) * num_params + 2 * full_nll_sum
     
-    # Save History to CSV (Restored Feature)
+    # Save History
     history_df = pd.DataFrame(training_history)
     history_path = os.path.join(RESULT_DIR, f"training_history_{name}_k{k_dims}.csv")
     history_df.to_csv(history_path, index=False)
@@ -275,10 +295,10 @@ def fit_lada_model_joint(resmat_values, k_dims, n_epochs, seed=None, name="model
         'aic': aic, 
         'bic': bic, 
         'best_epoch': best_epoch,
-        'log_likelihood': -final_nll_sum,
+        'log_likelihood': -full_nll_sum,
         'num_params': num_params,
-        'n_train': len(train_ys),
-        'n_test': len(test_ys)
+        'n_train': num_train,
+        'n_test': len(test_ys_cpu)
     }
 
 # ------------------------------------------------------------------------------
@@ -334,7 +354,7 @@ def main(k_values, n_epochs, target_scenario=None):
                 'metrics': {k:v for k,v in res.items() if not torch.is_tensor(v)}
             }, os.path.join(RESULT_DIR, f"lada_joint_k{K}_{scenario}.pt"))
 
-        # 3. Save Summary CSV & JSON (Restored Feature)
+        # 3. Save Summaries
         summary_data = []
         for name, res in lada_results.items():
             summary_data.append({
@@ -362,9 +382,9 @@ def main(k_values, n_epochs, target_scenario=None):
             with open(os.path.join(RESULT_DIR, f"lada_joint_k{K}_complete_results{suffix}.json"), 'w') as f:
                 json.dump(json_res, f, indent=2)
             
-            all_results[f"K_{K}"] = {'best_auc': df.iloc[0]['test_auc'], 'best_model': df.iloc[0]['scenario']}
+            if not df.empty:
+                all_results[f"K_{K}"] = {'best_auc': df.iloc[0]['test_auc'], 'best_model': df.iloc[0]['scenario']}
 
-    # 4. Final Overall Summary
     print("\nFinal Best Results per K:")
     overall_df = pd.DataFrame([{'K': k, 'AUC': v['best_auc'], 'Model': v['best_model']} for k,v in all_results.items()])
     print(overall_df)
@@ -375,9 +395,9 @@ def main(k_values, n_epochs, target_scenario=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--k-values', nargs='+', type=int, default=DEFAULT_K_VALUES,
-                        help='List of K values to test (default: [3, 4, 5])')
+                        help='List of K values to test')
     parser.add_argument('--epochs', type=int, default=DEFAULT_EPOCHS,
-                        help='Number of training epochs (default: 1000)')
+                        help='Number of training epochs')
     parser.add_argument('--scenario', '-s', type=str, default=None, 
                         help="Specific scenario to fit")
     

@@ -8,19 +8,23 @@ results_path = "../result/lada-fitting-joint"
 # List to store individual dataframes
 dataframes = []
 
-# Read each k-factor summary file
-for k in [2, 3, 4]:
-    csv_file = os.path.join(results_path, f"lada_joint_k{k}_summary.csv")
-    
-    if os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
-        dataframes.append(df)
-        print(f"Loaded {csv_file}: {len(df)} scenarios")
-    else:
-        print(f"Warning: {csv_file} not found")
+# Find all k-factor summary files in the directory
+if os.path.exists(results_path):
+    for filename in os.listdir(results_path):
+        if filename.startswith("lada_joint_k") and filename.endswith("_summary.csv"):
+            csv_file = os.path.join(results_path, filename)
+            df = pd.read_csv(csv_file)
+            dataframes.append(df)
+            print(f"Loaded {csv_file}: {len(df)} scenarios")
+else:
+    print(f"Warning: {results_path} not found")
 
 # Combine all dataframes
-combined_df = pd.concat(dataframes, ignore_index=True)
+if dataframes:
+    combined_df = pd.concat(dataframes, ignore_index=True)
+else:
+    print("No data files found!")
+    exit()
 
 print(f"\nCombined DataFrame shape: {combined_df.shape}")
 print(f"Unique scenarios: {combined_df['scenario'].nunique()}")
