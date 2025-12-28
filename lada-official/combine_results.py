@@ -72,11 +72,35 @@ if scenarios_in_combined - scenarios_in_sizes:
 df = merged_df.copy()
 df.rename(columns={'K': 'k_factor'}, inplace=True)
 
+# Add IRT baseline values (test_auc from MIRT results)
+irt_data = {
+    'scenario': [
+        'lsat_qa', 'truthful_qa', 'synthetic_reasoning', 'babi_qa', 'wikifact',
+        'bbq', 'thai_exam', 'dyck_language_np=3', 'legal_support', 'civil_comments',
+        'legalbench', 'raft', 'air_bench_2024', 'math', 'med_qa', 'gsm',
+        'boolq', 'mmlu', 'entity_matching', 'entity_data_imputation',
+        'commonsense', 'imdb', 'combined_data'
+    ],
+    'irt': [
+        0.6194833517074585, 0.752168595790863, 0.8685898780822754, 0.825733482837677, 0.8836542367935181,
+        0.6776220798492432, 0.8284746408462524, 0.7705100774765015, 0.6697757244110107, 0.774608314037323,
+        0.836212158203125, 0.8359396457672119, 0.9038318991661072, 0.8989916443824768, 0.869013786315918,
+        0.8985381722450256, 0.833503007888794, 0.8993809223175049, 0.8869590759277344, 0.9344797134399414,
+        0.9203937649726868, 0.8829501271247864, 0.8265177607536316
+    ]
+}
+
+# Create IRT DataFrame and merge
+irt_df = pd.DataFrame(irt_data)
+df = df.merge(irt_df, on='scenario', how='left')
+
 # Show final data structure
 print(f"\nFinal data shape: {df.shape}")
 print(f"Available k-factors: {sorted(df['k_factor'].unique())}")
 print("\nFirst 5 rows of final data:")
 print(df.head())
+print("\nScenarios with IRT values:")
+print(df.groupby('scenario')['irt'].first())
 
 # Save to pickle
 output_path = '../data-reeval-multi/calibration_results_lada_joint.pkl'

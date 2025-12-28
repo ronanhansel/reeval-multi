@@ -126,7 +126,8 @@ size_df = pd.DataFrame(list(scenario_sizes.items()), columns=['scenario', 'size'
 print("Scenario sizes:")
 print(size_df.sort_values('size', ascending=False))
 # Merge the results DataFrame with the combined training history DataFrame
-merged_df = combined_df.merge(results_df, on='scenario', how='left')
+# Use 'outer' join to include combined_data even if it has no training history
+merged_df = combined_df.merge(results_df, on='scenario', how='outer')
 
 # Also merge with size information
 merged_df = merged_df.merge(size_df, on='scenario', how='left')
