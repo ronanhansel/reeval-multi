@@ -1,12 +1,18 @@
 """
-Generate synthetic binary response matrix, resmat_train.pkl of 20 rows and 1000 columns
-y_obs = d + w*theta
-where theta and w have the same number of dimensions k=3
-d, theta follows a standard normal distribution prior
-w follows a Dirichlet distribution prior with concentration parameter alpha=1.1
+Generate synthetic binary response matrices for LADA experiments.
 
-also resmat_test.pkl of 20 rows and 100 columns using the same theta but with different d and w (same prior)
-Save it to ./data/
+Outputs:
+1. General Data (Mixed Skills):
+   - resmat_train.pkl (1000 items)
+   - resmat_test.pkl  (100 items)
+
+2. Specialized Data (Biased Skills):
+   - resmat_math.pkl        (High Dim 0)
+   - resmat_coding.pkl      (High Dim 1)
+   - resmat_creative.pkl    (High Dim 2)
+   - resmat_datascience.pkl (High Dim 0 + Dim 1)
+
+Model: y_obs = d + w*theta
 """
 
 import numpy as np
@@ -18,92 +24,113 @@ from scipy.special import expit  # sigmoid function
 np.random.seed(42)
 
 # Parameters
-n_models = 20  # number of models (rows)
-n_items_train = 1000  # number of items for training (columns)
-n_items_test = 100  # number of items for testing (columns)
-k = 3  # number of dimensions
-alpha = 1.1  # Dirichlet concentration parameter
+n_models = 20           # Number of users/models (rows)
+n_items_train = 1000    # General training items
+n_items_test = 100      # General & Specialized test items
+k = 3                   # Latent dimensions
+alpha_general = 1.1     # Dirichlet parameter for general datasets
 
-# Create data directory if it doesn't exist
+# Create data directory
 os.makedirs('./data', exist_ok=True)
 
-# Generate theta (model abilities) - shared between train and test
-# theta: (n_models, k)
+# ==============================================================================
+# 1. Generate Shared User Profiles (Theta)
+# ==============================================================================
+# This is the "Ground Truth" ability of the 20 models.
+# It stays constant across ALL datasets.
 theta = np.random.randn(n_models, k)
+print(f"Generated global Theta: {theta.shape}")
 
-print(f"Generated theta with shape: {theta.shape}")
+# ==============================================================================
+# 2. Helper Function for Generation
+# ==============================================================================
+def generate_dataset(name, n_items, alpha_vec):
+    """
+    Generates a response matrix based on specific Dirichlet alphas.
+    name: filename suffix
+    alpha_vec: list of concentration parameters for Dirichlet (controls bias)
+    """
+    print(f"\nGenerating {name}...")
+    
+    # 1. Generate Difficulty (d)
+    d = np.random.randn(n_items)
+    
+    # 2. Generate Discrimination/Weights (w) based on bias
+    # If alpha_vec is scalar, replicate it k times (General case)
+    if isinstance(alpha_vec, (float, int)):
+        alphas = [alpha_vec] * k
+    else:
+        alphas = alpha_vec
+        
+    w = np.random.dirichlet(alphas, size=n_items)
+    
+    # 3. Calculate Responses
+    # Logits = d + (Theta * W)
+    linear_pred = d[np.newaxis, :] + theta @ w.T
+    prob = expit(linear_pred)
+    resmat = (prob > 0.5).astype(int)
+    
+    # 4. Save to DataFrame
+    df = pd.DataFrame(
+        resmat,
+        index=[f"model_{i}" for i in range(n_models)],
+        columns=[f"item_{i}" for i in range(n_items)]
+    )
+    
+    path = f"./data/resmat_{name}.pkl"
+    df.to_pickle(path)
+    
+    # Stats
+    print(f"  > Saved to {path}")
+    print(f"  > Shape: {resmat.shape}")
+    print(f"  > Avg Score: {resmat.mean():.3f}")
+    print(f"  > Avg Weights (Dim Loadings): {w.mean(axis=0).round(2)}")
+    
+    return d, w
 
-# ============= TRAINING DATA =============
-# Generate d (item difficulties) for training
-d_train = np.random.randn(n_items_train)
+# ==============================================================================
+# 3. Generate Datasets
+# ==============================================================================
 
-# Generate w (item discrimination vectors) for training
-# w: (n_items_train, k) - each row is a k-dimensional vector from Dirichlet
-w_train = np.random.dirichlet([alpha] * k, size=n_items_train)
-
-# Calculate linear predictor: y_obs = d + w*theta
-# For each item i and model m: y_obs[m, i] = d[i] + sum(w[i, :] * theta[m, :])
-linear_pred_train = d_train[np.newaxis, :] + theta @ w_train.T  # (n_models, n_items_train)
-
-# Convert to binary responses using sigmoid and threshold at 0.5
-prob_train = expit(linear_pred_train)
-resmat_train = (prob_train > 0.5).astype(int)
-
-print(f"Generated training response matrix with shape: {resmat_train.shape}")
-print(f"Training response rate: {resmat_train.mean():.3f}")
-
-# Convert to DataFrame
-resmat_train_df = pd.DataFrame(
-    resmat_train,
-    index=[f"model_{i}" for i in range(n_models)],
-    columns=[f"item_{i}" for i in range(n_items_train)]
-)
-
-# Save training data
-resmat_train_df.to_pickle('./data/resmat_train.pkl')
-print("Saved resmat_train.pkl")
-
-# ============= TEST DATA =============
-# Generate new d and w for test data (using same priors)
-d_test = np.random.randn(n_items_test)
-w_test = np.random.dirichlet([alpha] * k, size=n_items_test)
-
-# Calculate linear predictor using the SAME theta
-linear_pred_test = d_test[np.newaxis, :] + theta @ w_test.T  # (n_models, n_items_test)
-
-# Convert to binary responses
-prob_test = expit(linear_pred_test)
-resmat_test = (prob_test > 0.5).astype(int)
-
-print(f"Generated test response matrix with shape: {resmat_test.shape}")
-print(f"Test response rate: {resmat_test.mean():.3f}")
-
-# Convert to DataFrame
-resmat_test_df = pd.DataFrame(
-    resmat_test,
-    index=[f"model_{i}" for i in range(n_models)],
-    columns=[f"item_{i}" for i in range(n_items_test)]
-)
-
-# Save test data
-resmat_test_df.to_pickle('./data/resmat_test.pkl')
-print("Saved resmat_test.pkl")
-
-# Also save ground truth parameters for evaluation
 ground_truth = {
     'theta': theta,
-    'd_train': d_train,
-    'w_train': w_train,
-    'd_test': d_test,
-    'w_test': w_test,
     'k': k,
-    'alpha': alpha
+    'datasets': {}
 }
 
-np.save('./data/ground_truth.npy', ground_truth)
-print("Saved ground_truth.npy")
+# --- A. General Datasets (Training & Test) ---
+# Used to train the LADA model and establish the baseline
+d_tr, w_tr = generate_dataset("train", n_items_train, alpha_general)
+ground_truth['datasets']['train'] = {'d': d_tr, 'w': w_tr}
 
-print("\nGeneration complete!")
-print(f"Training data: {n_models} models × {n_items_train} items")
-print(f"Test data: {n_models} models × {n_items_test} items")
-print(f"Dimensions: k={k}")
+d_te, w_te = generate_dataset("test", n_items_test, alpha_general)
+ground_truth['datasets']['test'] = {'d': d_te, 'w': w_te}
+
+
+# --- B. Specialized Datasets (Downstream Benchmarks) ---
+# Used to test Transfer Learning. 
+# We bias the Dirichlet alphas to create "specialist" items.
+
+# 1. Math Benchmark (Heavily Dim 0)
+d_math, w_math = generate_dataset("math", n_items_test, [6.0, 0.5, 0.5])
+ground_truth['datasets']['math'] = {'d': d_math, 'w': w_math}
+
+# 2. Coding Benchmark (Heavily Dim 1)
+d_code, w_code = generate_dataset("coding", n_items_test, [0.5, 6.0, 0.5])
+ground_truth['datasets']['coding'] = {'d': d_code, 'w': w_code}
+
+# 3. Creative Writing Benchmark (Heavily Dim 2)
+d_creat, w_creat = generate_dataset("creative", n_items_test, [0.5, 0.5, 6.0])
+ground_truth['datasets']['creative'] = {'d': d_creat, 'w': w_creat}
+
+# 4. Data Science Benchmark (Mix of Dim 0 and Dim 1)
+d_ds, w_ds = generate_dataset("datascience", n_items_test, [4.0, 4.0, 0.2])
+ground_truth['datasets']['datascience'] = {'d': d_ds, 'w': w_ds}
+
+
+# ==============================================================================
+# 4. Save Ground Truth
+# ==============================================================================
+np.save('./data/ground_truth.npy', ground_truth)
+print("\nSaved ground_truth.npy")
+print("Generation Complete.")
