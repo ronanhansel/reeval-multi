@@ -1,0 +1,34 @@
+Rank,Scaffold,"Primary ModelPrimary ModelThis is the primary model used by the agent. In some cases, an embedding model is used for RAG, or a secondary model like GPT-4o for image processing.Note:For non-OpenAI reasoning models, the reasoning token budget is set at 1,024 (low), 2,048 (medium), and 4,096 (high).",VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are available,"RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,Scicode Zero Shot Agent,o4-mini Low (April 2025),Yes,9.23%,$1.74,1,Download
+2,Scicode Tool Calling Agent,o3 Medium (April 2025),Yes,9.23%,$111.11,1,Download
+3,Scicode Tool Calling Agent,Claude Opus 4.1 (August 2025),Yes,7.69%,$625.13,1,Download
+4,Scicode Tool Calling Agent,Claude Opus 4.1 High (August 2025),Yes,6.92% (-0.77/+0.77),$550.54 (-42.81/+42.81),2,Download
+5,Scicode Zero Shot Agent,GPT-4.1 (April 2025),Yes,6.15%,$2.82,1,Download
+6,Scicode Zero Shot Agent,o4-mini High (April 2025),Yes,6.15%,$5.37,1,Download
+7,HAL Generalist Agent,o4-mini Low (April 2025),Yes,6.15%,$165.90,1,Download
+8,Scicode Tool Calling Agent,GPT-5 Medium (August 2025),Yes,6.15%,$193.52,1,Download
+9,Scicode Zero Shot Agent,o3 Medium (April 2025),Yes,4.62%,$6.03,1,Download
+10,Scicode Tool Calling Agent,o4-mini Low (April 2025),Yes,4.62%,$46.30,1,Download
+11,Scicode Tool Calling Agent,o4-mini High (April 2025),Yes,4.62%,$66.20,1,Download
+12,Scicode Tool Calling Agent,Claude-3.7 Sonnet High (February 2025),Yes,4.62%,$204.37,1,Download
+13,Scicode Zero Shot Agent,DeepSeek V3 (March 2025),Yes,3.08%,$0.79,1,Download
+14,Scicode Zero Shot Agent,Claude-3.7 Sonnet High (February 2025),Yes,3.08%,$4.99,1,Download
+15,HAL Generalist Agent,Claude-3.7 Sonnet (February 2025),Yes,3.08%,$60.40,1,Download
+16,HAL Generalist Agent,o3 Medium (April 2025),Yes,3.08%,$66.98,1,Download
+17,Scicode Tool Calling Agent,Claude Sonnet 4.5 (September 2025),Yes,3.08%,$104.29,1,Download
+18,HAL Generalist Agent,Claude-3.7 Sonnet High (February 2025),Yes,3.08%,$188.15,1,Download
+19,Scicode Tool Calling Agent,Claude-3.7 Sonnet (February 2025),Yes,3.08%,$191.41,1,Download
+20,Scicode Zero Shot Agent,Gemini 2.0 Flash (February 2025),Yes,1.54%,$0.12,1,Download
+21,Scicode Tool Calling Agent,Gemini 2.0 Flash (February 2025),Yes,1.54%,$5.23,1,Download
+22,Scicode Tool Calling Agent,GPT-4.1 (April 2025),Yes,1.54%,$69.39,1,Download
+23,HAL Generalist Agent,GPT-4.1 (April 2025),Yes,1.54%,$73.87,1,Download
+24,HAL Generalist Agent,o4-mini High (April 2025),Yes,1.54%,$92.10,1,Download
+25,Scicode Tool Calling Agent,Claude Sonnet 4.5 High (September 2025),Yes,1.54%,$118.14,1,Download
+26,Scicode Zero Shot Agent,DeepSeek R1 (May 2025),Yes,0.00%,$2.19,1,Download
+27,Scicode Zero Shot Agent,Claude-3.7 Sonnet (February 2025),Yes,0.00%,$5.10,1,Download
+28,Scicode Tool Calling Agent,DeepSeek V3 (March 2025),Yes,0.00%,$52.11,1,Download
+29,Scicode Tool Calling Agent,DeepSeek R1 (May 2025),Yes,0.00%,$57.62,1,Download
+30,HAL Generalist Agent,Gemini 2.0 Flash (February 2025),Yes,0.00%,$61.49,1,Download
+31,HAL Generalist Agent,DeepSeek V3 (March 2025),Yes,0.00%,$219.36,1,Download
+32,Scicode Tool Calling Agent,Claude Haiku 4.5 (October 2025),Yes,0.00%,$232.36,1,Download
+33,HAL Generalist Agent,DeepSeek R1 (January 2025),Yes,0.00%,$486.78,1,Download

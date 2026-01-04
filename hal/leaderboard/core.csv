@@ -1,0 +1,46 @@
+Rank,Scaffold,"Primary ModelPrimary ModelThis is the primary model used by the agent. In some cases, an embedding model is used for RAG, or a secondary model like GPT-4o for image processing.Note:For non-OpenAI reasoning models, the reasoning token budget is set at 1,024 (low), 2,048 (medium), and 4,096 (high).",VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are available,"RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,CORE-Agent,Claude Opus 4.1 (August 2025),Yes,51.11%,$412.42,1,Download
+2,CORE-Agent,Claude Sonnet 4.5 High (September 2025),Yes,44.44%,$92.34,1,Download
+3,CORE-Agent,Claude Opus 4.5 High (November 2025),Yes,42.22%,$152.66,1,Download
+4,CORE-Agent,Claude Opus 4.5 (November 2025),Yes,42.22%,$168.99,1,Download
+5,CORE-Agent,Claude Opus 4.1 High (August 2025),Yes,42.22%,$509.95,1,Download
+6,CORE-Agent,Gemini 3 Pro Preview High (November 2025),Yes,40.00%,$86.60,1,Download
+7,HAL Generalist Agent,Claude-3.7 Sonnet High (February 2025),Yes,37.78%,$66.15,1,Download
+8,CORE-Agent,Claude Sonnet 4.5 (September 2025),Yes,37.78%,$97.15,1,Download
+9,HAL Generalist Agent,o4-mini High (April 2025),Yes,35.56%,$45.37,1,Download
+10,CORE-Agent,Claude-3.7 Sonnet (February 2025),Yes,35.56%,$73.04,1,Download
+11,HAL Generalist Agent,Gemini 3 Pro Preview High (November 2025),Yes,35.56%,$101.27,1,Download
+12,HAL Generalist Agent,Claude Opus 4.1 (August 2025),Yes,35.56%,$375.11,1,Download
+13,HAL Generalist Agent,Claude Sonnet 4.5 (September 2025),Yes,33.33%,$85.19,1,Download
+14,CORE-Agent,Claude Sonnet 4 High (May 2025),Yes,33.33%,$100.48,1,Download
+15,CORE-Agent,GPT-4.1 (April 2025),Yes,33.33%,$107.36,1,Download
+16,HAL Generalist Agent,Claude Opus 4.5 (November 2025),Yes,33.33%,$127.41,1,Download
+17,HAL Generalist Agent,Claude Opus 4.1 High (August 2025),Yes,33.33%,$358.47,1,Download
+18,HAL Generalist Agent,Claude-3.7 Sonnet (February 2025),Yes,31.11%,$56.64,1,Download
+19,HAL Generalist Agent,Claude Opus 4.5 High (November 2025),Yes,31.11%,$112.38,1,Download
+20,CORE-Agent,Claude Sonnet 4 (May 2025),Yes,28.89%,$50.27,1,Download
+21,HAL Generalist Agent,Claude Sonnet 4.5 High (September 2025),Yes,28.89%,$87.77,1,Download
+22,CORE-Agent,GPT-5 Medium (August 2025),Yes,26.67%,$31.76,1,Download
+23,CORE-Agent,o4-mini High (April 2025),Yes,26.67%,$61.35,1,Download
+24,CORE-Agent,Claude-3.7 Sonnet High (February 2025),Yes,24.44%,$72.47,1,Download
+25,CORE-Agent,o3 Medium (April 2025),Yes,24.44%,$120.47,1,Download
+26,HAL Generalist Agent,GPT-4.1 (April 2025),Yes,22.22%,$58.32,1,Download
+27,HAL Generalist Agent,o3 Medium (April 2025),Yes,22.22%,$88.34,1,Download
+28,CORE-Agent,Gemini 2.5 Pro Preview (March 2025),Yes,22.22%,$182.34,1,Download
+29,CORE-Agent,DeepSeek V3.1 (August 2025),Yes,20.00%,$12.55,1,Download
+30,CORE-Agent,DeepSeek V3 (March 2025),Yes,17.78%,$25.26,1,Download
+31,CORE-Agent,o4-mini Low (April 2025),Yes,17.78%,$31.79,1,Download
+32,HAL Generalist Agent,o4-mini Low (April 2025),Yes,15.56%,$22.50,1,Download
+33,CORE-Agent,GPT-OSS-120B (August 2025),Yes,11.11%,$4.21,1,Download
+34,CORE-Agent,GPT-OSS-120B High (August 2025),Yes,11.11%,$4.21,1,Download
+35,CORE-Agent,Gemini 2.0 Flash (February 2025),Yes,11.11%,$12.46,1,Download
+36,HAL Generalist Agent,GPT-5 Medium (August 2025),Yes,11.11%,$29.75,1,Download
+37,CORE-Agent,Claude Haiku 4.5 (October 2025),Yes,11.11%,$43.93,1,Download
+38,HAL Generalist Agent,GPT-OSS-120B High (August 2025),Yes,8.89%,$2.05,1,Download
+39,HAL Generalist Agent,GPT-OSS-120B (August 2025),Yes,8.89%,$2.79,1,Download
+40,HAL Generalist Agent,DeepSeek V3 (March 2025),Yes,8.89%,$4.69,1,Download
+41,HAL Generalist Agent,DeepSeek R1 (May 2025),Yes,8.89%,$7.77,1,Download
+42,CORE-Agent,DeepSeek R1 (January 2025),Yes,6.67% (-2.22/+2.22),$81.11 (-46.45/+46.45),2,Download
+43,HAL Generalist Agent,DeepSeek R1 (January 2025),Yes,4.45% (-2.22/+2.22),$24.95 (-11.07/+22.15),2,Download
+44,HAL Generalist Agent,Gemini 2.0 Flash (February 2025),Yes,4.44%,$7.06,1,Download
+45,HAL Generalist Agent,Gemini 2.5 Pro Preview (March 2025),Yes,4.44%,$30.38,1,Download

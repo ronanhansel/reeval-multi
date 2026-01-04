@@ -1,0 +1,14 @@
+Rank,Scaffold,"Primary ModelPrimary ModelThis is the primary model used by the agent. In some cases, an embedding model is used for RAG, or a secondary model like GPT-4o for image processing.Note:For non-OpenAI reasoning models, the reasoning token budget is set at 1,024 (low), 2,048 (medium), and 4,096 (high).",VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are available,"RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,USACO Episodic + Semantic,GPT-5 Medium (August 2025),Yes,69.71%,$64.13,1,Download
+2,USACO Episodic + Semantic,o4-mini High (April 2025),Yes,57.98%,$44.04,1,Download
+3,USACO Episodic + Semantic,Claude Opus 4.1 High (August 2025),Yes,51.47%,$267.72,1,Download
+4,USACO Episodic + Semantic,Claude Opus 4.1 (August 2025),Yes,48.21%,$276.19,1,Download
+5,USACO Episodic + Semantic,o3 Medium (April 2025),Yes,46.25%,$57.30,1,Download
+6,USACO Episodic + Semantic,GPT-4.1 (April 2025),Yes,44.95%,$28.10,1,Download
+7,USACO Episodic + Semantic,DeepSeek V3 (March 2025),Yes,39.09%,$12.08,1,Download
+8,USACO Episodic + Semantic,DeepSeek R1 (January 2025),Yes,38.11%,$80.04,1,Download
+9,USACO Episodic + Semantic,o4-mini Low (April 2025),Yes,30.94%,$21.14,1,Download
+10,USACO Episodic + Semantic,Claude-3.7 Sonnet (February 2025),Yes,29.32%,$38.70,1,Download
+11,USACO Episodic + Semantic,Gemini 2.0 Flash (February 2025),Yes,27.04%,$1.46,1,Download
+12,USACO Episodic + Semantic,Claude-3.7 Sonnet High (February 2025),Yes,26.71%,$56.43,1,Download
+13,HAL Generalist Agent,GPT-4.1 (April 2025),Yes,25.41%,$197.33,1,Download

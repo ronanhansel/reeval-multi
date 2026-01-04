@@ -1,0 +1,16 @@
+Rank,Scaffold,Models,VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are available,"RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,Browser-Use,o3 Medium (April 2025),Yes,38.81%,$15.15,1,Download
+2,Browser-Use,GPT-5 Medium (August 2025),Yes,35.23%,$41.69,1,Download
+3,Browser-Use,o4-mini Low (April 2025),Yes,28.05%,$9.22,1,Download
+4,Browser-Use,o4-mini High (April 2025),Yes,23.84%,$16.39,1,Download
+5,Browser-Use,GPT-4.1 (April 2025),Yes,17.39%,$14.15,1,Download
+6,Browser-Use,Claude-3.7 Sonnet (February 2025),Yes,16.69%,$56.00,1,Download
+7,Browser-Use,Claude Opus 4.1 High (August 2025),Yes,13.75%,$779.72,1,Download
+8,Browser-Use,Claude-3.7 Sonnet High (February 2025),Yes,13.08%,$16.13,1,Download
+9,Browser-Use,Claude Sonnet 4.5 High (September 2025),Yes,11.80%,$99.23,1,Download
+10,Browser-Use,DeepSeek R1 (May 2025),Yes,8.75%,$18.18,1,Download
+11,Browser-Use,Claude Opus 4.1 (August 2025),Yes,7.26%,$385.43,1,Download
+12,Browser-Use,Claude Sonnet 4.5 (September 2025),Yes,7.09%,$75.60,1,Download
+13,Browser-Use,Gemini 2.0 Flash (February 2025),Yes,2.62%,$2.18,1,Download
+14,Browser-Use,DeepSeek V3 (March 2025),Yes,2.03%,$12.66,1,Download
+15,Browser-Use,DeepSeek R1 (January 2025),Yes,0.00%,$5.30,1,Download

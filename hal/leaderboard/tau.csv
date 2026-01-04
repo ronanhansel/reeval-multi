@@ -1,0 +1,40 @@
+Rank,Scaffold,"Primary ModelPrimary ModelThis is the primary model used by the agent. In some cases, an embedding model is used for RAG, or a secondary model like GPT-4o for image processing.Note:For non-OpenAI reasoning models, the reasoning token budget is set at 1,024 (low), 2,048 (medium), and 4,096 (high).",VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are available,"RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,TAU-bench Few Shot,Claude Opus 4 High (May 2025),Yes,66.00%,$313.83,1,Download
+2,TAU-bench Few Shot,Claude Opus 4.1 High (August 2025),Yes,62.00%,$298.58,1,Download
+3,TAU-bench Few Shot,o4-mini High (April 2025),Yes,60.00%,$18.92,1,Download
+4,TAU-bench Few Shot,Claude-3.7 Sonnet High (February 2025),Yes,60.00%,$37.23,1,Download
+5,TAU-bench Tool Calling,o4-mini High (April 2025),Yes,56.00%,$11.36,1,Download
+6,HAL Generalist Agent,Claude-3.7 Sonnet (February 2025),Yes,56.00%,$42.11,1,Download
+7,TAU-bench Few Shot,GPT-4.1 (April 2025),Yes,56.00%,$42.58,1,Download
+8,TAU-bench Few Shot,Claude Opus 4 (May 2025),Yes,56.00%,$363.30,1,Download
+9,TAU-bench Tool Calling,o3 Medium (April 2025),Yes,54.00%,$14.56,1,Download
+10,HAL Generalist Agent,Claude Opus 4.1 (August 2025),Yes,54.00%,$180.49,1,Download
+11,TAU-bench Few Shot,Claude Opus 4.1 (August 2025),Yes,54.00%,$294.17,1,Download
+12,TAU-bench Tool Calling,Claude-3.7 Sonnet High (February 2025),Yes,52.00%,$31.94,1,Download
+13,TAU-bench Few Shot,GPT-5 Medium (August 2025),Yes,52.00%,$35.49,1,Download
+14,TAU-bench Tool Calling,Claude Opus 4.1 High (August 2025),Yes,52.00%,$149.98,1,Download
+15,TAU-bench Tool Calling,Claude Opus 4.1 (August 2025),Yes,50.00%,$69.78,1,Download
+16,TAU-bench Tool Calling,GPT-5 Medium (August 2025),Yes,48.00%,$23.83,1,Download
+17,TAU-bench Few Shot,o3 Medium (April 2025),Yes,46.00% (-2.00/+2.00),$34.14 (-1.14/+1.14),2,Download
+18,TAU-bench Few Shot,Gemini 2.0 Flash (February 2025),Yes,44.00%,$4.44,1,Download
+19,TAU-bench Tool Calling,DeepSeek V3 (March 2025),Yes,44.00%,$5.43,1,Download
+20,TAU-bench Tool Calling,Claude-3.7 Sonnet (February 2025),Yes,44.00%,$15.45,1,Download
+21,HAL Generalist Agent,Claude-3.7 Sonnet High (February 2025),Yes,44.00%,$34.58,1,Download
+22,HAL Generalist Agent,Claude Opus 4 (May 2025),Yes,44.00%,$150.15,1,Download
+23,HAL Generalist Agent,Claude Opus 4 High (May 2025),Yes,44.00%,$150.29,1,Download
+24,TAU-bench Tool Calling,o4-mini Low (April 2025),Yes,36.00%,$7.14,1,Download
+25,TAU-bench Tool Calling,GPT-4.1 (April 2025),Yes,36.00%,$8.18,1,Download
+26,TAU-bench Tool Calling,DeepSeek R1 (January 2025),Yes,36.00%,$13.30,1,Download
+27,TAU-bench Few Shot,DeepSeek R1 (January 2025),Yes,36.00%,$31.75,1,Download
+28,TAU-bench Few Shot,DeepSeek V3 (March 2025),Yes,34.00%,$30.60,1,Download
+29,TAU-bench Few Shot,Claude-3.7 Sonnet (February 2025),Yes,34.00%,$36.45,1,Download
+30,HAL Generalist Agent,Claude Opus 4.1 High (August 2025),Yes,32.00%,$140.28,1,Download
+31,HAL Generalist Agent,GPT-5 Medium (August 2025),Yes,30.00%,$52.78,1,Download
+32,TAU-bench Tool Calling,Gemini 2.0 Flash High (February 2025),Yes,28.00%,$0.31,1,Download
+33,HAL Generalist Agent,Gemini 2.0 Flash (February 2025),Yes,22.00%,$2.00,1,Download
+34,HAL Generalist Agent,o4-mini Low (April 2025),Yes,22.00%,$20.16,1,Download
+35,HAL Generalist Agent,o3 Medium (April 2025),Yes,20.00%,$45.03,1,Download
+36,HAL Generalist Agent,DeepSeek V3 (March 2025),Yes,18.00%,$10.73,1,Download
+37,HAL Generalist Agent,o4-mini High (April 2025),Yes,18.00%,$20.57,1,Download
+38,HAL Generalist Agent,GPT-4.1 (April 2025),Yes,16.00%,$17.85,1,Download
+39,HAL Generalist Agent,DeepSeek R1 (January 2025),Yes,10.00%,$30.18,1,Download

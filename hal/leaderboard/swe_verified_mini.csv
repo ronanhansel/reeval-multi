@@ -1,0 +1,34 @@
+Rank,Scaffold,"Primary ModelPrimary ModelThis is the primary model used by the agent. In some cases, an embedding model is used for RAG, or a secondary model like GPT-4o for image processing.Note:For non-OpenAI reasoning models, the reasoning token budget is set at 1,024 (low), 2,048 (medium), and 4,096 (high).",VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,"Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are availableNote: While SWE-Agent uses caching, costs are currently calculated without accounting for caching benefits.","RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,SWE-Agent,Claude Sonnet 4.5 High (September 2025),Yes,72.00%,$463.90,1,Download
+2,SWE-Agent,Claude Sonnet 4.5 (September 2025),Yes,68.00%,$505.92,1,Download
+3,SWE-Agent,Claude Opus 4.1 (August 2025),Yes,61.00% (-7.00/+7.00),$1351.35 (-438.32/+438.32),2,Download
+4,SWE-Agent,o4-mini Low (April 2025),Yes,54.00%,$259.20,1,Download
+5,SWE-Agent,Claude-3.7 Sonnet High (February 2025),Yes,54.00%,$388.88,1,Download
+6,SWE-Agent,Claude Opus 4.1 High (August 2025),Yes,54.00%,$1599.90,1,Download
+7,SWE-Agent,o4-mini High (April 2025),Yes,50.00%,$248.46,1,Download
+8,SWE-Agent,Claude-3.7 Sonnet (February 2025),Yes,50.00%,$402.69,1,Download
+9,SWE-Agent,Claude Opus 4 (May 2025),Yes,50.00%,$1330.90,1,Download
+10,SWE-Agent,GPT-5 Medium (August 2025),Yes,46.00%,$162.93,1,Download
+11,HAL Generalist Agent,Claude Opus 4.1 High (August 2025),Yes,46.00%,$399.93,1,Download
+12,SWE-Agent,o3 Medium (April 2025),Yes,46.00%,$483.43,1,Download
+13,HAL Generalist Agent,Claude Haiku 4.5 High (October 2025),Yes,44.00%,$65.31,1,Download
+14,SWE-Agent,GPT-4.1 (April 2025),Yes,44.00%,$393.65,1,Download
+15,HAL Generalist Agent,Claude Opus 4.1 (August 2025),Yes,42.00%,$477.65,1,Download
+16,HAL Generalist Agent,Claude Sonnet 4.5 High (September 2025),Yes,40.00%,$95.97,1,Download
+17,HAL Generalist Agent,Claude Sonnet 4.5 (September 2025),Yes,34.00%,$128.19,1,Download
+18,HAL Generalist Agent,Claude Opus 4 (May 2025),Yes,34.00%,$382.39,1,Download
+19,HAL Generalist Agent,Claude Opus 4 High (May 2025),Yes,30.00%,$403.42,1,Download
+20,HAL Generalist Agent,Claude-3.7 Sonnet (February 2025),Yes,26.00%,$117.43,1,Download
+21,SWE-Agent,Gemini 2.0 Flash (February 2025),Yes,24.00%,$4.72,1,Download
+22,SWE-Agent,DeepSeek V3 (March 2025),Yes,24.00%,$11.77,1,Download
+23,HAL Generalist Agent,Claude-3.7 Sonnet High (February 2025),Yes,24.00%,$72.98,1,Download
+24,HAL Generalist Agent,Claude Haiku 4.5 (October 2025),Yes,24.00% (-0.00/+0.00),$147.89 (-60.67/+60.67),2,Download
+25,HAL Generalist Agent,GPT-5 Medium (August 2025),Yes,12.00%,$57.58,1,Download
+26,HAL Generalist Agent,DeepSeek V3 (March 2025),Yes,10.00%,$30.17,1,Download
+27,HAL Generalist Agent,o4-mini Low (April 2025),Yes,6.00%,$87.03,1,Download
+28,HAL Generalist Agent,DeepSeek R1 (January 2025),Yes,6.00%,$146.71,1,Download
+29,HAL Generalist Agent,Gemini 2.0 Flash (February 2025),Yes,2.00%,$7.33,1,Download
+30,HAL Generalist Agent,o4-mini High (April 2025),Yes,2.00%,$32.02,1,Download
+31,HAL Generalist Agent,GPT-4.1 (April 2025),Yes,2.00%,$51.80,1,Download
+32,SWE-Agent,DeepSeek R1 (January 2025),Yes,0.00%,$4.16,1,Download
+33,HAL Generalist Agent,o3 Medium (April 2025),Yes,0.00%,$585.71,1,Download

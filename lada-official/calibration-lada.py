@@ -269,7 +269,7 @@ def fit_lada_model(resmat_values, k_dims, seed=None, name="model"):
         
         # Validation
         with torch.no_grad():
-            logits_test = model(torch.from_numpy(test_rows).to(device), 
+            logits_test = model(torch.from_numpy(test_rows).to(device),
                                 torch.from_numpy(test_cols).to(device))
             probs_test = torch.sigmoid(logits_test).cpu().numpy()
             try:

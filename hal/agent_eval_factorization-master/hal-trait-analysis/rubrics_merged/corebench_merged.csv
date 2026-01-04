@@ -1,0 +1,539 @@
+benchmark_id,model,task_id,agent_run_id,selfcorrection.label,tooluse.label,environmentalbarrier.label,verification.label,instructionfollowing.label
+corebench,claude-3-7-sonnet-20250219,capsule-0504157,718001c7-f405-4c70-b08b-a87813fe49a0,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-0851068,beea9fbb-7c1c-4e53-917e-371899f152e4,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-0921079,d66ef13a-9543-4695-9b07-81ce95d6b3c8,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-1175539,89fe9fc4-bea7-4c61-88fc-dbcbc39c339f,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-1394704,cb34df89-476c-42e5-ae8f-f20305b0404d,match,no match,match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-1624349,f1f71e2f-5942-403e-baba-84699caf279a,match,match,no match,match,
+corebench,claude-3-7-sonnet-20250219,capsule-1724988,0dadbcaf-0155-4ccb-b880-36f68cbe5e13,no match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-1900704,84a71350-8698-44a0-a894-1716710b36c7,match,no match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-2345790,0110f2fd-efd1-4a67-b1cc-e64ad475cc17,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-2414499,d9e405f5-fe8a-4586-8dc1-96a49d25ad93,match,no match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-2708693,cd4db239-a22c-4b51-a88f-1190f0235511,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-2804717,e63e68f0-8431-4f44-9034-acec70ec8459,no match,match,no match,match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-2816027,1cf98b24-e547-47ff-a807-adeeb915dee9,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-3262218,058ab58d-8022-464b-b2eb-8a0af4d7e278,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-3301293,ea73c585-3812-4d33-9618-17a7b41333e5,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-3418007,5aa84dbe-7b67-4c80-b880-dd639aa97e1d,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-3449234,28419921-c5af-4364-bcf3-ca35b5632123,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-3593259,7c892749-09be-44ef-ac09-ce0b427a6ee2,match,no match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-3639589,7604a80a-2a7e-40dd-a8e1-f45c1d7d5b23,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-3821950,e9076ed3-a2f3-48fe-a0f1-e439d32ce75f,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-3849634,45a14cfb-aa47-40e8-bde7-4246616ab9de,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-4180912,d062651b-5198-4407-9002-f39b77fd35fd,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-4252248,8e044ab5-6ca6-4c02-aa2f-5155fa675b66,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-4299879,31815a5c-dc93-4647-b6ab-5a8e7b7802b0,no match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-4671827,a1a7c296-a248-4fa6-b584-679b5fb09b51,match,match,no match,match,match
+corebench,claude-3-7-sonnet-20250219,capsule-4728591,71cd03cd-7e05-4fd4-86d0-68b64a7b2ff0,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-4933686,9771ff36-e634-4737-96cb-66bedc585c5f,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-5136217,246ed83e-6811-4e62-bf06-7535d47c9f5a,match,match,,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-5507257,c50f0579-1ae2-41f1-9cbc-e709d71ebfd0,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-6003668,5772b1ad-63ae-46df-b3a4-e3a9351c6f1f,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-6049678,c9329e95-8175-4e4f-bcee-f5f794ccf690,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-7186268,4a5084bc-2de2-4f00-9a36-faf16cf004ff,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-7716865,49180862-4244-4c74-9a45-10fabb651e62,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-8234136,dc79d4ac-85ce-4a83-8112-026716aa8900,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-8536428,4c3115a8-2553-4c1f-9c27-f194581d675d,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219,capsule-8807709,4570fda8-32f2-421e-8637-28b54ff9a793,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9052293,735ba48c-052c-43d3-af85-50c60796ce99,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9054015,baead205-1394-425d-8426-2bd0e53d8c7a,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9137200,d7f9a7dc-0740-4600-94ff-ae3d34c6c95a,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9240688,06c65e83-7c70-4411-89b1-13f7737ecf8a,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9641396,b105234c-ca98-464a-bb38-739dd7d2be7e,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9660931,aa8139e5-d5d1-4414-9ddd-c580c1ae8f86,match,match,no match,match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9670283,fbca9c90-d598-48de-8bef-53a7d62e7cd1,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219,capsule-9832712,0250ae8f-e109-403c-bdec-37b5c44b477f,match,match,no match,match,match
+corebench,claude-3-7-sonnet-20250219,capsule-9911222,f87d29f1-b7a1-4911-8e9c-3cc1d1731cc1,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-0504157,949ed4ba-429f-4482-9480-028be050bd3b,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-0851068,d12d7463-2cd9-40db-a411-4ad99c210855,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-0921079,3a92c019-5757-43ab-ae28-bcae083ea8b9,match,match,no match,no match,
+corebench,claude-3-7-sonnet-20250219_high,capsule-1175539,4019792f-1c21-43a1-b4c0-e4ad333f16bb,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-1394704,7f94bc31-6e61-430a-b781-5c00c2651cb5,match,no match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-1624349,0c637ad4-b7e3-4b39-8aa7-a434e089827d,match,no match,no match,match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-1724988,dbbb8f6f-bbd5-4b6a-8295-3216feb974f0,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-1900704,45185077-59fc-462e-90db-2452630c8f57,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-2345790,ea428695-0163-4462-9152-86aac9277be4,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-2414499,f978d2a1-28de-41b4-af51-bcd1dbe6df60,match,no match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-2708693,45e57658-804f-4bd3-ac5f-b410282a554a,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-2804717,2370f015-46dc-4676-994d-87ba0c22a577,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-2816027,179192c6-c42d-4c33-8237-55c8db7b7c5b,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3262218,36455e5d-f7aa-417f-9f64-cac7114421a1,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3301293,3a07cd14-d45d-4ee9-a2f5-eab10e99bfe1,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3418007,5b048451-e495-4c22-b302-e12074de790c,match,match,match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3449234,25ca9e47-ef75-427f-9b44-031be80f416c,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3593259,9c1c80da-8388-4f74-b298-2e8e333e1190,match,match,no match,no match,
+corebench,claude-3-7-sonnet-20250219_high,capsule-3639589,69aa1bcf-214b-4139-8fe6-c98ef9cd9c0b,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3821950,1c8d8ec1-eb02-446d-95c7-8fee4a68c149,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-3849634,0449b799-e516-455f-b0bf-d52731d3b446,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-4180912,fb2a48f1-bfab-4593-bbaa-5aeabbcc57ab,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-4252248,db2c87d2-f245-4640-b638-2beefa93e773,no match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-4299879,2ce37114-1bb9-4b6e-a556-43d4db751ed6,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-4671827,12a07823-1ac6-40bc-9efa-5c3db8e84431,match,match,no match,match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-4728591,cb552b5f-98e5-4d5f-a70c-5d9ebc124100,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-4933686,1328b231-2cde-45ec-8c53-3886bd4001c6,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-5136217,c23bbbfd-fdb6-44ba-a9c3-b6bd56b9ef49,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-5507257,b313e324-6d60-464e-a961-2219a8cb94da,match,match,no match,no match,
+corebench,claude-3-7-sonnet-20250219_high,capsule-6003668,7cb4abc4-24f0-4cea-8a54-41520be7dd4c,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-6049678,b1d7e8e9-f878-4426-a196-0fc365a09d56,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-7186268,5c9428bb-e6a7-47c3-a3ae-edb18def1d01,match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-7716865,e5ffeb5a-7ab3-4546-a3b5-48463bf233af,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-8234136,a401e99e-83b0-4f87-a14c-d42d8aad58d4,no match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-8536428,725f421d-1773-4c29-a830-83d99215a31a,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-8807709,44f50d90-ee31-4261-a27c-d2327c1b1feb,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9052293,0ca16c3b-a6af-4a2a-931e-ee8c65fc29ac,match,match,no match,match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9054015,04a554d9-4637-4f6c-b922-0a230c5f1602,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9137200,497291df-51ee-45be-9c53-9f82466d125c,match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9240688,d67b9d1f-38bd-4187-ba5f-7d9618e6b6de,no match,match,match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9641396,65f1dedc-38e8-4def-8495-caff25e2d318,no match,no match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9660931,307efe03-221c-4afa-b111-fd66af9c1589,match,match,no match,no match,no match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9670283,0e35d886-f001-4998-adb1-2c02e9c54161,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9832712,0e571680-77f5-4b6e-91de-184fd5050d81,match,match,no match,no match,match
+corebench,claude-3-7-sonnet-20250219_high,capsule-9911222,c69872ff-104e-4d7f-a449-a4c0e12efcf7,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-0504157,bf46c840-2555-476f-81eb-bdc42daa64bc,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-0851068,a859110f-184f-4c0a-b58d-d50ae0b9bf5b,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-0921079,ecd8d0d2-4be6-4981-8256-fe1ce395d294,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-1175539,f6b67dde-e38a-478a-a273-f0d64a45376f,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-1394704,49371055-5858-4635-936f-dd83b2fe057b,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-1624349,7a04b92b-e209-4b10-a91c-d8a71d0ede41,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-1724988,fa8bebb3-b3d5-4577-a610-f0a8a42c545b,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-1900704,121da255-54d8-4478-9fb1-86a369de952e,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-2345790,29cfb52b-7fe8-45c0-a221-d9a73dfb38bd,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-2414499,87f1f677-4d17-4e81-b0d9-a7aa3d3bdee3,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-2708693,f4dfd2ee-4f3d-45d8-baef-373855bedb40,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-2804717,f78a1cca-b9bc-49c9-a3dd-e4cb24b06ebc,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-2816027,366f13df-9270-4d58-b715-9f095d04f003,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3262218,4ec7b6a1-9caf-4453-a6a1-a92fbae3b6d5,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3301293,4817ef6b-f077-40b3-9d39-bf185d50aecf,match,no match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3418007,0dafb159-39d6-4322-b7cd-f209c8788e49,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3449234,ee636896-9990-44e1-a412-8fc28de09393,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-3593259,81a6229b-252a-425d-a11d-f8e42a561b90,match,match,no match,match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3639589,437e5d05-9a11-4363-9c24-21a54002be62,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3821950,404daa57-52f1-4339-89f0-e9df73eaea1a,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-3849634,ff4223ce-646e-4135-834e-46bbc21f1582,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-4180912,cc11588b-3bd9-4ccc-bc24-aca38b68b297,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-4252248,f8424f06-174a-4eed-96ef-6d04d314e7e8,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-4299879,635fc1ce-0412-4e29-9437-03341d5dc27b,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-4671827,96333df2-4836-4da4-9588-a9e8b8c65c9c,no match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-4728591,56ccad10-c4ec-4a09-b5d4-a43755039dd8,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-4933686,d93ed2cc-7363-4030-a94f-61c077d7413c,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-5136217,f835ed23-a642-49da-a32a-b3bc281856b7,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-5507257,b14c095d-a59b-4b29-8036-e1aa4ba23503,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-6003668,ca771b2d-c098-4e8d-80a8-3ab65e45ae1f,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-6049678,a0ee5b62-423f-4da1-ae7b-9304f08db0db,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-7186268,fa9313dc-a163-4442-8082-8dd4b1c1a138,match,match,no match,match,match
+corebench,gpt-4.1-2025-04-14,capsule-7716865,69324bbf-042f-4b32-b897-3f313091e9e6,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-8234136,45f8cda5-4674-441a-abab-3c34ea63365c,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-8536428,57cc760b-7412-44ac-9bfb-63203998019c,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-8807709,13c2a496-66f3-4949-be2c-47babb81602d,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-9052293,0aca7803-30b3-4606-8793-6eb2caf32698,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-9054015,74ceffd7-1831-4196-993e-639271115eb5,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-9137200,686ede28-b321-4e4f-b23d-63a5b1f7a7d0,match,match,match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-9240688,4bbc9c37-a8c7-4b88-a694-66a83f3ddc5e,match,match,match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-9641396,f1a0323b-4faa-4648-9178-491de5beba9a,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-9660931,dd3213fb-dfec-48b5-91d4-f9af551f81f9,match,match,no match,no match,match
+corebench,gpt-4.1-2025-04-14,capsule-9670283,22d2c49e-4527-41d5-a960-6337c8fbff35,match,match,no match,no match,no match
+corebench,gpt-4.1-2025-04-14,capsule-9832712,e522ee1d-fc95-4f3d-9e9f-ba9fc37bcf05,match,match,match,match,match
+corebench,gpt-4.1-2025-04-14,capsule-9911222,3ea37e22-5562-4dd7-b591-c4f571607654,match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-0504157,65c86969-900c-49ae-8d5a-f6dd487f17fb,match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-0851068,8cb72b1d-fbed-4ae6-a74c-82d9751bcd78,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-0921079,f8b6d187-e16d-4384-a630-dc369786efc4,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-1175539,fbc76df9-e4d7-4b62-992a-be6f522b6505,no match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-1394704,9430d96b-2a54-497e-8340-6db48aae4030,match,,no match,no match,match
+corebench,o3-2025-04-16,capsule-1624349,8fe3f4c5-5366-4d9c-a6fb-cd61dc66c5ff,no match,match,,no match,match
+corebench,o3-2025-04-16,capsule-1724988,96e881e1-ff21-495f-b544-130d0122f802,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-1900704,54e8b720-b0ea-439a-8b06-2e48b46dabb5,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-2345790,6e04766b-57e3-4ee2-968b-79852ac26003,no match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-2414499,a3909474-6f2f-428f-882d-7ac297ae4f7b,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-2708693,60f0effb-6cdd-473b-9803-2f92b883cafe,no match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-2804717,877a458f-8fc2-4e48-bce7-b9806ab7b6e4,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-2816027,eafca5bf-b34a-49f8-bf0d-acbbc7e3fac9,no match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-3262218,f2c56039-1759-4725-a20b-4ba840680f9f,match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-3301293,fa11a030-e121-4f55-90c7-199b7915aee7,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-3418007,900eeaed-389f-417d-9e0c-b4096d9be5f7,match,match,match,no match,match
+corebench,o3-2025-04-16,capsule-3449234,8ddc62a9-e76a-49d9-b72b-34e75750eb4a,no match,match,,no match,match
+corebench,o3-2025-04-16,capsule-3593259,01a422f3-63c8-45bc-8b9b-0dead347e2f5,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-3639589,90d45b8f-3d18-455f-8093-34920d2c604b,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-3821950,e31a5525-b091-414c-8734-5f9125ecd202,match,match,match,no match,match
+corebench,o3-2025-04-16,capsule-3849634,3a954286-1a1f-43fd-8a2d-7b6306cf3443,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-4180912,0e6deb17-eb10-44d2-ab47-d3a4f08fd3f6,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-4252248,3e30be41-a943-4278-9aae-158d221c217b,no match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-4299879,c9018188-aa54-4aaf-a11c-64e16d6e0dca,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-4671827,852c8e7c-b73b-413b-a154-35e5c6bf9440,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-4728591,6c5f1c93-485c-47f5-b8c8-4667b67a9923,match,match,match,no match,match
+corebench,o3-2025-04-16,capsule-4933686,bd813292-c326-4afb-9607-39524581fcf9,no match,match,match,no match,match
+corebench,o3-2025-04-16,capsule-5136217,36de9577-99c4-44c3-a56c-7f27424bf092,no match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-5507257,7270c917-1ffd-4b98-9205-8fe5f5da8f62,match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-6003668,b3583249-d567-4e96-b6e7-4a5bf43a6127,no match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-6049678,52af5657-fc98-4c66-a0ee-017b0ffbd34b,no match,,no match,no match,match
+corebench,o3-2025-04-16,capsule-7186268,5776ef89-30d6-4b12-bb52-4654614beb13,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-7716865,3b02e7b8-a8fc-467e-8229-705253652263,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-8234136,ec00d061-6217-468f-9c8c-01bfc8429e1d,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-8536428,430c9a6c-f9b3-4b29-ba96-be8713f49e5c,match,match,,no match,no match
+corebench,o3-2025-04-16,capsule-8807709,ffb9330a-ad16-4b00-9fd5-ff7f79770ab0,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-9052293,96f7767e-0655-49d0-9955-d9a1281413f4,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-9054015,44731a83-3637-4898-9a16-c250747d973c,match,match,match,no match,no match
+corebench,o3-2025-04-16,capsule-9137200,3fee0258-26d2-4751-bb53-a6f5ea44ed1b,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-9240688,751ef09e-418b-423d-992d-8b8acdd0e20a,match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-9641396,5a92cdc6-ce95-4a46-874a-5a1c06bf6bed,no match,match,no match,no match,no match
+corebench,o3-2025-04-16,capsule-9660931,6e9f54f5-5776-49fe-b320-e8250c105af5,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-9670283,2b6571f1-68fc-4da3-90dd-20638bfdd9ac,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-9832712,61d3a183-1abc-4b98-9889-f863e1563524,match,match,no match,no match,match
+corebench,o3-2025-04-16,capsule-9911222,a4d4d7e2-4b02-4822-8f8e-42fdc7ec5dc2,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-0504157,e5957394-9fa8-400f-80c7-dcfeb4fe8484,no match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-0851068,302578da-62ba-499e-aa8a-3bd72ca11a96,match,no match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-0921079,35aab185-ea78-4652-baea-0c0137fe668e,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-1175539,4f76b988-5cf4-46c4-bce8-368c33ca84c1,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-1394704,153817bf-efd5-4e32-afc8-00966c27782d,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-1624349,6d7053a0-00ba-46e8-aa9c-4898c0c7aa6e,match,match,no match,match,no match
+corebench,o4-mini-2025-04-16_high,capsule-1724988,19107aba-dba4-42a0-bd14-645d6d6f3ff9,no match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-1900704,d155118b-6bdd-4ee0-b7cd-cd51c90d4cec,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-2345790,2c191e1f-f8a2-42e2-97de-ba84702f2fa4,match,no match,match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-2414499,a4c968a5-5da0-4deb-bbc4-a94249c8673f,match,no match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-2708693,3b868f75-8c40-4289-9f65-c2fdb084be2c,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-2804717,cc62e07d-a626-4f6c-b50d-bc990efcac7d,match,no match,match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-2816027,1f82ab6e-67f6-4817-ba7c-f6b597679e96,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-3262218,9ad1be32-4d63-472c-ad28-bfe5b1000bd7,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-3301293,c44af268-bcb1-4939-94b9-e6b5b6cf513b,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-3418007,d8a9c40f-7de7-47fc-9c7d-8df6bf028b39,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-3449234,dc0eab8b-9176-4240-843a-6a7ed4d4da48,no match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-3593259,1f472a8d-7b8f-44e6-9f4a-ca67fc1661cc,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-3639589,60ac695b-66ad-4021-b61c-d1c131585f45,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-3821950,5bd8f661-3456-4868-9a42-c029fa2b7dee,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-3849634,f9dcbe6a-31a4-4c2d-ab7a-9d8d8599bb9b,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-4180912,7c3812e9-a12a-4e00-a7c0-edab98d4cf35,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-4252248,09261b14-6963-40dc-af67-9a5bde4041d0,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-4299879,0881a8d8-f1c2-4509-8d3c-234244c9aef4,match,no match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-4671827,a2373182-59ea-45a0-b3b1-8093b6a13d07,match,match,no match,match,match
+corebench,o4-mini-2025-04-16_high,capsule-4728591,d6db8854-8307-4d91-9db3-4bdaaef96beb,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-4933686,8f5a8e6d-7a8b-4441-a372-9526a96dd416,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-5136217,9c5d0bef-3bb7-4c33-a0ce-f2410fa3f6ea,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-5507257,9f23435a-aaf4-491a-b290-ac686e5851f6,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-6003668,7d98df82-7700-4824-b6ed-4edcc16d46cb,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-6049678,1251423b-0c33-4e60-a879-682eaff4e2fc,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-7186268,167c0d76-b041-4419-adef-f419e3d843bd,no match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-7716865,bc734d38-a73d-4016-9ef8-59de2a55cc59,no match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-8234136,14bb1b1e-4bee-463c-bf9c-0e3f6560fa6a,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-8536428,6bf025f3-d94d-4c48-9043-9d2bf79719c8,match,no match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-8807709,a1ce7739-d1d6-4159-8a20-1fb6efcce4ce,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-9052293,9000120a-c54e-4e1a-8b3e-dee7a998b48f,match,no match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-9054015,97b1f744-457e-41c9-a054-683004cdc866,no match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-9137200,bb824ecc-c140-40a0-b32e-878a4cbb8f6c,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-9240688,3d41ee23-1e2b-4d02-9b11-d140afc7bab6,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-9641396,b35f0f18-a9d1-47b3-a84f-bfc3fdc15394,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-9660931,b8e9bceb-200a-4520-8f53-a370ab59a40f,match,no match,no match,match,match
+corebench,o4-mini-2025-04-16_high,capsule-9670283,dd7471fc-00e1-4636-a37f-ac4dbe9c9b05,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_high,capsule-9832712,318bfa80-ba02-41e7-ae49-59984a7f3750,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_high,capsule-9911222,069cfa7f-1fe6-4016-9c8b-7b03870d9d41,match,no match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-0504157,62727344-cdb4-47d5-b60e-35bcd806d81d,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-0851068,d7bda16c-ad49-4999-8343-4eca3cff1dbf,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-0921079,ffff91c0-75e9-406a-a7c1-f4bfb09f8d66,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-1175539,9f8f047b-dfd5-4062-8e2d-a62a9d834bf2,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-1394704,9a9f35ec-6afe-4829-bf20-5028ba9677d7,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-1624349,0cbd7c9a-0320-43f5-9fc6-e2e1ecdb2188,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-1724988,6b475596-d7ba-40d7-af78-25095d668ad1,match,,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-1900704,31509583-d70e-490e-b5a4-500dd4c40dfd,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-2345790,fcaf3820-3971-4e5e-afc4-9a109bebfc7a,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-2414499,51de17c4-6f03-43af-bd0d-a562203844b2,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-2708693,5c245a24-d5b8-4f9d-8db7-ae65537e45ef,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-2804717,e72881c9-8c4a-4bb7-848c-448c7f680e3e,no match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-2816027,793fdbf0-e16e-4d9d-87ca-5c96ece130f4,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-3262218,0d990c97-2fcf-4eb7-a6ee-d768e4482958,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-3301293,af5fdef2-8674-4730-b557-0e300c67994a,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-3418007,611f13ad-8de0-4dd3-97cd-80b7a8b52a9b,match,,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-3449234,a6e62636-26c7-4bb2-9861-7e6d55940d9f,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-3593259,eab072b2-a54a-44b1-843e-430300bb7b97,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-3639589,42a60f8f-5922-42f3-89bc-a947cb948477,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-3821950,a8c148c6-df2e-44b3-b6ed-a35a40ed334f,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-3849634,53f66dc0-6831-4089-b51f-bd79c40cb053,no match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-4180912,81a44f80-84c1-48de-add1-32aed6a8cc53,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-4252248,a77ed214-bda0-41ec-9b3b-11bd53baf007,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-4299879,0f6cf7c8-1d90-4e1c-be35-b4505b308991,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-4671827,218a806f-c847-4740-9996-e46fd214ced0,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-4728591,531d46d5-3fb9-4d0e-8698-b4220a6a60b5,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-4933686,cbae2b6e-8620-42a8-a0f9-b6168995c2e2,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-5136217,d852105c-8a69-46ee-b96b-51f79cc6d0a8,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-5507257,437e8208-1edf-4bee-b39e-59a7b5fb4935,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-6003668,f5471eb2-20ee-461a-a67f-c9bb51eb7b3e,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-6049678,90490574-b5e6-40d3-bd18-3b0782b7eb29,match,no match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-7186268,0a1a356d-d9e2-481b-b7ce-21486ad11a17,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-7716865,7181c780-1620-4b64-9226-99b5cba66a81,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-8234136,aa387324-4f87-4ded-8e14-c29b10f33e09,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-8536428,245850f4-9088-455b-8398-bd0a3dd7da9c,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-8807709,4fd4dfbb-7d83-46b6-baa1-69e78e6fa977,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-9052293,4e6ba078-d23b-406c-a19a-6198515706fa,no match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-9054015,6c88b815-4827-49e6-9cc0-ddea219f6b3b,match,match,match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-9137200,44b271b4-06f9-493d-8c32-14528c558ae5,match,match,match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-9240688,20c5dcc5-f8b1-4d9e-8295-f18d40fdc5a9,match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-9641396,9b89e877-78e5-48e0-b94c-de2ad8eba03b,match,match,no match,no match,no match
+corebench,o4-mini-2025-04-16_low,capsule-9660931,58e3014e-46d1-4688-8a8c-7c9dc34889a9,no match,match,no match,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-9670283,e5591a0c-a157-4c76-8248-ac5e68c59c87,no match,match,,no match,match
+corebench,o4-mini-2025-04-16_low,capsule-9832712,ce289594-4c0b-41f0-a3f1-f6ce5d0dc505,match,match,match,match,match
+corebench,o4-mini-2025-04-16_low,capsule-9911222,3dc4fe9c-f44f-4f84-86ac-a0ee095fb577,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-0504157,967beb1c-4fb2-4ccd-83ad-38e0c980f5a7,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-0851068,ec84f5b1-a8b2-492c-9909-fba2349fe19b,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-0921079,baf57a6f-ab7e-45ca-9db5-a121850dd626,no match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-1175539,671449e0-0449-4779-856b-a65fd4c20548,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-1394704,314758ac-227e-45e3-82db-2f04bd80986a,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-1624349,70281c0c-4f6d-496f-98e5-5bfaf02cbbfd,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-1724988,28edd5be-fd8f-4d07-9b96-eaca687bbaca,no match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-1900704,10488eef-5f71-4216-bf3a-b0b7a00b751e,no match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-2345790,2d506202-36d6-4e2f-83ba-a70afbe373ac,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-2414499,1305d4b6-c83c-4191-97e4-d9e460ede558,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-2708693,dc89001d-619b-4730-aa27-37f0e69cbdea,no match,no match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-2804717,58cc5eca-092a-4089-8835-8c179007b2e7,no match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-2816027,aa350f0b-fea4-4dc4-a888-734c86ddc54d,no match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3262218,35a7b86d-43ab-4bbb-908e-6f95351a1460,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3301293,8419764f-b7f9-42e6-9b48-d4159fbb8133,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3418007,2f50cd7c-e174-4db5-8dd4-e1d53fda4159,no match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3449234,f19648ba-64be-4e2e-b2f8-8b40e6e5c2d0,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3593259,a1068be3-a09d-456e-9d02-7b62ce81fa84,no match,no match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3639589,e78fd351-11b9-43a2-af57-92e6b771f1e5,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-3821950,3e913b69-5149-42cc-a1c8-83712b42c596,match,match,match,no match,
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-4180912,da4cb9db-ac4a-48c1-939f-6530c868e27e,no match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-4252248,c31fb12d-49c4-4856-8218-f5e451875a30,no match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-4299879,3850ebee-6b35-4277-8d18-0918ddf57ab1,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-4671827,cb0332fd-d3d4-4cba-b585-310e1e4ad8b0,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-4728591,11c57fa0-bcbc-4209-84ca-9a3aa277eae0,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-4933686,379f306e-ff81-467d-9e8d-0df131b9b972,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-5136217,6edbad10-614f-47e4-8564-d29ae9f5986a,no match,no match,match,match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-5507257,3b1f46eb-950d-4344-9d34-fcfe314a5d5a,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-6003668,ab77309a-bd0d-49ee-bd35-33d2d2232fd6,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-6049678,1b506d0e-a30b-41a0-b41e-eb394599bbad,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-7186268,d929c780-3225-4665-883e-d46163358380,match,match,match,match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-7716865,3fff3ec1-d5bb-4c74-a310-78d0d3c44569,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-8234136,28fd8dbf-557c-4709-857c-b9e902e45f82,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-8536428,2dbca6a2-a98e-4831-bd72-ff166f55af30,,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-8807709,003a6687-02f3-4a50-9c29-e495da3404ec,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9052293,df053091-738c-434b-8fdf-6a54715c03c6,match,match,no match,match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9054015,a02bfe0c-bdc4-4124-a183-14ad4d342511,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9137200,995b0eaa-d331-447e-b97c-4b563f0eecfe,match,no match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9240688,97f83ab0-cbb1-4790-a8d3-b0734b49560b,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9641396,548bdb74-cb38-4181-bd09-3d04fee87bce,match,no match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9660931,bdcec658-2005-4c4c-bb21-4380435b934e,no match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9670283,a04cdcd7-c547-4b42-88f8-98e23d38dfa0,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9832712,a9bf09ee-6bb4-4295-a480-cb4a14712e57,no match,match,no match,match,match
+corebench,openai/deepseek-ai/DeepSeek-R1,capsule-9911222,214591c0-2193-4cbd-b12f-93437a371e0f,no match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-0504157,dc7b3d5c-6503-4c6d-b6b8-a89cafe2fe68,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-0851068,f5fe6a22-9cc6-479f-b755-c9ee13aaef18,no match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-0921079,b5124484-f85d-4693-942f-022d0d2d4df1,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-1175539,a52f8b68-362e-434f-a866-fda032f7b04d,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-1394704,e4d3bd62-fb90-41e1-b102-88c3048d74d6,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-1624349,e78c7aeb-8382-43c5-9f0b-f73016f132d7,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-1724988,f76ce104-b08e-4a13-8075-f2c5734cf785,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-1900704,f14b436a-9bcb-46a3-90ca-de5af69857c4,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-2345790,fcc098ec-624d-4f54-8146-9f736af12839,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-2414499,4bda7b07-1c99-41b1-adcd-9d159df7114f,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-2708693,8ac0ebd6-8cd1-48be-9e8e-c856d1860099,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-2804717,d9a74e5d-4103-408a-834f-49c023505223,match,no match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-2816027,e311ae49-863b-4318-9be6-57bf7af63490,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3262218,a93c7914-d8b5-46a9-834f-57cad0e4a7fa,no match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3301293,f256ba1d-74ff-4abb-af29-a8f6a634683e,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3418007,1a38902d-fd88-4cb2-987f-7746443cd112,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3449234,3f3f3432-20b4-4c9d-a8df-356ac4277e6b,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3593259,57cec6df-b6f3-4180-a371-edda1c1c0793,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3639589,f6bb06fb-b687-41a1-90b5-70aa290ddb37,match,no match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3821950,95e75a7a-def5-45f7-98c9-0dfca6eddfe1,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-3849634,209b19ca-5f2f-4c44-bc91-bfba35f3c9ff,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-4180912,be7150e4-0ef4-49f4-947c-ef0c06eda653,match,no match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-4252248,692e8413-7a31-423c-8b22-21796fd3e3f4,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-4299879,90976008-5801-406e-bd4a-85d51426a563,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-4671827,22d11ac3-99be-4296-8618-6e9af78d2ea7,no match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-4728591,090337a7-e46b-492b-92cb-8547769f1f01,match,no match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-4933686,3a0f702e-373d-4c7e-8c6f-8aaff091ddc7,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-5136217,a13f4643-6244-4f85-ae4b-26f6ca938f34,no match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-5507257,bb207a53-37f3-4417-9fe4-bf315a5b50d7,match,no match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-6003668,7c0f68a1-1c92-42a2-adb8-2e0a0eaef478,match,no match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-6049678,a2667d44-27ed-48ad-bffc-f5376d7fa6a6,match,no match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-7186268,b7d06d80-d0f8-4e78-8498-fdb7ac7998ec,match,no match,no match,match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-7716865,dafb30a0-ed32-4c1b-8806-0651011d24ce,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-8234136,bfeb1657-30d0-463d-ae20-7f5b6f6d0dcb,no match,no match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-8536428,bfd68b01-40ef-4cc1-a5ff-11703946dbb6,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-8807709,18c7bbf7-dd71-46b4-90e6-7ec4be81e447,match,match,match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9052293,f897e506-2565-4c69-b00f-e2e3536f81d1,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9054015,06f89f5a-6bbf-4ebd-8327-09cc44540a96,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9137200,361aac01-dbce-4728-9e5c-bde50f02492f,match,match,match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9240688,1a76c083-4f95-492b-bb86-07e8131edf5c,match,match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9641396,b2376635-d547-49f6-97bd-66a0d6ce5f0c,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9660931,ddba5d7f-4812-46dd-b7e5-a2621da41043,match,match,no match,no match,no match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9670283,81885135-8894-44b7-affc-42cc9f5d3218,match,no match,no match,no match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9832712,ef25e5db-218e-4d93-a7de-70a79632bd10,no match,match,no match,match,match
+corebench,openai/deepseek-ai/DeepSeek-V3,capsule-9911222,fb912082-3fd2-43d6-b369-253290119ab3,match,match,match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-0504157,30d511fe-429c-4079-b55b-d4fce103f7b6,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-0851068,3c4604d3-fcd2-40ec-91a8-db0df7a91de8,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-0921079,37d1d6a2-a793-4c38-af0d-682482cae463,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-1175539,428f9adf-ac71-446d-ace7-802f871ce9c0,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-1394704,e9e2cbc9-4055-4236-bb93-e40ebdcc4c4c,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-1624349,4fbc88b7-a210-44d8-8f66-cbb278fc96d5,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-1724988,41726e5e-6d4a-4239-a7a5-fa723ce2bac7,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-1900704,4c8d5c3f-54ba-4cbf-bf13-e116cb888c46,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-2345790,2939e8c2-63e9-4f58-a0ad-7e4e4000790f,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-2414499,102acf7f-322a-4baa-a479-011f393243dd,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-2708693,e9833038-1fca-4660-ba33-d10c13f7289a,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-2804717,6e2e88df-44a2-4044-b08c-56a56310d7ff,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-2816027,12ba702c-b3b4-4976-92a9-d66ee9dc7e6c,match,match,,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-3262218,8f9fa883-574b-4db8-9a3b-2364bdfdd388,no match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-3301293,3bc1e13f-6313-4e41-87cd-1f4998a2a3a1,match,match,no match,no match,
+corebench,openai/gemini-2.0-flash,capsule-3418007,9e9bfd81-5f0a-489a-a8af-5249e167900e,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-3449234,75866bd4-1e41-4cb6-9deb-1c49304141a9,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-3593259,1a13bc68-6ade-4a64-9e63-01a91e5284b8,match,match,no match,match,no match
+corebench,openai/gemini-2.0-flash,capsule-3639589,be700551-6ff7-4535-8810-4d6cf5b93d35,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-3821950,6748d296-08e1-4d92-af61-3d758cba1a8d,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-3849634,38295246-3e32-4366-9609-19c6bbfed648,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-4180912,7279ac13-3de3-4452-936e-200d5966a0de,match,no match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-4252248,b9e0e759-2fc8-45f6-95ee-2a5ec10f672a,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-4299879,391219fb-0833-431e-aca1-d67d8a45e2e8,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-4671827,774a7a4a-2ba6-4bb0-8c8a-88a9687c3757,no match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-4728591,f366c070-7d7b-4d37-bde2-2a10ce7a3a4b,no match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-4933686,7e02451a-a0d2-448a-9d29-9f5019c08874,no match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-5136217,8be9b9dd-bcfe-4558-9197-5569f531baa1,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-5507257,743d8395-dc01-4942-98e8-85a554167935,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-6003668,3216ccb4-d41a-4336-a57d-723bab0209df,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-6049678,71b05cc5-ff86-433b-9b70-22357d20e846,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-7186268,e2e9237f-16db-4d84-a1ca-eac224f44207,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-7716865,d9d92459-ccdb-40dd-ac2b-13d4514f80c6,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-8234136,18015ba1-b3c1-4e14-821b-c80dba53bf96,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-8536428,db3e69e9-5ba5-4ac0-927c-8a1172a02f47,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-8807709,8cff3823-764c-44fd-b656-ad71b293263b,match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-9052293,0d1842af-6d7c-4492-9725-8c3e3fa6a462,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-9054015,9b2688c4-60ed-4f69-86ee-59ef4cae11b7,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-9137200,ca34b03b-bee2-436e-aeb9-1bb77dd94daa,match,match,no match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-9240688,3b7418d5-3619-4219-a5e7-72e9acf6f219,no match,match,match,no match,match
+corebench,openai/gemini-2.0-flash,capsule-9641396,c6ebe177-4b73-4169-8a7d-e431d58facc4,match,match,no match,no match,no match
+corebench,openai/gemini-2.0-flash,capsule-9660931,717f3068-1ae4-4b50-adf4-ba24da029d90,match,match,no match,match,match
+corebench,openai/gemini-2.0-flash,capsule-9670283,565f7a91-886c-4ea0-b973-c606f02edf32,match,match,no match,no match,
+corebench,openai/gemini-2.0-flash,capsule-9832712,dcc49ff3-dc5c-4e7a-a6c4-d6bc3f58457b,match,match,no match,match,match
+corebench,openai/gemini-2.0-flash,capsule-9911222,bb92b6f1-6a2d-46e0-b581-7a936a7f546c,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-0504157,b6023129-bd10-489b-8d5b-f03350535d24,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-0851068,58e37516-272b-4d72-acc2-f5854e349e48,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-0921079,a7cc5926-8ccb-468f-a964-32c1a2b74792,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-1175539,6693b225-97d3-4c77-8656-713f8fb37c73,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-1394704,0d025e8a-4a72-4783-bd00-8e99ca176f6e,no match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-1624349,31478770-7123-43c1-8a07-fc2b09008c46,match,match,no match,match,match
+corebench,openai/gpt-5-2025-08-07,capsule-1724988,742a0be0-4bc7-4b99-b487-56f4cfa55142,match,match,match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-1900704,a7ad1320-74da-417d-992b-e8c8ae534341,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-2345790,0eda974f-a644-44e9-b490-77eaa18e4f74,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-2414499,ae631877-db84-400d-a8fe-9e0b778df003,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-2708693,f8791794-8ecf-4121-96d7-a0c1d4ea0d46,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-2804717,85b66211-0d9c-4603-9536-f76600972ddc,match,match,match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-2816027,87415aac-e56d-4ab8-a0d8-cc5d94b63361,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-3262218,36edb60d-71f5-452f-8842-3a4ca1664cdb,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-3301293,bdfdf92e-8fbe-4056-a4df-329e739d63a6,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-3418007,973c32fd-ecf9-459c-9cda-3adfd8842f8c,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-3449234,ba04f411-9aa8-4d99-b363-3e4eb725713e,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-3593259,3ae3bbca-4e93-49d5-a5ef-5158f35f03e6,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-3639589,be318e1d-8c97-4ca2-b832-772ffdb30789,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-3821950,78c99197-9b7f-428c-baa3-c3494b6fe742,match,match,match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-3849634,43645ae1-5e08-4353-a410-bbc96cf0a8cf,,match,,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-4180912,7c84590b-e7c2-4029-9cd5-234db1189959,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-4252248,d36fe446-f78f-4af0-9c7b-5a1a3e653487,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-4299879,862c960f-7b84-41c3-96fa-df2330f9f0c0,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-4671827,0a3f653b-ee92-48cb-b86e-378e294e6803,match,match,no match,match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-4728591,79180e58-38b0-4f74-a928-c23012efd430,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-4933686,b184a103-d6aa-4bc9-a768-e5e086ef076c,,,,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-5136217,e95c32a4-8d38-48e5-979d-ae83daf6f5df,match,match,match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-5507257,7b867e00-2f9d-483d-94e2-3a5e218a3a41,no match,no match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-6003668,2432f0b5-8193-4c76-a80d-7bae4972897c,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-6049678,d59e3413-4150-48ff-9039-cbf8659d11b0,match,no match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-7186268,fc67e76f-f769-481a-ac29-35303182ce3a,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-7716865,de0ebadf-6fd7-45f7-b6c3-b7cb979b8c3f,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-8234136,f9af2df8-36b7-4dd5-869c-d9f51fb176d6,match,match,match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-8536428,72415085-f100-431f-a39b-7a26da724ed7,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-8807709,9a96116f-fd28-434d-ac16-e557799c3a28,no match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-9052293,41caf1f2-ad5f-4a08-afd8-f06a577842b0,match,match,match,match,match
+corebench,openai/gpt-5-2025-08-07,capsule-9054015,0a2a2e68-a3d9-4814-9018-60b3a26c38ed,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-9137200,0e86aeee-5e24-4ce5-ae97-444cb5a49ad6,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-9240688,ca413694-6642-4b8f-8669-a83b161356fa,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-9660931,3cbee54b-8573-4754-82e7-3465656e23ad,match,match,no match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-9670283,81f5bc9f-b606-405f-a878-704587cc8fd7,match,match,no match,no match,no match
+corebench,openai/gpt-5-2025-08-07,capsule-9832712,41c10834-7a74-452f-b4ef-07a7c656bff6,match,match,match,no match,match
+corebench,openai/gpt-5-2025-08-07,capsule-9911222,cf1e79f9-dcce-42bd-b0df-2aa4076b4c35,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-0504157,06ea4e74-72a1-4bd5-9b18-87f304e8178e,no match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-0851068,74c03585-9caf-4b1c-89a4-19e482253c4c,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-0921079,1410c313-b1ad-45e9-81ee-81148f5d6823,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-1175539,9da1977a-82ee-4797-81b1-8a68536141b6,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-1394704,0b520512-173f-4c12-81e4-89a48c674f53,match,match,match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-1624349,730cf0d7-24e2-4ada-9bf7-aa9368d114f2,match,match,no match,match,
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-1724988,edcc1975-4843-4233-abd9-8230828468e1,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-1900704,d8a2a53e-4d79-4899-9a43-538df25f7da5,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-2345790,7c8b6cb5-52e5-4a38-a645-b044b7892a1b,match,match,no match,,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-2414499,b19f3bc9-e6f7-4b7a-a768-d6ea880f3375,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-2708693,c92c7554-dd49-4c99-8565-2f046edafe47,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-2804717,9ace04d8-15bb-4433-9c04-d9123aed0804,match,match,match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-2816027,c1cd6e03-0da1-4af6-8903-9d3bc9e39001,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3262218,edc50d1b-0f76-4605-9345-c371e1736c6b,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3301293,a934feb1-12d0-4c2f-91e6-54cc6777b0ad,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3418007,d7460a7f-b365-496f-b322-b7bf2832d60d,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3449234,d6986105-22a8-4f4c-96d9-724f89f4b98c,match,match,match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3593259,2bb6ab33-817f-4c51-8c22-e4e12ed26116,match,match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3639589,3170b754-2bfb-4b82-86db-a037f7f28d19,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3821950,0ceab20b-3c7e-43b6-86b6-76fd1adc7b97,match,match,,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-3849634,029566d8-f54b-4469-9127-b8037b801129,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-4180912,93386ba0-11be-4c3a-baa4-d21ffe5882ed,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-4252248,e7c64a7e-6fe3-48c5-976d-3a94ea971bbb,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-4299879,b0c9b7f6-9495-4f32-b1fa-6f4da9f79f86,,match,match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-4671827,afc7cf6f-84df-42ca-a297-a7e225807b27,match,match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-4728591,0cc39176-db47-49ff-aa84-203c0e1a2805,match,match,no match,no match,
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-4933686,e271f527-a6ed-4050-921a-74e1fc0b929d,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-5136217,43d2fd99-113d-4b03-aca5-2def64dcdf53,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-5507257,15e51252-dc37-448c-b3e0-8df2cd60e8d5,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-6003668,4acfc439-c772-4744-9b9e-ccc8c2440f19,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-6049678,f423d726-6f96-469b-ac41-5ed31876dee3,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-7186268,75f69eae-fb81-4d3f-9b20-c109350f4fd0,match,match,no match,match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-7716865,09a19d66-84f1-4218-bed6-372041624dbe,match,no match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-8234136,d1c2a292-06cb-4d64-844c-c707d32cf89b,,match,,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-8536428,084263b8-1ead-4e2b-b67d-aa23e34962ab,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-8807709,61079d3e-cd9c-4d3c-b808-7b595d77aa20,match,match,match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9052293,1454675a-0466-47a9-83bd-1a8fb4c22b57,no match,match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9054015,a13b4ba5-57f4-4707-90f9-360fc5388fd6,match,match,match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9137200,d487092c-e624-4ba6-a163-16b344bed699,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9240688,d2b73bbb-949f-4389-90f0-7d93d010cd16,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9641396,b3753697-a15d-4241-8611-6aa69bf74140,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9660931,d75dc19e-7a52-4ce8-94b9-c279df5fd4a4,match,match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9670283,0e6a3a93-4562-4ce4-81ff-eac2048da124,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9832712,34075434-88a0-452b-a598-9c85801a8bcd,match,match,no match,match,match
+corebench,openrouter/anthropic/claude-opus-4.1,capsule-9911222,17ebd5fd-f504-4fa9-9559-ff202deaed15,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-0504157,8abdc469-0291-4e7d-ab67-48e89978769f,match,match,match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-0851068,b8a87025-0f6c-45c0-9c99-b5c0e4a7cbfb,match,match,no match,no match,
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-0921079,a2578b57-a538-4874-921c-aa3a1e1dbeeb,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-1175539,cb0ac950-9a94-4d2b-aaa7-ce1f733ad52c,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-1394704,558a3622-f591-47ff-8780-960904b0a1ae,match,no match,match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-1624349,9e24ad26-8710-4ae7-b466-41bb869919ad,match,match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-1724988,508d0b35-ec00-4c96-b682-451fd10e0397,,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-1900704,77a75af3-180b-466f-87f8-2b45d625a51c,match,,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-2345790,05cb0081-0f4c-45cb-9915-a7b5881139b0,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-2414499,47853881-7060-4480-8cba-9810afaa19b4,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-2708693,d2a99ec9-791c-43c9-8e14-8ac9d649b12d,match,match,match,no match,
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-2804717,19a971e6-da90-4549-a3c8-a668c37a5de8,match,match,match,no match,
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-2816027,372efadd-652c-493a-9ffd-b8c13f66ed46,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3262218,adc1de6c-3d39-4995-ac9a-59598669ff1b,match,match,no match,no match,
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3301293,ad97073e-553f-4173-b999-3615b4559577,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3418007,d08eebd2-0aeb-4ea4-9a3c-25ecc2dce87a,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3449234,0790cccb-daa7-429a-9a66-9a30a2c56880,,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3593259,a2f70410-cff7-4eb7-b8e9-096df8288e98,match,no match,no match,match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3639589,40934cf1-a929-45d9-b9b0-833821999598,match,no match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3821950,00247b72-1f42-49f8-8bab-d2092a437cd9,no match,match,,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-3849634,a3a5837f-8d57-44b0-8cf6-e0dc6b3423f9,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-4180912,647608fd-e458-4342-93e8-8d0040447660,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-4252248,204e1d77-8830-477b-87cd-105ea5a3b8af,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-4299879,2edfd47f-cbfd-4075-99dc-61abdcc09592,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-4671827,08cd9843-b7d8-46e5-ab61-6187ff3cd1ab,match,match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-4728591,b32b5b59-b1ef-4893-82cf-d11156af3053,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-4933686,e72e6cc1-0f55-4c48-b924-b4218ff8e44e,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-5136217,58046168-aab2-4af8-bd29-c4ad6b730680,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-5507257,a742b260-3e0c-4df4-b87e-e22275e298b8,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-6003668,fdc4aaf6-b1e8-46d0-9d83-ff1a29ae3096,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-6049678,729e3cbc-06c1-434f-a88b-8b0bacaf05dd,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-7186268,5597154c-748c-4983-ade1-37bec4181f2d,match,match,no match,match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-7716865,1e0ed7e7-b292-427b-bdd0-4a3001ee22d8,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-8234136,a4e90bda-4b4e-4d5a-932f-6d7e63e567e0,match,match,match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-8536428,9d9cec69-1ecc-4086-a09a-56c6f5bf9abd,match,match,no match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-8807709,afacf585-285f-44b0-a8a6-28851e7a7d3a,match,match,match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9052293,3c997863-969e-4c0e-9e99-625afa22a63b,match,no match,no match,match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9054015,45642650-c343-41af-a3be-a90ec0aefb25,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9137200,776a0084-f677-48ab-af5f-f1793675b305,match,match,match,no match,no match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9240688,c38f0dbf-e48f-4dde-94a4-030a7273dd25,match,match,no match,no match,
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9641396,6b201ead-f9c8-4cf2-bf0e-5c34975df7e1,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9660931,08d40cc0-b36a-4fff-be6a-98a58dd0a56c,match,match,no match,match,
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9670283,3e4b34aa-3431-4dd8-83cf-69d63fa1fa10,match,no match,,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9832712,d3dbea67-d63c-4db0-a509-d487a90c2fde,match,match,no match,no match,match
+corebench,openrouter/anthropic/claude-opus-4.1_high,capsule-9911222,c8f2967f-3d92-42e4-8c38-c59d623b3435,match,match,no match,no match,match

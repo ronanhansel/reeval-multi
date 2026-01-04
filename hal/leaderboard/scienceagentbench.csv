@@ -1,0 +1,24 @@
+Rank,Scaffold,Models,VerifiedVerified ResultsResults have been reproduced by the HAL team,AccuracyAccuracyConfidence intervals show the min-max values across runs for those agents where multiple runs are available,Cost (USD)Total CostTotal API cost for running the agent on all tasks. Confidence intervals show the min-max values across runs for those agents where multiple runs are available,"RunsNumber of RunsThe number of runs for this agent submitted to the leaderboard. To submit multiple evaluations, rerun the same agent and set the same agent name",Traces
+1,SAB Self-Debug,o3 Medium (April 2025),Yes,33.33%,$11.69,1,Download
+2,SAB Self-Debug,Claude Sonnet 4.5 High (September 2025),Yes,30.39%,$7.47,1,Download
+3,SAB Self-Debug,Claude-3.7 Sonnet High (February 2025),Yes,30.39%,$11.74,1,Download
+4,SAB Self-Debug,GPT-5 Medium (August 2025),Yes,30.39%,$18.26,1,Download
+5,SAB Self-Debug,Claude Sonnet 4.5 (September 2025),Yes,29.41%,$7.39,1,Download
+6,SAB Self-Debug,o4-mini Low (April 2025),Yes,27.45%,$3.95,1,Download
+7,SAB Self-Debug,o4-mini High (April 2025),Yes,27.45%,$11.18,1,Download
+8,SAB Self-Debug,Claude Opus 4.1 (August 2025),Yes,27.45%,$33.37,1,Download
+9,SAB Self-Debug,Claude Opus 4.1 High (August 2025),Yes,26.47%,$33.75,1,Download
+10,SAB Self-Debug,GPT-4.1 (April 2025),Yes,24.51%,$7.42,1,Download
+11,SAB Self-Debug,Claude Haiku 4.5 High (October 2025),Yes,23.53%,$3.41,1,Download
+12,SAB Self-Debug,DeepSeek R1 (January 2025),Yes,23.53%,$18.24,1,Download
+13,SAB Self-Debug,Claude-3.7 Sonnet (February 2025),Yes,22.55%,$7.12,1,Download
+14,HAL Generalist Agent,o4-mini High (April 2025),Yes,21.57%,$76.30,1,Download
+15,HAL Generalist Agent,o4-mini Low (April 2025),Yes,19.61%,$77.32,1,Download
+16,SAB Self-Debug,Claude Haiku 4.5 (October 2025),Yes,18.63%,$2.66,1,Download
+17,HAL Generalist Agent,Claude-3.7 Sonnet High (February 2025),Yes,17.65%,$48.28,1,Download
+18,SAB Self-Debug,DeepSeek V3 (March 2025),Yes,15.69%,$2.09,1,Download
+19,SAB Self-Debug,Gemini 2.0 Flash (February 2025),Yes,12.75%,$0.19,1,Download
+20,HAL Generalist Agent,Claude-3.7 Sonnet (February 2025),Yes,10.78%,$41.22,1,Download
+21,HAL Generalist Agent,o3 Medium (April 2025),Yes,9.80%,$31.08,1,Download
+22,HAL Generalist Agent,GPT-4.1 (April 2025),Yes,6.86%,$68.95,1,Download
+23,HAL Generalist Agent,DeepSeek V3 (March 2025),Yes,0.98%,$55.73,1,Download
