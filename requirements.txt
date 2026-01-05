@@ -5,3 +5,4 @@ scikit-learn
 tqdm
 matplotlib
 inspect_ai
+sentence_transformers
