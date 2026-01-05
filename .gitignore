@@ -16,3 +16,5 @@ data-reeval-multi/
 *.json
 *.parquet
 data/
+.cache/
+temp/
