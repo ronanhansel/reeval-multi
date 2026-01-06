@@ -5,6 +5,7 @@ import torch.optim as optim
 import numpy as np
 import pickle
 import pandas as pd
+from sklearn.decomposition import PCA
 
 # Set seeds for reproducibility
 torch.manual_seed(42)
@@ -47,36 +48,51 @@ for z_name in z_names:
 z_data = torch.stack(z_data_list, dim=2)
 
 # Load item features from embeddings mapping
-with open('data/task_id_to_embedding.pkl', 'rb') as f:
-    task_to_emb = pickle.load(f)
+# Use (task_id, benchmark) as key since task_ids are not globally unique
+with open('data/task_bench_to_embedding.pkl', 'rb') as f:
+    task_bench_to_emb = pickle.load(f)
     
-print(f"Loaded embeddings for {len(task_to_emb)} task_ids")
+print(f"Loaded embeddings for {len(task_bench_to_emb)} (task_id, benchmark) pairs")
 
 # Get column MultiIndex from y_data to match order
 with open('data/resmat_binary_success_rate.pkl', 'rb') as f:
     y_df_original = pickle.load(f)
     if hasattr(y_df_original, 'columns'):
-        # Extract task_ids from MultiIndex level 0
-        task_ids_ordered = y_df_original.columns.get_level_values(0).tolist()
+        # Extract (task_id, benchmark) tuples from MultiIndex levels 0 and 2
+        columns_info = [(str(col[0]), str(col[2])) for col in y_df_original.columns]
     else:
         raise ValueError("Cannot extract task IDs from resmat")
 
 # Match embeddings to items in order
 embeddings_list = []
 matched_count = 0
-for task_id in task_ids_ordered:
-    if task_id in task_to_emb:
-        embeddings_list.append(task_to_emb[task_id])
+for task_id, benchmark in columns_info:
+    key = (task_id, benchmark)
+    if key in task_bench_to_emb:
+        embeddings_list.append(task_bench_to_emb[key])
         matched_count += 1
     else:
         # If no embedding found, use zero vector
-        print(f"Warning: No embedding for task_id {task_id}, using zero vector")
+        print(f"Warning: No embedding for (task_id={task_id}, benchmark={benchmark}), using zero vector")
         embeddings_list.append(np.zeros(2560, dtype=np.float32))
 
 x_j_input = np.array(embeddings_list, dtype=np.float32)
 x_j_input = torch.from_numpy(x_j_input)
 # Normalize features
 x_j_input = F.normalize(x_j_input, p=2, dim=1)
+
+target_d = 10 
+
+print(f"Reducing features from {x_j_input.shape[1]} to {target_d} via PCA...")
+pca = PCA(n_components=target_d)
+x_j_numpy = x_j_input.numpy()
+x_j_reduced = pca.fit_transform(x_j_numpy)
+
+# 2. Re-normalize after PCA (Crucial for the model assumption)
+x_j_input = torch.from_numpy(x_j_reduced).float()
+x_j_input = F.normalize(x_j_input, p=2, dim=1)
+
+d_features = target_d # Update d_features
 
 # Get dimensions from data
 N, J = y_data.shape
@@ -145,7 +161,7 @@ class RobustARDModel(nn.Module):
 # 3. OPTIMIZATION LOOP
 # ==========================================
 
-K_MODEL = 25
+K_MODEL = 100
 model = RobustARDModel(N, J, M, K_MODEL, d_features, x_j_input)
 
 # Separate parameter groups:
@@ -158,7 +174,7 @@ optimizer = optim.Adam([
 # CRITICAL: Higher Lambda to overcome N*J likelihood sum
 # Rule of thumb: Lambda ~= 1.5 * N often works for factor models
 # Adjusted for smaller dataset size (N=46)
-hyperparams = {'lambda_tau': 5.0}
+hyperparams = {'lambda_tau': 50.0}
 
 print(f"\nStarting Robust ARD with K_model={K_MODEL}...")
 print(f"Using Lambda Tau: {hyperparams['lambda_tau']}")

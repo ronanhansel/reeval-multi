@@ -12,62 +12,78 @@ inputs_df = pd.read_pickle('data/all_benchmarks_inputs.pkl')
 print(f"Resmat columns: {resmat_df.shape[1]}")
 print(f"Embeddings rows: {len(embeddings_df)}")
 
-# Create task_id to embedding mapping
-task_id_to_embedding = {}
+# Create (task_id, benchmark) to embedding mapping
+# This is critical because task_ids are NOT globally unique - they repeat across benchmarks
+task_bench_to_embedding = {}
 for _, row in embeddings_df.iterrows():
-    task_id = row['task_id']
+    task_id = str(row['task_id'])
+    benchmark = str(row['benchmark_id'])
     embedding = row['embeddings']
-    task_id_to_embedding[task_id] = embedding
+    key = (task_id, benchmark)
+    
+    # Use the first embedding if there are duplicates (shouldn't matter as they're the same task)
+    if key not in task_bench_to_embedding:
+        task_bench_to_embedding[key] = embedding
 
-print(f"\nCreated embeddings mapping with {len(task_id_to_embedding)} task_ids")
+print(f"\nCreated embeddings mapping with {len(task_bench_to_embedding)} (task_id, benchmark) pairs")
 
-# Handle the missing task_id='73' - map it to the correct hash
-# We found that task_id '73' in resmat corresponds to 
-# 'fb9ba3ab6a13d0adc677f993e90d54914a5cdf211305a1bba6bf16ec4ccb9b7c' in inputs
-missing_task_id = '73'
-correct_hash = 'fb9ba3ab6a13d0adc677f993e90d54914a5cdf211305a1bba6bf16ec4ccb9b7c'
+# Handle the missing (task_id='73', benchmark='scicode') 
+# This has empty text in resmat - we'll use a zero vector or find similar item
+missing_key = ('73', 'scicode')
 
-if correct_hash in task_id_to_embedding:
-    task_id_to_embedding[missing_task_id] = task_id_to_embedding[correct_hash]
-    print(f"✓ Mapped task_id '{missing_task_id}' to embedding from '{correct_hash}'")
-else:
-    print(f"✗ Warning: Could not find embedding for '{correct_hash}'")
-    # Use zero vector as fallback
-    embedding_dim = len(list(task_id_to_embedding.values())[0])
-    task_id_to_embedding[missing_task_id] = np.zeros(embedding_dim)
-    print(f"  Using zero vector with dim={embedding_dim}")
+if missing_key not in task_bench_to_embedding:
+    print(f"\n⚠️  Missing key: {missing_key}")
+    
+    # Check if there's a task_id='73' in other benchmarks
+    task_73_keys = [k for k in task_bench_to_embedding.keys() if k[0] == '73']
+    
+    if task_73_keys:
+        print(f"   Found task_id='73' in other benchmarks: {[k[1] for k in task_73_keys]}")
+        # Use the first one found
+        source_key = task_73_keys[0]
+        task_bench_to_embedding[missing_key] = task_bench_to_embedding[source_key]
+        print(f"   ✓ Copied embedding from {source_key} to {missing_key}")
+    else:
+        # Use zero vector as fallback
+        embedding_dim = len(list(task_bench_to_embedding.values())[0])
+        task_bench_to_embedding[missing_key] = np.zeros(embedding_dim, dtype=np.float32)
+        print(f"   ✓ Using zero vector with dim={embedding_dim}")
 
-# Create a DataFrame for easier merging - indexed by task_id
-embeddings_array = []
-task_ids = []
+# Create a DataFrame for easier lookup - one row per (task_id, benchmark) pair
+print("\nCreating lookup structures...")
 
-for task_id, embedding in task_id_to_embedding.items():
-    task_ids.append(task_id)
-    embeddings_array.append(embedding)
+# Save as dictionary keyed by (task_id, benchmark)
+with open('data/task_bench_to_embedding.pkl', 'wb') as f:
+    pickle.dump(task_bench_to_embedding, f)
 
-embeddings_lookup = pd.DataFrame({
-    'task_id': task_ids,
-    'embedding': embeddings_array
-})
-embeddings_lookup = embeddings_lookup.set_index('task_id')
-
-print(f"\nCreated embeddings lookup DataFrame: {embeddings_lookup.shape}")
-print(f"  Index (task_ids): {len(embeddings_lookup)}")
-print(f"  Embedding dimension: {len(embeddings_lookup.iloc[0]['embedding'])}")
+print(f"Created mapping with {len(task_bench_to_embedding)} (task_id, benchmark) pairs")
 
 # Verify we can match with resmat
-resmat_task_ids = resmat_df.columns.get_level_values(0).unique()
-matched = sum(1 for tid in resmat_task_ids if tid in embeddings_lookup.index)
-print(f"\nMatching check:")
-print(f"  Resmat unique task_ids: {len(resmat_task_ids)}")
-print(f"  Matched in embeddings: {matched}/{len(resmat_task_ids)}")
+print("\n" + "="*80)
+print("VERIFICATION")
+print("="*80)
 
-# Save the mapping
-with open('data/task_id_to_embedding.pkl', 'wb') as f:
-    pickle.dump(task_id_to_embedding, f)
+matched_count = 0
+unmatched = []
+
+for col in resmat_df.columns:
+    task_id = str(col[0])
+    benchmark = str(col[2])
+    key = (task_id, benchmark)
     
-embeddings_lookup.to_pickle('data/embeddings_lookup.pkl')
+    if key in task_bench_to_embedding:
+        matched_count += 1
+    else:
+        unmatched.append(key)
 
-print(f"\n✓ Saved:")
-print(f"  - data/task_id_to_embedding.pkl (dict)")
-print(f"  - data/embeddings_lookup.pkl (DataFrame)")
+print(f"Resmat columns: {len(resmat_df.columns)}")
+print(f"Matched: {matched_count}/{len(resmat_df.columns)}")
+print(f"Unmatched: {len(unmatched)}")
+
+if unmatched:
+    print(f"\n⚠️  Unmatched items:")
+    for tid, bench in unmatched[:10]:
+        print(f"  - (task_id={tid}, benchmark={bench})")
+
+print(f"\n✅ Saved:")
+print(f"  - data/task_bench_to_embedding.pkl (dict with {len(task_bench_to_embedding)} keys)")
