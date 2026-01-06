@@ -6,6 +6,10 @@ import numpy as np
 import pickle
 import pandas as pd
 from sklearn.decomposition import PCA
+import warnings
+
+# Suppress numpy deprecation warnings from pickled DataFrames
+warnings.filterwarnings('ignore', category=DeprecationWarning, message='.*numpy.core.numeric.*')
 
 # Set seeds for reproducibility
 torch.manual_seed(42)
@@ -24,12 +28,19 @@ with open('data/resmat_binary_success_rate.pkl', 'rb') as f:
         y_data = y_data.values
     # Ensure numeric type and convert to float32
     y_data = np.array(y_data, dtype=np.float32)
-    # Replace NaN with 0.5 (neutral value for binary data)
-    y_data = np.nan_to_num(y_data, nan=0.5)
+    
+    # Create mask for valid (non-NaN) entries
+    y_mask = ~np.isnan(y_data)
+    
+    # Fill NaN with 0 (value doesn't matter since we'll mask it out)
+    y_data = np.nan_to_num(y_data, nan=0.0)
+    
     y_data = torch.from_numpy(y_data)
+    y_mask = torch.from_numpy(y_mask)
 
 # Load z_data (behavioral attributes)
 z_data_list = []
+z_mask_list = []
 z_names = ['environmentalbarrier', 'instructionfollowing', 'selfcorrection', 'tooluse', 'verification']
 
 for z_name in z_names:
@@ -40,12 +51,19 @@ for z_name in z_names:
             z_matrix = z_matrix.values
         # Ensure numeric type and convert to float32
         z_matrix = np.array(z_matrix, dtype=np.float32)
-        # Replace NaN with 0.5 (neutral value for binary data)
-        z_matrix = np.nan_to_num(z_matrix, nan=0.5)
+        
+        # Create mask for valid (non-NaN) entries
+        z_mask = ~np.isnan(z_matrix)
+        
+        # Fill NaN with 0 (value doesn't matter since we'll mask it out)
+        z_matrix = np.nan_to_num(z_matrix, nan=0.0)
+        
         z_data_list.append(torch.from_numpy(z_matrix))
+        z_mask_list.append(torch.from_numpy(z_mask))
 
 # Stack z_data: (N, J, M)
 z_data = torch.stack(z_data_list, dim=2)
+z_mask = torch.stack(z_mask_list, dim=2)
 
 # Load item features from embeddings mapping
 # Use (task_id, benchmark) as key since task_ids are not globally unique
@@ -104,6 +122,8 @@ print(f"Matched {matched_count}/{J} embeddings")
 print(f"y_data shape: {y_data.shape}")
 print(f"z_data shape: {z_data.shape}")
 print(f"x_j shape: {x_j_input.shape}")
+print(f"y_mask: {y_mask.sum().item()}/{y_mask.numel()} valid entries ({100*y_mask.float().mean():.1f}%)")
+print(f"z_mask: {z_mask.sum().item()}/{z_mask.numel()} valid entries ({100*z_mask.float().mean():.1f}%)")
 
 # ==========================================
 # 2. ROBUST MODEL (ReLU + Normalized W)
@@ -185,9 +205,13 @@ for e in range(1001):
     # Forward
     logits_y, logits_z = model(temp=1.0)
 
-    # Loss: Likelihood (Sum reduction scales with N*J)
-    loss_lik = F.binary_cross_entropy_with_logits(logits_y, y_data, reduction='sum') + \
-               F.binary_cross_entropy_with_logits(logits_z, z_data, reduction='sum')
+    # Loss: Likelihood with masking (only compute loss on valid entries)
+    # Compute element-wise loss
+    loss_y_elements = F.binary_cross_entropy_with_logits(logits_y, y_data, reduction='none')
+    loss_z_elements = F.binary_cross_entropy_with_logits(logits_z, z_data, reduction='none')
+    
+    # Apply masks and sum only valid entries
+    loss_lik = (loss_y_elements * y_mask.float()).sum() + (loss_z_elements * z_mask.float()).sum()
 
     # Loss: L1 Penalty on Tau
     reg_tau = hyperparams['lambda_tau'] * torch.norm(model.tau, 1)
