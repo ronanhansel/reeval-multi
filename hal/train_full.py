@@ -25,6 +25,16 @@ print(f"Using device: {device}")
 parser = argparse.ArgumentParser()
 parser.add_argument('--benchmark', type=str, nargs='+', default=None)
 parser.add_argument('--lambda_tau', type=float, default=10.0)
+parser.add_argument('--K_MODEL', type=int, default=50)
+parser.add_argument('--dropout_p', type=float, default=0.5)
+parser.add_argument('--reg_sparse_gates', type=float, default=0.1)
+parser.add_argument('--reg_beta_gates', type=float, default=0.1)
+parser.add_argument('--reg_theta', type=float, default=0.5)
+parser.add_argument('--lr_tau', type=float, default=0.01)
+parser.add_argument('--lr_proj', type=float, default=0.005)
+parser.add_argument('--lr_latent', type=float, default=0.01)
+parser.add_argument('--wd_proj', type=float, default=1e-2)
+parser.add_argument('--wd_latent', type=float, default=1e-4)
 args = parser.parse_args()
 
 # ==========================================
@@ -174,22 +184,22 @@ class LinearRobustARD(nn.Module):
 # ==========================================
 # 5. OPTIMIZATION
 # ==========================================
-K_MODEL = 50
-# Dropout 0.5 is standard for linear models to force robustness
-model = LinearRobustARD(N, J, M, K_MODEL, d_features, x_j_input, dropout_p=0.5).to(device)
+K_MODEL = args.K_MODEL
+# Dropout configurable for robustness
+model = LinearRobustARD(N, J, M, K_MODEL, d_features, x_j_input, dropout_p=args.dropout_p).to(device)
 
 # Optimizer with Paper-Aligned Priors
 optimizer = optim.Adam([
     # Tau: No Weight Decay (L1 applied manually below) [cite: 88]
-    {'params': model.tau_raw, 'lr': 0.01, 'weight_decay': 0.0},
+    {'params': model.tau_raw, 'lr': args.lr_tau, 'weight_decay': 0.0},
     
     # Projections (W & Difficulty): Weight Decay = L2/Gaussian Prior [cite: 85, 92]
     {'params': list(model.difficulty_proj.parameters()) + [model.W], 
-     'lr': 0.005, 'weight_decay': 1e-2},
+     'lr': args.lr_proj, 'weight_decay': args.wd_proj},
     
     # Latents (Theta) & Gates: Standard Decay
     {'params': [model.theta, model.u_logits, model.delta_m], 
-     'lr': 0.01, 'weight_decay': 1e-4}
+     'lr': args.lr_latent, 'weight_decay': args.wd_latent}
 ])
 
 hyperparams = {
@@ -212,11 +222,11 @@ for e in range(2001):
 
     # 3. Calculate Missing Losses 
     # R_sparse: L1 penalty on gates (push to 0)
-    reg_sparse_gates = 0.1 * torch.sum(gates)
+    reg_sparse_gates = args.reg_sparse_gates * torch.sum(gates)
     
     # R_beta: Entropy-like penalty (push to 0 or 1)
     # Minimizing g*(1-g) forces g to be near 0 or 1
-    reg_beta_gates = 0.1 * torch.sum(gates * (1.0 - gates))
+    reg_beta_gates = args.reg_beta_gates * torch.sum(gates * (1.0 - gates))
 
     # 4. Standard Losses (from your code)
     loss_y = (F.binary_cross_entropy_with_logits(logits_y, y_data, reduction='none') * train_mask).sum()
@@ -224,7 +234,7 @@ for e in range(2001):
     
     # Regularization on Tau and Theta
     reg_tau = hyperparams['lambda_tau'] * torch.norm(model.tau, 1)
-    reg_theta = 0.5 * torch.sum(model.theta**2)
+    reg_theta = args.reg_theta * torch.sum(model.theta**2)
     
     # 5. Total Aggregated Loss
     # [FIX] Added gate regularizers

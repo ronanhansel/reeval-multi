@@ -14,7 +14,7 @@ data_dir = os.path.join(base_dir, 'data')
 # Model settings
 batch_size = 8
 max_chars = 20000  # Truncate extremely long inputs to prevent OOM
-truncate_dim = 512 # Matryoshka embedding dimension
+# truncate_dim = 512 # Matryoshka embedding dimension
 
 # Setup environment
 os.makedirs(cache_dir, exist_ok=True)
@@ -58,7 +58,7 @@ truncated_texts = [t[:max_chars] for t in texts]
 
 # --- 3. Embed ---
 print("Loading model...")
-model = SentenceTransformer("Qwen/Qwen3-Embedding-4B", cache_folder=cache_dir, trust_remote_code=True)
+model = SentenceTransformer("Qwen/Qwen3-Embedding-8B", cache_folder=cache_dir, trust_remote_code=True)
 
 print(f"Generating embeddings (Batch size: {batch_size})...")
 try:
@@ -70,7 +70,7 @@ try:
         convert_to_numpy=True,
         device='cuda' if torch.cuda.is_available() else 'cpu',
         normalize_embeddings=False,
-        truncate_dim=truncate_dim 
+        # truncate_dim=truncate_dim 
     )
 except Exception as e:
     print(f"❌ Error during embedding: {e}")
@@ -89,7 +89,7 @@ df['benchmark.task_id'] = df['benchmark'] + '.' + df['task_id'].astype(str)
 final_df = df[['benchmark.task_id', 'text_input', 'embedding']]
 
 # Save
-output_file = f"{result_dir}/all_benchmarks_embeddings.pkl"
+output_file = f"{result_dir}/all_benchmarks_embeddings_4096_8B.pkl"
 final_df.to_pickle(output_file)
 
 print(f"✅ Saved final result to: {output_file}")
