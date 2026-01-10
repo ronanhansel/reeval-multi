@@ -3,14 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import pickle
+import os
 import pandas as pd
 import warnings
 import argparse
 import ast
 from sklearn.metrics import roc_auc_score
-
-# [ADDED] Imports for HypotheSAEs
 from hypothesaes.quickstart import train_sae, interpret_sae
 
 # Suppress warnings
@@ -44,7 +42,7 @@ args = parser.parse_args()
 # ==========================================
 print("Loading data...")
 y_df = pd.read_csv('../data/result_matrix_merged.csv', index_col=0)
-emb_df = pd.read_pickle('../data/all_benchmarks_embeddings.pkl')
+emb_df = pd.read_pickle('../result/all_benchmarks_embeddings_512_4B.pkl')
 
 z_names = ['environmentalbarrier', 'instructionfollowing', 'selfcorrection', 'tooluse', 'verification']
 z_df_list = [pd.read_csv(f'../data/rubrics_matrix_{z_name}.csv', index_col=0) for z_name in z_names]
@@ -53,12 +51,16 @@ z_df_list = [pd.read_csv(f'../data/rubrics_matrix_{z_name}.csv', index_col=0) fo
 if args.benchmark:
     print(f"Filtering by: {args.benchmark}")
     cols = [c for c in y_df.columns if any(b in str(c) for b in args.benchmark)]
+    print(f"Selected {len(cols)} benchmarks after filtering.")
+    print(cols)
     y_df = y_df[cols]
     z_df_list = [df[cols] for df in z_df_list]
 
-# Filter Rows/Cols
-y_df = y_df[y_df.notna().any(axis=1)]
-for i in range(len(z_df_list)): z_df_list[i] = z_df_list[i].loc[y_df.index]
+print(f"Y Matrix Shape: {y_df.shape}")
+
+# # Filter Rows/Cols
+# y_df = y_df[y_df.notna().any(axis=1)]
+# for i in range(len(z_df_list)): z_df_list[i] = z_df_list[i].loc[y_df.index]
 
 valid_cols = []
 for c in y_df.columns:
@@ -93,6 +95,11 @@ test_mask = torch.from_numpy(test_mask).to(device)
 z_data = torch.stack([torch.from_numpy(np.nan_to_num(df.values, nan=0.0)).float() for df in z_df_list], dim=2).to(device)
 z_mask = torch.stack([torch.from_numpy((~np.isnan(df.values)).astype(bool)) for df in z_df_list], dim=2).to(device)
 
+# # Mask all z entries for testing
+# M = len(z_names)
+# z_mask = torch.zeros((N, J, M), dtype=torch.bool).to(device)  # All masked (no data)
+
+
 # Filter out environmentalbarrier == 1 (treat as missing)
 print("\nFiltering environmentalbarrier == 1...")
 env_barrier_idx = z_names.index('environmentalbarrier')
@@ -126,6 +133,8 @@ for c in y_df.columns:
 
 x_j_dense = torch.tensor(np.array(raw_embs), dtype=torch.float32)
 x_j_dense = F.normalize(x_j_dense, p=2, dim=1).to(device)
+
+print(f"Matched embeddings: {len(raw_embs)} / {y_df.shape[1]} ({len(raw_embs)/y_df.shape[1]:.2%})")
 
 # --- [ADDED] SAE Training & Transformation Start ---
 print("\nTraining/Loading SAE...")
@@ -355,7 +364,46 @@ with torch.no_grad():
     W_all = model.W.detach().cpu().numpy()
     tau_active = model.tau.detach().cpu().numpy() > 0.01
     zero_counts = np.sum(np.abs(W_all) < 1e-3, axis=1)
-    print("\nSparsity of ACTIVE W rows (tau > 0.01, number of near-zero elements < 1e-3):")
+    print(f"\nSparsity of ACTIVE W rows ({active_dims}):")
     for i, count in enumerate(zero_counts):
         if tau_active[i]:
             print(f"W[{i}] zeros: {count}/{W_all.shape[1]}")
+
+# # ==========================================
+# # 7. INTERPRET DISCOVERED LATENT FACTORS
+# # ==========================================
+# print("\n=== INTERPRETING LATENT FACTORS ===")
+
+# # 1. Identify Active Dimensions (where tau > 0.01)
+# tau_values = model.tau.detach().cpu().numpy()
+# active_indices = np.where(tau_values > 0.01)[0]
+# print(f"Analyzing {len(active_indices)} active dimensions: {active_indices}")
+
+# # 2. Get the W matrix (The mapping from Skills -> SAE Features)
+# W_matrix = model.W.detach().cpu().numpy()
+
+# # 3. For each active dimension, find the SAE features with the highest weights
+# for k in active_indices:
+#     print(f"\n--- Latent Factor (Skill) #{k} ---")
+    
+#     # Get weights for this dimension across all 64 SAE features
+#     weights = W_matrix[k]
+    
+#     # Get indices of the top 5 positive weights (Positive contributors to difficulty/skill requirement)
+#     # Note: Depending on sign convention in theta*W, positive might mean "Requires this skill"
+#     top_feature_indices = np.argsort(weights)[-5:][::-1]
+    
+#     print("  Driven by SAE Features:")
+#     for f_idx in top_feature_indices:
+#         weight_val = weights[f_idx]
+        
+#         # Look up the description from your interpret_sae dataframe
+#         # Assuming feature_descriptions_df is available from your earlier step
+#         try:
+#             desc = feature_descriptions_df.loc[feature_descriptions_df['neuron_idx'] == f_idx, 'interpretation'].values[0]
+#             # Truncate for display
+#             desc = (desc[:75] + '..') if len(desc) > 75 else desc
+#         except:
+#             desc = "No description available"
+            
+#         print(f"    Neuron {f_idx} (w={weight_val:.3f}): {desc}")

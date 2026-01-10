@@ -175,7 +175,8 @@ sae = train_sae(
 print("Transforming embeddings to SAE activations...")
 sae_activations_np = sae.get_activations(embeddings_np)
 x_j_input = torch.tensor(sae_activations_np, dtype=torch.float32).to(device)
-
+print(f"Original Feature Dimension: {x_j_input.shape[1]}")
+print(x_j_input)
 d_features = sae.m_total_neurons 
 print(f"New Feature Dimension (SAE): {d_features}")
 
