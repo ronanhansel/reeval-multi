@@ -9,14 +9,13 @@ import json
 import os
 import sys
 
-benchmarks = ['assistantbench', 'taubench_airline', 'corebench', 'scienceagentbench']
-benchmark_str = '_'.join(benchmarks)
-
-# Best lambda_tau from previous search
-BEST_LAMBDA_TAU = 7.5
-
 # Quick survey grids
 survey_configs = {
+    'lambda_tau': {
+        'values': [60, 61, 62, 63, 64, 65, 66],
+        'default': 66,
+        'description': 'Temperature parameter for gate sharpening'
+    },
     'K_MODEL': {
         'values': [20, 30, 40, 50, 60, 80, 100],
         'default': 50,
@@ -49,10 +48,8 @@ def run_experiment(param_name, param_value):
     
     # Build command with all defaults except the tested parameter
     cmd = [
-        'python', 'train_full.py',
-        '--benchmark'] + benchmarks + [
-        '--lambda_tau', str(BEST_LAMBDA_TAU),
-    ]
+        'python', 'model.py',
+        ]
     
     # Add parameter being tested
     cmd.extend([f'--{param_name}', str(param_value)])
@@ -101,7 +98,6 @@ def survey_parameter(param_name):
     print(f"Description: {config['description']}")
     print(f"Default: {config['default']}")
     print(f"Testing {len(values)} values: {values}")
-    print(f"Keeping lambda_tau={BEST_LAMBDA_TAU} (optimal)")
     print("=" * 80)
     
     results = []
@@ -119,7 +115,7 @@ def survey_parameter(param_name):
             print(f"✗ Failed: {result.get('error', 'unknown')}")
     
     # Save results
-    output_file = f'survey_{param_name}_{benchmark_str}.json'
+    output_file = f'survey_{param_name}.json'
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
     
