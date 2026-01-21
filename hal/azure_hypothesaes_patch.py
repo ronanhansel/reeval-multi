@@ -16,6 +16,8 @@ Example:
 
 import os
 import sys
+import inspect
+import math
 from openai import AzureOpenAI
 
 # Azure OpenAI Configuration - read from environment variables
@@ -35,6 +37,25 @@ MODEL_DEPLOYMENT_MAP = {
     "gpt-5": AZURE_DEPLOYMENT,
     "gpt-5.2": AZURE_DEPLOYMENT,
 }
+
+def _is_empty_interpretation(value):
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return True
+        if cleaned.lower() in {"none", "n/a", "na", "null", "empty"}:
+            return True
+    return False
+
+def _get_neuron_param(signature):
+    for name in ("neuron_indices", "neuron_idxs", "neuron_idx", "neuron_ids"):
+        if name in signature.parameters:
+            return name
+    return None
 
 def patch_hypothesaes():
     """
@@ -208,7 +229,7 @@ def patch_interpret_neurons_with_retry():
                 interpretation = str(results[i])
             
             # If interpretation is empty, retry just this neuron
-            if str(interpretation).strip() == '':
+            if _is_empty_interpretation(interpretation):
                 empty_count += 1
                 retry_count = 0
                 while retry_count < max_retries_per_neuron:
@@ -236,7 +257,7 @@ def patch_interpret_neurons_with_retry():
                             else:
                                 new_interpretation = str(retry_results[0])
                             
-                            if str(new_interpretation).strip() != '':
+                            if not _is_empty_interpretation(new_interpretation):
                                 results[i] = retry_results[0]
                                 print(f"[Azure Patch]   ✓ Neuron {neuron_idx}: Got interpretation on retry {retry_count}")
                                 break
@@ -246,7 +267,7 @@ def patch_interpret_neurons_with_retry():
                 
                 # If still empty after all retries
                 final_interp = results[i].get('interpretation', '') if isinstance(results[i], dict) else str(results[i])
-                if str(final_interp).strip() == '':
+                if _is_empty_interpretation(final_interp):
                     print(f"[Azure Patch]   ✗ Neuron {neuron_idx}: Still empty after {max_retries_per_neuron} retries")
         
         if empty_count == 0:
@@ -262,7 +283,77 @@ def patch_interpret_neurons_with_retry():
     
     print(f"✓ Patched interpret_neurons with per-neuron empty string retry logic")
 
+def patch_interpret_sae_with_retry():
+    """
+    Patch interpret_sae to retry only neurons with empty interpretations.
+    """
+    import hypothesaes.quickstart as quickstart
+
+    _original_interpret_sae = quickstart.interpret_sae
+    signature = inspect.signature(_original_interpret_sae)
+    neuron_param = _get_neuron_param(signature)
+
+    def interpret_sae_with_retry(*args, max_retries=3, **kwargs):
+        feature_df = _original_interpret_sae(*args, **kwargs)
+        if feature_df is None:
+            return feature_df
+        if not hasattr(feature_df, "columns"):
+            return feature_df
+        if "neuron_idx" not in feature_df.columns or "interpretation" not in feature_df.columns:
+            return feature_df
+
+        feature_df = feature_df.copy()
+
+        for attempt in range(1, max_retries + 1):
+            empty_mask = feature_df["interpretation"].apply(_is_empty_interpretation)
+            if not empty_mask.any():
+                break
+
+            missing_neurons = feature_df.loc[empty_mask, "neuron_idx"].tolist()
+            if not missing_neurons:
+                break
+
+            print(
+                f"[Azure Patch] Retrying interpretation for {len(missing_neurons)} empty neurons "
+                f"(attempt {attempt}/{max_retries})..."
+            )
+
+            if not neuron_param:
+                continue
+
+            try:
+                bound = signature.bind_partial(*args, **kwargs)
+            except TypeError:
+                continue
+
+            retry_kwargs = dict(bound.arguments)
+            retry_kwargs.pop("n_top_neurons", None)
+            retry_kwargs.pop("n_random_neurons", None)
+            retry_kwargs[neuron_param] = missing_neurons
+
+            retry_df = _original_interpret_sae(**retry_kwargs)
+            if retry_df is None:
+                continue
+            if not hasattr(retry_df, "columns"):
+                continue
+            if "neuron_idx" not in retry_df.columns or "interpretation" not in retry_df.columns:
+                continue
+
+            for _, row in retry_df.iterrows():
+                neuron_idx = row.get("neuron_idx")
+                interpretation = row.get("interpretation")
+                if _is_empty_interpretation(interpretation):
+                    continue
+                feature_df.loc[
+                    feature_df["neuron_idx"] == neuron_idx, "interpretation"
+                ] = interpretation
+
+        return feature_df
+
+    quickstart.interpret_sae = interpret_sae_with_retry
+    print("✓ Patched interpret_sae with empty interpretation retry logic")
+
 # Auto-patch when this module is imported
 patch_hypothesaes()
 patch_interpret_neurons_with_retry()
-
+patch_interpret_sae_with_retry()
