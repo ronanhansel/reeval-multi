@@ -18,3 +18,4 @@ data-reeval-multi/
 data/
 .cache/
 temp/
+.env
