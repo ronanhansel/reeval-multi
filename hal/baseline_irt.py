@@ -6,6 +6,7 @@
 USE_EMPIRICAL_BASELINE = True  # True: use full empirical, False: use 1 random binary
 TEST_SIZE = 0.1  # 10% holdout
 RANDOM_SEED = 42
+HOLDOUT_CELLS = False  # True: hold out individual cells, False: hold out whole items
 
 import os
 import warnings
@@ -25,6 +26,7 @@ def run_baseline_irt(
     use_empirical_baseline=USE_EMPIRICAL_BASELINE,
     test_size=TEST_SIZE,
     random_seed=RANDOM_SEED,
+    holdout_cells=HOLDOUT_CELLS,
     resmat_dir='resmats',
     rasch_epochs=500,
     return_all=False,
@@ -39,7 +41,8 @@ def run_baseline_irt(
 
     print(f"Using device: {device}")
     print(f"Baseline mode: {'EMPIRICAL' if use_empirical_baseline else 'SINGLE BINARY'}")
-    print(f"Train/Test split: {int((1-test_size)*100)}%/{int(test_size*100)}%")
+    split_type = "Cell-wise" if holdout_cells else "Item-wise"
+    print(f"Train/Test split: {int((1-test_size)*100)}%/{int(test_size*100)}% ({split_type})")
     print("=" * 60)
 
     def compute_rmse(predictions, targets, mask):
@@ -86,24 +89,39 @@ def run_baseline_irt(
     # 2. Train/Test Split
     # ----------------------------------------------------------------------
     N, J = prob_df.shape
-    J_indices = np.arange(J)
-    np.random.shuffle(J_indices)
-
-    n_test = int(test_size * J)
-    test_idx = J_indices[:n_test]
-    train_idx = J_indices[n_test:]
-
     y_empirical = torch.from_numpy(prob_df.values.astype(np.float32)).to(device)
 
-    train_mask = np.zeros_like(prob_df.values, dtype=bool)
-    train_mask[:, train_idx] = ~np.isnan(prob_df.values)[:, train_idx]
-    test_mask = np.zeros_like(prob_df.values, dtype=bool)
-    test_mask[:, test_idx] = ~np.isnan(prob_df.values)[:, test_idx]
+    if holdout_cells:
+        valid_idx = np.argwhere(~np.isnan(prob_df.values))
+        np.random.shuffle(valid_idx)
+        n_test = int(len(valid_idx) * test_size)
+        test_pairs = valid_idx[:n_test]
+        train_pairs = valid_idx[n_test:]
+
+        train_mask = np.zeros_like(prob_df.values, dtype=bool)
+        test_mask = np.zeros_like(prob_df.values, dtype=bool)
+        train_mask[train_pairs[:, 0], train_pairs[:, 1]] = True
+        test_mask[test_pairs[:, 0], test_pairs[:, 1]] = True
+
+        print(f"Split: {len(train_pairs)} train cells, {len(test_pairs)} test cells")
+    else:
+        J_indices = np.arange(J)
+        np.random.shuffle(J_indices)
+
+        n_test = int(test_size * J)
+        test_idx = J_indices[:n_test]
+        train_idx = J_indices[n_test:]
+
+        train_mask = np.zeros_like(prob_df.values, dtype=bool)
+        train_mask[:, train_idx] = ~np.isnan(prob_df.values)[:, train_idx]
+        test_mask = np.zeros_like(prob_df.values, dtype=bool)
+        test_mask[:, test_idx] = ~np.isnan(prob_df.values)[:, test_idx]
+
+        print(f"Split: {len(train_idx)} train items, {len(test_idx)} test items")
 
     train_mask_t = torch.from_numpy(train_mask).to(device)
     test_mask_t = torch.from_numpy(test_mask).to(device)
 
-    print(f"Split: {len(train_idx)} train items, {len(test_idx)} test items")
     print(f"Entries: {train_mask.sum()} train, {test_mask.sum()} test")
 
     # ----------------------------------------------------------------------

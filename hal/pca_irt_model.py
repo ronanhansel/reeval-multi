@@ -1,41 +1,34 @@
 # ==========================================================================
-# CONFIGURATION - FINAL "RESIDUAL DROPOUT" ARCHITECTURE
+# CONFIGURATION
 # ==========================================================================
 USE_EMPIRICAL_BASELINE = True
 TEST_SIZE = 0.1
 RANDOM_SEED = 42
-USE_SAE = True
 
-# ARCHITECTURE
-K_MODEL = 6             # Tighter bottleneck to force generalization (N=8 is small!)
-PCA_COMPONENTS = 48     # Clean signal, removed noise
-RESIDUAL_DROPOUT = 0.5  # CRITICAL: Drop residuals 50% of time to force embedding usage
+# MODEL
+K_MODEL = 30
+PCA_COMPONENTS = 48
 
 # SPARSITY
+LAMBDA_TAU = 0.002       # Reduced from 0.005 to stop mass extinction
+TAU_INIT = 0.5           # Start alive
+TAU_WARMUP = 200         # Epoch 0-200: No penalty
+RAMP_EPOCHS = 200        # Epoch 200-400: Slowly increase penalty
+SNAPPING_THRESHOLD = 0.005
+DEAD_ZONE_VALUE = -0.1
 TAU_THRESHOLD = 0.01
-TAU_TEMPERATURE = 0.1
-LAMBDA_TAU = 1e-4
 
 # TRAINING
 EPOCHS = 1000
 EVAL_EVERY = 50
 PATIENCE = 30
 MIN_DELTA = 1e-6
-SPARSITY_TOL = 0.0
-MIN_ACTIVE_DIMS = 1
 
 # OPTIMIZATION
 LR_THETA = 0.02
 LR_GLOBAL = 0.005
-LR_RESIDUAL = 0.02      # Fast adaptation for residuals
-
-WD_THETA = 1e-3         # Higher regularization on agents to prevent "chasing" noise
-WD_W = 1e-5             # Keep projection free
-WD_RESIDUAL = 0.01      # Moderate penalty (let dropout do the regularization work)
-
-TAU_WARMUP = 200
-TAU_INIT = -0.5
-NORMALIZE_THETA = False
+WD_THETA = 1e-3          # Higher regularization on agents to prevent "chasing" noise
+WD_W = 1e-5              # Keep projection free
 
 ## 1. Setup and Configuration
 import os
@@ -52,7 +45,6 @@ from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
 import matplotlib.pyplot as plt
 import seaborn as sns
-import json
 
 warnings.filterwarnings('ignore')
 torch.manual_seed(RANDOM_SEED)
@@ -178,27 +170,6 @@ with torch.no_grad():
     train_rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_empirical.cpu().numpy(), train_mask)
     test_rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_empirical.cpu().numpy(), test_mask)
 print(f"2. Rasch-IRT  | Train: {train_rmse_rasch:.4f} | Test: {test_rmse_rasch:.4f}")
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import numpy as np
-
-# ==========================================
-# CONFIGURATION
-# ==========================================
-K_MODEL = 30
-PCA_COMPONENTS = 48
-
-# CRITICAL TUNING FOR N=8 DATASET
-# 1. We need a much smaller lambda (1e-4 range) for BCE loss
-LAMBDA_TAU = 0.002      # Reduced from 0.005 to stop mass extinction
-TAU_INIT = 0.5           # Start alive
-TAU_WARMUP = 200         # Epoch 0-200: No penalty
-RAMP_EPOCHS = 200        # Epoch 200-400: Slowly increase penalty
-SNAPPING_THRESHOLD = 0.005 
-DEAD_ZONE_VALUE = -0.1
 
 class ReluARDModel(nn.Module):
     def __init__(self, N, J, K, d, x_j_emb, dropout=0.0):
