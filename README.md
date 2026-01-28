@@ -29,3 +29,6 @@ hf download ronanhansel/data-reeval-multi \
     --local-dir ./data-reeval-multi \
     --repo-type dataset
 ```
+
+- `helm/` contains the code for running the Amortised model on the entire HELM dataset using `embed_meta-llama_Llama-3.1-8B-Instructembed_meta-llama_Llama-3.1-8B-Instruct`, with tuned parameters.
+- `hal/` contains the code for running Amortised model on colbench from HAL with `Qwen3-Embedding-8B` along with SAE. `pca_aggregate_survey.ipynb` contains the code for running the model on held out response matrices. Whereas, `sae_beta_irt.ipynb` contains the code for running a single model on `N_samples = 22`
