@@ -6,10 +6,10 @@ from sentence_transformers import SentenceTransformer
 
 # --- Configuration ---
 # Directories
-base_dir = '/home/azureuser/cloudfiles/code/reeval-multi/hal'
+base_dir = '.'
 cache_dir = os.path.join(base_dir, '.cache/huggingface')
 result_dir = os.path.join(base_dir, 'result')
-data_dir = os.path.join(base_dir, 'data')
+data_dir = os.path.join(base_dir, '../data-reeval-multi/hal')
 
 # Model settings
 batch_size = 8
