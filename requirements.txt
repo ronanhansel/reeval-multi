@@ -7,3 +7,4 @@ matplotlib
 inspect_ai
 sentence_transformers
 hypothesaes
+seaborn
