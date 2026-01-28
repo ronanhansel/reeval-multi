@@ -12,9 +12,9 @@ conda activate reeval
 echo "[ENV] Using conda env: reeval  (python: $(which python))"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RESULT_DIR="${SCRIPT_DIR}/result"
-HAL_DIR="${SCRIPT_DIR}/hal"
-WORK_DIR="${HAL_DIR}"           # notebooks expect to run from hal/
+HAL_DIR="${SCRIPT_DIR}"              # script now lives inside hal/
+RESULT_DIR="${HAL_DIR}/result"
+WORK_DIR="${HAL_DIR}"                # notebooks expect to run from hal/
 CONVERTED_DIR="${RESULT_DIR}/_converted_scripts"
 
 NOTEBOOKS=(
@@ -27,8 +27,7 @@ echo "=========================================================="
 echo "  REPRODUCE — Notebooks → Python → Fresh Run"
 echo "=========================================================="
 echo ""
-echo "  Project root : ${SCRIPT_DIR}"
-echo "  Notebook dir : ${HAL_DIR}"
+echo "  hal dir      : ${HAL_DIR}"
 echo "  Output dir   : ${RESULT_DIR}"
 echo ""
 
