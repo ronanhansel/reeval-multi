@@ -36,6 +36,7 @@ SCRIPTS=(
     "pca_aggregate_survey.py"
     "plotting.py"
     "sae_beta_irt.py"
+    "plot_judge_iterations.py"
 )
 
 overall_ok=true
