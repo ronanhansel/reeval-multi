@@ -5,12 +5,16 @@ USE_EMPIRICAL_BASELINE = True
 TEST_SIZE = 0.1
 RANDOM_SEED = 42
 
+# CACHE SETTINGS
+CACHE_FILE = 'pca_irt_model_cache.pkl'
+
 # MODEL
 K_MODEL = 30
-PCA_COMPONENTS = 48
+USE_PCA = False  # Set to False to use raw embeddings instead of PCA
+PCA_COMPONENTS = 48  # Only used if USE_PCA is True
 
 # SPARSITY
-LAMBDA_TAU = 0.002       # Reduced from 0.005 to stop mass extinction
+LAMBDA_TAU = 0.0025       # Reduced from 0.005 to stop mass extinction
 TAU_INIT = 0.5           # Start alive
 TAU_WARMUP = 200         # Epoch 0-200: No penalty
 RAMP_EPOCHS = 200        # Epoch 200-400: Slowly increase penalty
@@ -40,6 +44,7 @@ import numpy as np
 import pandas as pd
 import warnings
 import ast
+import pickle
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
@@ -61,9 +66,24 @@ else:
 print(f"Using device: {device}")
 print(f"Baseline mode: {'EMPIRICAL' if USE_EMPIRICAL_BASELINE else 'SINGLE BINARY'}")
 print(f"Train/Test split: {int((1-TEST_SIZE)*100)}%/{int(TEST_SIZE*100)}%")
+print(f"PCA mode: {'ENABLED' if USE_PCA else 'DISABLED (using raw embeddings)'}")
 print("="*60)
 
 # Utility functions
+def load_cache():
+    """Load cached results from disk."""
+    if os.path.exists(CACHE_FILE):
+        print(f"Loading cache from {CACHE_FILE}...")
+        with open(CACHE_FILE, 'rb') as f:
+            return pickle.load(f)
+    return None
+
+def save_cache(results):
+    """Save results to disk."""
+    with open(CACHE_FILE, 'wb') as f:
+        pickle.dump(results, f)
+    print(f"Cache saved to {CACHE_FILE}")
+
 def compute_rmse(predictions, targets, mask):
     valid = mask.astype(bool) if isinstance(mask, np.ndarray) else mask
     return np.sqrt(mean_squared_error(targets[valid], predictions[valid]))
@@ -123,14 +143,21 @@ else:
     x_j_dense = torch.randn(len(prob_df.columns), 4096).to(device)
     print("Using random embeddings")
 
-# PCA compression
-print(f"\n[Preprocessing] Compressing embeddings -> {PCA_COMPONENTS} via PCA...")
-x_np = x_j_dense.cpu().numpy()
-pca = PCA(n_components=PCA_COMPONENTS, random_state=RANDOM_SEED)
-x_pca = pca.fit_transform(x_np)
-x_pca = x_pca / (np.linalg.norm(x_pca, axis=1, keepdims=True) + 1e-8)
-x_j = torch.tensor(x_pca, dtype=torch.float32).to(device)
-print(f"Explained Variance: {pca.explained_variance_ratio_.sum():.2%}")
+# Apply PCA or use raw embeddings
+if USE_PCA:
+    print(f"\n[Preprocessing] Compressing embeddings -> {PCA_COMPONENTS} via PCA...")
+    x_np = x_j_dense.cpu().numpy()
+    pca = PCA(n_components=PCA_COMPONENTS, random_state=RANDOM_SEED)
+    x_transformed = pca.fit_transform(x_np)
+    x_transformed = x_transformed / (np.linalg.norm(x_transformed, axis=1, keepdims=True) + 1e-8)
+    x_j = torch.tensor(x_transformed, dtype=torch.float32).to(device)
+    embedding_dim = PCA_COMPONENTS
+    print(f"Explained Variance: {pca.explained_variance_ratio_.sum():.2%}")
+else:
+    print(f"\n[Preprocessing] Using raw embeddings (no PCA)...")
+    x_j = x_j_dense  # Already normalized
+    embedding_dim = x_j.shape[1]
+    print(f"Embedding dimension: {embedding_dim}")
 
 # Split
 N, J = prob_df.shape
@@ -216,7 +243,7 @@ class ReluARDModel(nn.Module):
 # ==========================================
 # TRAINING LOOP (Annealed)
 # ==========================================
-model = ReluARDModel(N, J, K_MODEL, PCA_COMPONENTS, x_j, dropout=0.5).to(device)
+model = ReluARDModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
 
 optimizer = optim.AdamW([
     {'params': [model.theta, model.theta_bias], 'lr': LR_THETA, 'weight_decay': WD_THETA},
@@ -536,3 +563,8 @@ def get_run_metrics():
         'r2_test': float(r2_test),
         'pearson_test': float(pearson_corr),
     }
+
+# Save metrics to cache
+metrics = get_run_metrics()
+save_cache(metrics)
+print("\nMetrics cached for future reference.")
