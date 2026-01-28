@@ -19,3 +19,4 @@ data/
 .cache/
 temp/
 .env
+.checkpoints
