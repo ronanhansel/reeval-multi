@@ -79,20 +79,22 @@ offsets = np.arange(n_datasets, dtype=float)
 for i, it in enumerate(sorted(df_plot['Iteration'].unique())):
     subset = df_plot[df_plot['Iteration'] == it]
     # Align to dataset order
-    rates = []
+    counts = []
     positions = []
+    dataset_labels = []
     for j, ds in enumerate(datasets):
         row = subset[subset['Dataset'] == ds]
         if not row.empty:
-            rates.append(row['Rate'].values[0])
+            counts.append(row['Count'].values[0])
             positions.append(offsets[j] + i * bar_width)
+            dataset_labels.append(ds)
 
-    ax.bar(positions, rates, width=bar_width, label=f'Iter {it}',
+    ax.bar(positions, counts, width=bar_width, label=f'Iter {it}',
            color=iter_colors[i], edgecolor='white', linewidth=0.5)
 
     # Value labels on top of bars
-    for pos, rate in zip(positions, rates):
-        ax.text(pos, rate + 0.01, f'{rate:.0%}', ha='center', va='bottom',
+    for pos, count in zip(positions, counts):
+        ax.text(pos, count + 0.5, f'{int(count)}', ha='center', va='bottom',
                 fontsize=11)
 
 # Center tick labels under each group
@@ -100,10 +102,10 @@ center_offset = bar_width * (max_iter - 1) / 2
 ax.set_xticks(offsets + center_offset)
 ax.set_xticklabels(datasets)
 
-ax.set_ylabel('Rubric Satisfaction Rate')
-ax.set_ylim(0, min(1.0, df_plot['Rate'].max() + 0.15))
+ax.set_ylabel('Number of faulty questions')
+ax.set_ylim(0, df_plot['Count'].max() + 5)
 ax.grid(axis='y', linestyle='--', alpha=0.6)
-ax.legend(title='Iteration', loc='upper left', framealpha=0.9)
+ax.legend(title='Iteration', loc='upper right', framealpha=0.9)
 
 plt.tight_layout()
 out = os.path.join(RESULT_DIR, 'judge_iteration_comparison.pdf')
