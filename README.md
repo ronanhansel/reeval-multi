@@ -29,7 +29,7 @@ conda install -c conda-forge ipywidgets
 jupyter nbextension enable --py widgetsnbextension
 ```
 
-## Download Data
+## Download existing external evaluations
 
 ```bash
 huggingface-cli download ronanhansel/data-reeval-multi \
@@ -37,135 +37,11 @@ huggingface-cli download ronanhansel/data-reeval-multi \
     --repo-type dataset
 ```
 
-## Repository Structure
+- `helm/` contains the code for running the Amortised model on the entire HELM dataset using `embed_meta-llama_Llama-3.1-8B-Instructembed_meta-llama_Llama-3.1-8B-Instruct`, with tuned parameters.
+- `hal/` contains the code for running Amortised model on colbench from HAL with `Qwen3-Embedding-8B` along with SAE. `pca_aggregate_survey.ipynb` contains the code for running the model on held out response matrices. Whereas, `sae_beta_irt.ipynb` contains the code for running a single model on `N_samples = 22`
+- `item-editor/` contains the **Item-Level Fixing Pipeline** for automatically detecting and fixing Intrinsic Formation Errors (IFEs) in AI agent benchmarks. See [item-editor/README.md](item-editor/README.md) for detailed usage instructions.
 
-| Directory | Description |
-|-----------|-------------|
-| `helm/` | Amortised model on HELM dataset using Llama-3.1-8B-Instruct embeddings |
-| `hal/` | Amortised model on ColBench from HAL with Qwen3-Embedding-8B + SAE |
-| `item-editor/` | Item-Level Fixing Pipeline for detecting/fixing benchmark defects (IFEs) |
-| `data-processing/` | Scripts to convert raw benchmarks into response matrices |
-
-## Environment Variables
-
-```bash
-# For SAE feature interpretation (optional)
-export OPENAI_KEY_SAE="your-openai-key"
-
-# For item-editor rubric evaluation and judging
-export OPENAI_API_KEY="your-openai-key"
-
-# For Azure/TRAPI (Microsoft internal)
-export TRAPI_ENDPOINT="https://trapi.research.microsoft.com/gcr/shared"
-export TRAPI_API_VERSION="2025-03-01-preview"
-
-# For Claude fixer (item-editor)
-export ANTHROPIC_API_KEY="your-anthropic-key"
-
-# For Weave trace extraction (optional)
-export WANDB_API_KEY="your-wandb-key"
-```
-
----
-
-## HAL Pipeline
-
-The HAL directory implements the amortized IRT evaluation for ColBench:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    1. EMBEDDING GENERATION                          │
-│                    (generate_embeddings.py)                         │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Questions ──► Qwen3-Embedding-8B ──► 4096-dim raw embeddings      │
-│                        │                                            │
-│              ┌────────┴────────┐                                   │
-│              ▼                 ▼                                   │
-│        PCA (48-dim)      SAE (48-dim, K=4)                         │
-│              │                 │                                   │
-│              └────────┬────────┘                                   │
-│                       ▼                                            │
-│               Push to HuggingFace                                   │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    2. AMORTIZED IRT MODEL                           │
-│                      (amortized_irt.py)                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Inputs:                                                            │
-│    • Response matrices (models × questions)                        │
-│    • Pre-computed embeddings (raw / PCA / SAE)                     │
-│                                                                     │
-│  Models Compared:                                                   │
-│    • Global Mean    - predict mean response (baseline)             │
-│    • Rasch-IRT      - classic IRT: ability - difficulty            │
-│    • Amortized IRT  - embedding-based item loadings (ours)         │
-│                                                                     │
-│  Output: result/amortized_irt_{embedding_type}.csv                 │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                       3. PLOTTING                                   │
-│                       (plotting.py)                                 │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Input: result/amortized_irt_*.csv                                 │
-│                                                                     │
-│  Output PDFs:                                                       │
-│    • rmse_comparison_{type}.pdf   - bar (n=1 vs n=max)            │
-│    • auc_comparison_{type}.pdf    - bar (n=1 vs n=max)            │
-│    • rmse_convergence_{type}.pdf  - line (RMSE vs n)              │
-│    • auc_convergence_{type}.pdf   - line (AUC vs n)               │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Quick Start
-
-```bash
-cd hal
-
-# 1. Generate embeddings (downloads raw from HuggingFace if missing)
-python generate_embeddings.py                      # PCA + SAE from existing raw embeddings
-python generate_embeddings.py --from-text          # Full pipeline: text → raw → PCA → SAE
-python generate_embeddings.py --interpret          # Also interpret SAE features with GPT-4o
-python generate_embeddings.py --push-to-hf         # Upload to HuggingFace
-
-# Custom dimensions
-python generate_embeddings.py --pca-dim 64 --sae-features 64 --sae-k 4
-
-# 2. Run amortized IRT experiment
-python amortized_irt.py --embedding-type pca                # full (n=1..22)
-python amortized_irt.py --embedding-type pca --n-samples 22 # quick test
-
-# 3. Generate plots
-python plotting.py
-```
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `generate_embeddings.py` | Generate raw (Qwen3), PCA, SAE embeddings; optional interpretation; push to HF |
-| `amortized_irt.py` | Train IRT models, evaluate RMSE/AUC → CSV |
-| `plotting.py` | Load CSV → generate PDF figures |
-| `utils.py` | Shared utilities (compute_rmse, evaluate_auc) |
-
-### Embedding Types
-
-| Type | Dim | Description |
-|------|-----|-------------|
-| `raw` | 4096 | Direct Qwen3-Embedding-8B output |
-| `pca` | 48 | PCA reduction |
-| `sae` | 48 | Sparse Autoencoder (K=4 sparsity) |
-
----
+Note: To get interpretation, you need to have `OPENAI_KEY_SAE` set in your environment variable.
 
 ## Item Editor Pipeline
 

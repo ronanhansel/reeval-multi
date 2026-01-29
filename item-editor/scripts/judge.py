@@ -197,23 +197,29 @@ def setup_azure_environment(model: str | None = None) -> bool:
 
 # Pre-parse --openai-base-url BEFORE importing docent
 # (docent reads OPENAI_BASE_URL at import time)
-# If not provided, use Azure/TRAPI directly
 _pre_parser = argparse.ArgumentParser(add_help=False)
 _pre_parser.add_argument("--openai-base-url", type=str, default=None)
 _pre_parser.add_argument("--model", type=str, default=None)
+_pre_parser.add_argument("--use-azure", action="store_true", help="Use Azure/TRAPI instead of OpenAI")
 _pre_args, _ = _pre_parser.parse_known_args()
 
 _using_azure_direct = False
 _resolved_model = None
-if _pre_args.openai_base_url is None:
-    # No proxy URL provided - use Azure/TRAPI directly
+
+if _pre_args.openai_base_url is not None:
+    # Custom endpoint URL provided - use it
+    _all_urls = [u.strip() for u in _pre_args.openai_base_url.split(",")]
+    os.environ["OPENAI_BASE_URL"] = _all_urls[0]
+    os.environ["OPENAI_FALLBACK_URLS"] = ",".join(_all_urls)
+    print(f"[Proxy] Using custom endpoint: {_all_urls[0]}")
+elif _pre_args.use_azure or os.getenv("USE_AZURE_TRAPI", "").lower() == "true":
+    # Azure/TRAPI mode (for Microsoft internal use)
     _using_azure_direct = setup_azure_environment(_pre_args.model)
     if _using_azure_direct and _pre_args.model:
         # Resolve model name to TRAPI deployment name AND switch to azure_openai provider
         if ':' in _pre_args.model:
             provider, model_name = _pre_args.model.split(':', 1)
             deployment_name = resolve_trapi_deployment(model_name)
-            # CRITICAL: Use azure_openai provider instead of openai
             _resolved_model = f"azure_openai:{deployment_name}"
             print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
         else:
@@ -221,15 +227,13 @@ if _pre_args.openai_base_url is None:
             _resolved_model = f"azure_openai:{deployment_name}"
             print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
     if not _using_azure_direct:
-        # Fallback to localhost proxy
-        os.environ["OPENAI_BASE_URL"] = "http://localhost:4000/v1"
-        os.environ["OPENAI_FALLBACK_URLS"] = "http://localhost:4000/v1"
+        print("[Azure] TRAPI authentication failed. Set OPENAI_API_KEY for direct OpenAI access.")
 else:
-    # Proxy URL provided - use it
-    _all_urls = [u.strip() for u in _pre_args.openai_base_url.split(",")]
-    os.environ["OPENAI_BASE_URL"] = _all_urls[0]
-    os.environ["OPENAI_FALLBACK_URLS"] = ",".join(_all_urls)
-    print(f"[Proxy] Using custom endpoint: {_all_urls[0]}")
+    # Default: Use OpenAI directly (requires OPENAI_API_KEY)
+    if os.getenv("OPENAI_API_KEY"):
+        print("[OpenAI] Using direct OpenAI API access")
+    else:
+        print("[Warning] No OPENAI_API_KEY found. Set it for OpenAI access, or use --use-azure for TRAPI.")
 
 # Set environment BEFORE importing docent
 os.environ.setdefault("ENV_RESOLUTION_STRATEGY", "os_environ")
