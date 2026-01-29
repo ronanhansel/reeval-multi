@@ -1,0 +1,3 @@
+[submodule "item-editor/agent-debug"]
+	path = item-editor/agent-debug
+	url = https://github.com/ronanhansel/agent-debug.git
