@@ -1,10 +1,57 @@
+# Amortized IRT Evaluation Requirements
+# ======================================
+# Install with: pip install -r requirements.txt
+#
+# For item-editor, also install docent:
+#   git clone https://github.com/TransluceAI/docent.git
+#   pip install -e docent/docent/
+#   pip install -e docent/
+
+# ====================
+# Core ML Libraries
+# ====================
 torch
-numpy
-pandas
+numpy>=1.24.0
+pandas>=2.0.0
 scikit-learn
-tqdm
-matplotlib
-inspect_ai
+
+# ====================
+# Embeddings & IRT
+# ====================
 sentence_transformers
 hypothesaes
+inspect_ai
+
+# ====================
+# Visualization
+# ====================
+matplotlib
 seaborn
+
+# ====================
+# LLM Providers (item-editor)
+# ====================
+openai>=1.50.0
+anthropic>=0.30.0
+
+# ====================
+# Azure Integration (item-editor, for TRAPI)
+# ====================
+azure-identity>=1.12.0
+msal>=1.20.0
+
+# ====================
+# Weave (item-editor, for trace extraction)
+# ====================
+weave>=0.50.0
+
+# ====================
+# CLI & Utils
+# ====================
+tqdm>=4.60.0
+python-dotenv>=1.2.1
+rich>=13.0.0
+jsonschema>=4.20.0
+pydantic>=2.0.0
+tiktoken>=0.5.0
+backoff>=2.2.1

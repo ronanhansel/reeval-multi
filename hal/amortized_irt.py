@@ -6,29 +6,28 @@ Evaluates the Amortized Factor Model with pre-computed embeddings.
 Compares Global Mean, Rasch-IRT, and Amortized IRT across different
 numbers of response matrix samples.
 
-Embeddings should be pre-generated using generate_embeddings.py.
+Supports both Beta IRT (train on averaged probabilities P̂) and
+Bernoulli IRT (train on binarized responses Y).
+
+Results are saved to CSV for separate plotting.
 
 Usage:
     python amortized_irt.py --embedding-type pca        # Use PCA embeddings (default)
     python amortized_irt.py --embedding-type sae        # Use SAE embeddings
     python amortized_irt.py --embedding-type raw        # Use raw 4096-dim embeddings
+    python amortized_irt.py --model-type beta           # Train on P̂ (default)
+    python amortized_irt.py --model-type bernoulli      # Train on binary Y
     python amortized_irt.py --n-samples 22              # Run only n=22 (fast)
     python amortized_irt.py --n-samples 1,22            # Run n=1 and n=22
 """
 
-import matplotlib
-matplotlib.use("Agg")
-
 import argparse
 import ast
 import os
-import sys
 import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -36,9 +35,6 @@ import torch.optim as optim
 from huggingface_hub import snapshot_download
 
 from utils import compute_rmse, evaluate_auc
-
-sys.path.append('..')
-import style_icml
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration
@@ -76,6 +72,9 @@ LR_THETA = 0.02
 LR_GLOBAL = 0.005
 WD_THETA = 1e-3
 WD_W = 1e-5
+
+# Beta distribution precision parameter
+BETA_PHI = 10.0
 
 warnings.filterwarnings('ignore')
 
@@ -173,8 +172,15 @@ def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
     return probs
 
 
-def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle, epochs=EPOCHS):
-    """Train amortized IRT model with ARD sparsity regularization."""
+def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle,
+                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS):
+    """Train amortized IRT model with ARD sparsity regularization.
+
+    Args:
+        model_type: 'beta' uses Beta distribution NLL for continuous targets,
+                    'bernoulli' uses Bernoulli NLL for binary targets
+        beta_phi: Precision parameter for Beta distribution (only used when model_type='beta')
+    """
     optimizer = optim.AdamW([
         {'params': [model.theta, model.theta_bias], 'lr': LR_THETA, 'weight_decay': WD_THETA},
         {'params': [model.W, model.tau_raw, model.global_bias], 'lr': LR_GLOBAL, 'weight_decay': WD_W},
@@ -183,13 +189,25 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
 
     best_rmse = float('inf')
 
+    eps = 1e-6
+
     for epoch in range(epochs + 1):
         model.train()
         optimizer.zero_grad()
         probs = model()
 
-        # Reconstruction loss
-        loss_fit = F.binary_cross_entropy(probs[train_mask_t], y_train[train_mask_t])
+        # Reconstruction loss using torch.distributions
+        p = probs[train_mask_t].clamp(eps, 1 - eps)
+        y = y_train[train_mask_t].clamp(eps, 1 - eps)
+
+        if model_type == 'beta':
+            # Beta NLL: α = μφ, β = (1-μ)φ
+            dist = torch.distributions.Beta(p * beta_phi, (1 - p) * beta_phi)
+        else:
+            # Bernoulli NLL
+            dist = torch.distributions.Bernoulli(probs=p)
+
+        loss_fit = -dist.log_prob(y).mean()
 
         # ARD sparsity schedule (warmup -> ramp -> full)
         if epoch < TAU_WARMUP:
@@ -383,8 +401,15 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
 # Experiment
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_experiment(n_files, all_dfs, global_shared_indices, data):
-    """Run experiment for a specific number of sample files."""
+def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
+                   beta_phi=BETA_PHI):
+    """Run experiment for a specific number of sample files.
+
+    Args:
+        model_type: 'beta' to train on averaged probabilities P̂,
+                    'bernoulli' to train on binarized responses Y
+        beta_phi: Precision parameter for Beta distribution
+    """
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
@@ -403,7 +428,13 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data):
     train_target_matrix = np.nanmean(current_stacked, axis=0)
     train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=current_dfs[0].columns)
 
-    train_values = np.nan_to_num(train_target_df.values, nan=0.5)
+    train_values = train_target_df.values.copy()
+
+    if model_type == 'bernoulli':
+        # Binarize: convert averaged probabilities to binary responses
+        train_values = (train_values > 0.5).astype(np.float32)
+
+    train_values = np.nan_to_num(train_values, nan=0.5)
     y_train = torch.from_numpy(train_values.astype(np.float32)).to(device)
 
     train_mask_current = np.zeros_like(train_target_df.values, dtype=bool)
@@ -423,7 +454,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data):
 
     # 3. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
-    best_rmse = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask)
+    best_rmse = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
+                                     model_type=model_type, beta_phi=beta_phi)
 
     model.eval()
     with torch.no_grad():
@@ -433,6 +465,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data):
 
     return {
         'n_samples': n_files,
+        'model_type': model_type,
         'rmse_mean': rmse_mean,
         'rmse_rasch': rmse_rasch,
         'rmse_amortized': best_rmse,
@@ -441,113 +474,6 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data):
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
     }
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Plotting
-# ══════════════════════════════════════════════════════════════════════════════
-
-def plot_comparison(df_results, embedding_type):
-    """Generate comparison bar plots for n=1 vs n=max."""
-    n_max = df_results['n_samples'].max()
-    df_comp = df_results[df_results['n_samples'].isin([1, n_max])].copy()
-
-    if len(df_comp) < 2:
-        print("[WARN] Need both n=1 and n=max for comparison plots, skipping...")
-        return
-
-    df_comp['n_label'] = df_comp['n_samples'].apply(lambda x: f"n={x}")
-
-    rmse_melt = df_comp.melt(
-        id_vars=['n_label'],
-        value_vars=['rmse_mean', 'rmse_rasch', 'rmse_amortized'],
-        var_name='Model', value_name='RMSE'
-    )
-    auc_melt = df_comp.melt(
-        id_vars=['n_label'],
-        value_vars=['auc_mean', 'auc_rasch', 'auc_amortized'],
-        var_name='Model', value_name='AUC'
-    )
-
-    model_map = {
-        'rmse_mean': 'Global Mean', 'rmse_rasch': 'Rasch-IRT', 'rmse_amortized': 'Amortized IRT',
-        'auc_mean': 'Global Mean', 'auc_rasch': 'Rasch-IRT', 'auc_amortized': 'Amortized IRT'
-    }
-    rmse_melt['Model'] = rmse_melt['Model'].map(model_map)
-    auc_melt['Model'] = auc_melt['Model'].map(model_map)
-
-    model_order = ['Global Mean', 'Rasch-IRT', 'Amortized IRT']
-
-    # RMSE Comparison
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(data=rmse_melt, x='Model', y='RMSE', hue='n_label', order=model_order, ax=ax, palette="muted")
-    ax.set_xlabel('')
-    ax.set_ylim(0.15, 0.35)
-    ax.set_yticks(np.linspace(0.15, 0.35, 5))
-    ax.grid(axis='y', linestyle='--', alpha=0.6)
-    ax.tick_params(axis='x', rotation=15)
-    ax.legend(loc='upper left')
-    ax.set_title(f'RMSE Comparison ({embedding_type.upper()} embeddings)')
-    plt.tight_layout()
-    out = os.path.join(RESULT_DIR, f'rmse_comparison_{embedding_type}.pdf')
-    plt.savefig(out, bbox_inches='tight')
-    print(f"[OUTPUT] Saved plot: {out}")
-    plt.close()
-
-    # AUC Comparison
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(data=auc_melt, x='Model', y='AUC', hue='n_label', order=model_order, ax=ax, palette="muted")
-    ax.set_xlabel('')
-    ax.set_ylim(0.45, 0.9)
-    ax.grid(axis='y', linestyle='--', alpha=0.6)
-    ax.tick_params(axis='x', rotation=15)
-    ax.legend(loc='upper left')
-    ax.set_yticks(np.linspace(0.4, 1, 5))
-    ax.set_title(f'AUC Comparison ({embedding_type.upper()} embeddings)')
-    plt.tight_layout()
-    out = os.path.join(RESULT_DIR, f'auc_comparison_{embedding_type}.pdf')
-    plt.savefig(out, bbox_inches='tight')
-    print(f"[OUTPUT] Saved plot: {out}")
-    plt.close()
-
-
-def plot_convergence(df_results, embedding_type):
-    """Generate convergence line plots."""
-    if len(df_results) < 2:
-        print("[WARN] Need multiple n values for convergence plots, skipping...")
-        return
-
-    # RMSE Convergence
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(df_results['n_samples'], df_results['rmse_mean'], 's--', label='Global Mean', color='gray', linewidth=0.75)
-    ax.plot(df_results['n_samples'], df_results['rmse_rasch'], '^--', label='Rasch-IRT', color='tab:red', linewidth=0.75)
-    ax.plot(df_results['n_samples'], df_results['rmse_amortized'], 'o-', label='Amortized IRT', color='tab:blue', linewidth=0.75)
-    ax.set_xlabel('Number of samples')
-    ax.set_ylabel('RMSE')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_title(f'RMSE Convergence ({embedding_type.upper()} embeddings)')
-    plt.tight_layout()
-    out = os.path.join(RESULT_DIR, f'rmse_convergence_{embedding_type}.pdf')
-    plt.savefig(out, bbox_inches='tight')
-    print(f"[OUTPUT] Saved plot: {out}")
-    plt.close()
-
-    # AUC Convergence
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(df_results['n_samples'], df_results['auc_mean'], 's--', label='Global Mean', color='gray', linewidth=0.75)
-    ax.plot(df_results['n_samples'], df_results['auc_rasch'], '^--', label='Rasch-IRT', color='tab:red', linewidth=0.75)
-    ax.plot(df_results['n_samples'], df_results['auc_amortized'], 'o-', label='Amortized IRT', color='tab:blue', linewidth=0.75)
-    ax.set_xlabel('Number of samples')
-    ax.set_ylabel('AUC')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_title(f'AUC Convergence ({embedding_type.upper()} embeddings)')
-    plt.tight_layout()
-    out = os.path.join(RESULT_DIR, f'auc_convergence_{embedding_type}.pdf')
-    plt.savefig(out, bbox_inches='tight')
-    print(f"[OUTPUT] Saved plot: {out}")
-    plt.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -584,13 +510,30 @@ def main():
         help='Embedding dimension for pca/sae (default: 48)'
     )
     parser.add_argument(
+        '--model-type', type=str, default='beta',
+        choices=['beta', 'bernoulli'],
+        help='IRT model type: beta (train on P̂) or bernoulli (train on binary Y) (default: beta)'
+    )
+    parser.add_argument(
+        '--beta-phi', type=float, default=BETA_PHI,
+        help=f'Beta distribution precision parameter φ (default: {BETA_PHI}). Higher = more concentrated.'
+    )
+    parser.add_argument(
         '--n-samples', type=str, default='all',
         help='Which n values to run. Examples: "all", "22", "1,22", "1-5,22"'
+    )
+    parser.add_argument(
+        '--output', type=str, default=None,
+        help='Output CSV path (default: result/amortized_irt_{embedding_type}_{model_type}.csv)'
     )
     args = parser.parse_args()
 
     print(f"Using device: {device}")
     print(f"Embedding type: {args.embedding_type}")
+    if args.model_type == 'beta':
+        print(f"Model type: beta (Beta distribution NLL on P̂, φ={args.beta_phi})")
+    else:
+        print(f"Model type: bernoulli (Bernoulli NLL on binary Y)")
 
     # Load data
     all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
@@ -608,13 +551,15 @@ def main():
 
     # Run experiments
     print("\n" + "=" * 60)
-    print(f"STARTING EXPERIMENTS ({actual_emb_type.upper()} embeddings)")
+    print(f"STARTING EXPERIMENTS ({actual_emb_type.upper()} embeddings, {args.model_type.upper()} model)")
     print("=" * 60)
 
     results = []
     for i, n in enumerate(n_values):
         print(f"\n[{i+1}/{len(n_values)}] Processing with n={n} sample(s)...")
-        result = run_experiment(n, all_dfs, global_shared_indices, data)
+        result = run_experiment(n, all_dfs, global_shared_indices, data,
+                                model_type=args.model_type, beta_phi=args.beta_phi)
+        result['embedding_type'] = actual_emb_type
         results.append(result)
 
         print(f"   -> RMSE | Mean: {result['rmse_mean']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
@@ -622,14 +567,15 @@ def main():
         print(f"   -> AUC  | Mean: {result['auc_mean']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
               f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
 
+    # Save results to CSV
+    df_results = pd.DataFrame(results)
+    output_path = args.output or os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}.csv')
+    df_results.to_csv(output_path, index=False)
+
     print("\n" + "=" * 60)
     print("EXPERIMENT COMPLETE")
     print("=" * 60)
-
-    # Generate plots
-    df_results = pd.DataFrame(results)
-    plot_comparison(df_results, actual_emb_type)
-    plot_convergence(df_results, actual_emb_type)
+    print(f"Results saved to: {output_path}")
 
 
 if __name__ == '__main__':
