@@ -104,6 +104,38 @@ python scripts/claude_fixer_scicode.py \
 python scripts/run_scicode_fixes.py --all --prefix honey_ --docker
 ```
 
+If you want to use existing runs from HAL for rubrics evaluation, you can use `data-collection/hal.py` to download the traces and decrypt with `hal-decrypt -D traces`, make sure to have done `pip install -e .` in the submodule agent-debug/hal-harness
+
+### Running New Benchmarks
+
+To run benchmarks and generate new traces for evaluation, use the unified benchmark runner in the agent-debug submodule:
+
+```bash
+cd item-editor/agent-debug
+
+# Run all benchmarks with all models
+./bin/run_all_benchmarks.sh --prefix sun1_ --benchmarks scicode,corebench,scienceagentbench,colbench --parallel-models 5 --parallel-tasks 10 --docker
+
+# Run specific benchmark
+./bin/run_all_benchmarks.sh --prefix test_ --benchmarks scicode --parallel-models 3 --parallel-tasks 5 --docker
+
+# Sample a few tasks for testing
+./bin/run_all_benchmarks.sh --prefix test_ --benchmarks scicode --sample-tasks 5 --docker
+```
+
+**Key Options:**
+- `--prefix PREFIX`: Run ID prefix for organizing outputs
+- `--benchmarks LIST`: Comma-separated list (scicode, corebench, scienceagentbench, colbench)
+- `--parallel-models N`: Number of models to run concurrently
+- `--parallel-tasks N`: Number of tasks per model to run concurrently
+- `--docker`: Run in Docker containers (recommended for reproducibility)
+- `--sample-tasks N`: Run only N random tasks (useful for testing)
+- `--trace-mode MODE`: Trace storage mode (local or weave)
+
+After running benchmarks, traces will be available in `item-editor/agent-debug/traces/` for rubric evaluation.
+
+For detailed instructions on the complete pipeline including benchmark-specific setup, Docker configuration, and troubleshooting, see [item-editor/agent-debug/README.md](item-editor/agent-debug/README.md).
+
 ### Step 1: Rubric Evaluation
 
 Evaluate failed tasks against benchmark-specific rubrics.
