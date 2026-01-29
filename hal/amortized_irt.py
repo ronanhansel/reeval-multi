@@ -45,7 +45,6 @@ os.makedirs(RESULT_DIR, exist_ok=True)
 
 # Data paths
 HF_REPO_ID = "ronanhansel/data-reeval-multi"
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data-reeval-multi')
 
 # Data split
 TEST_SIZE = 0.1
@@ -254,19 +253,12 @@ def load_data(embedding_type='pca', embedding_dim=48):
         embedding_type: 'raw', 'pca', or 'sae'
         embedding_dim: dimension for pca/sae embeddings (ignored for raw)
     """
-    resmat_dir = os.path.join(DATA_DIR, 'colbench')
-    processed_emb_dir = os.path.join(DATA_DIR, 'hal', 'processed_embeddings')
-    raw_emb_file = os.path.join(DATA_DIR, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
+    # Download from HuggingFace (uses cache if already downloaded)
+    data_dir = snapshot_download(repo_id=HF_REPO_ID, repo_type="dataset")
 
-    # Download from HuggingFace if data not present
-    if not os.path.exists(resmat_dir):
-        print(f"Data not found locally. Downloading from HuggingFace ({HF_REPO_ID})...")
-        snapshot_download(
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            local_dir=DATA_DIR,
-        )
-        print("Download complete.")
+    resmat_dir = os.path.join(data_dir, 'colbench')
+    processed_emb_dir = os.path.join(data_dir, 'hal', 'processed_embeddings')
+    raw_emb_file = os.path.join(data_dir, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
 
     # Load response matrices
     all_files = sorted([f for f in os.listdir(resmat_dir) if f.startswith('resmat')])
