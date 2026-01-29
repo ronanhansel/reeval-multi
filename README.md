@@ -4,29 +4,121 @@ Research code for "Reliable and Efficient Amortized Model-based Evaluation for A
 
 ## Environment Setup
 
+### Prerequisites
+
+- **OS**: Linux (Ubuntu 20.04+) or macOS
+- **Python**: 3.10+ (for reeval analysis) or 3.11-3.12 (for item-editor pipeline)
+- **Docker**: Docker Engine 20.10+ (required for running benchmarks)
+- **Conda**: Miniconda or Anaconda
+- **Git**: For cloning repository and submodules
+
+### Basic Installation
+
 ```bash
+# Clone repository with submodules
+git clone --recursive https://github.com/ronanhansel/reeval-multi.git
+cd reeval-multi
+
+# If you already cloned without --recursive, initialize submodules:
+git submodule update --init --recursive
+
+# Create conda environment
 CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes conda create -n reeval python=3.10 -y
 conda activate reeval
-pip install -r requirements.txt
 
-# For item-editor pipeline, also install docent:
-git clone https://github.com/TransluceAI/docent.git
-pip install -e docent/docent/
-pip install -e docent/
+# Install base requirements
+pip install -r requirements.txt
 ```
 
-To install latex-related packages (linux):
+### Item-Editor Pipeline Setup
+
+The item-editor pipeline requires additional setup for the agent-debug submodule and its dependencies:
+
+```bash
+# Navigate to agent-debug submodule
+cd item-editor/agent-debug
+
+# Ensure submodules are initialized (hal-harness and docent)
+git submodule update --init --recursive
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install hal-harness (HAL evaluation framework)
+pip install -e ./hal-harness
+
+# Install docent (rubric evaluation library)
+pip install -e ./docent/docent/
+pip install -e ./docent/
+
+# Return to project root
+cd ../..
+```
+
+**Note**: The `item-editor/agent-debug/` submodule contains two nested submodules:
+- `hal-harness`: Princeton PLI's Holistic Agent Leaderboard evaluation framework
+- `docent`: TransluceAI's agent analysis platform for rubric-based evaluation
+
+### Optional: LaTeX Installation (Linux)
+
+For generating plots and figures:
 
 ```bash
 sudo apt update
 sudo apt install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra cm-super dvipng fonts-liberation
 ```
 
+### Optional: Jupyter Notebook Widgets (Azure)
+
 If you have problems with jupyter notebook not rendering tqdm correctly on Azure Notebooks:
 
 ```bash
 conda install -c conda-forge ipywidgets
 jupyter nbextension enable --py widgetsnbextension
+```
+
+### Environment Variables
+
+For the item-editor pipeline, create `item-editor/agent-debug/hal-harness/.env`:
+
+```bash
+# API Keys
+OPENAI_API_KEY=sk-your-key-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+WANDB_API_KEY=your-wandb-key
+HF_TOKEN=hf_your-token
+
+# For Azure/TRAPI direct access (recommended)
+USE_DIRECT_AZURE=true
+TRAPI_ENDPOINT=https://trapi.research.microsoft.com/gcr/shared
+TRAPI_API_VERSION=2025-03-01-preview
+TRAPI_SCOPE=api://trapi/.default
+```
+
+### Azure Authentication (for TRAPI access)
+
+```bash
+# Login to Azure
+az login
+
+# Verify authentication
+az account show
+az account get-access-token --resource api://trapi/.default
+```
+
+### Verification
+
+Verify your installation:
+
+```bash
+# Test base environment
+python -c "import numpy, pandas, matplotlib; print('Base packages OK')"
+
+# Test item-editor dependencies (from item-editor/agent-debug/)
+cd item-editor/agent-debug
+python -c "import hal; print('hal-harness OK')"
+python -c "import docent; print('docent OK')"
+cd ../..
 ```
 
 ## Directory Structure
