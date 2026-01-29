@@ -20,3 +20,5 @@ data/
 temp/
 .env
 .checkpoints
+embeddings_cache/
+.claude/

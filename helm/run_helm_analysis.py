@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
-HELM Analysis: Baseline Fitting (Naive, Rasch, Amortized IRT)
+HELM Analysis: Baseline Fitting (Naive, Rasch, Amortized IRT with Raw/PCA/SAE)
 
-Merges HELM analysis into a single workflow, similar to hal/amortized_irt.py.
+Merges HELM analysis into a single workflow.
+Runs 5 models:
+1. Global Mean
+2. Rasch IRT
+3. Amortized IRT (Raw Embeddings)
+4. Amortized IRT (PCA Embeddings)
+5. Amortized IRT (SAE Embeddings)
 """
 
 import matplotlib
@@ -22,13 +28,23 @@ import torch.nn.functional as F
 import torch.optim as optim
 from huggingface_hub import snapshot_download
 from sklearn.metrics import mean_squared_error, roc_auc_score
+from sklearn.decomposition import PCA
+
+try:
+    from hypothesaes.quickstart import train_sae
+    HAS_SAE_LIB = True
+except ImportError:
+    HAS_SAE_LIB = False
+    print("WARNING: 'hypothesaes' library not found. SAE embeddings will not be available.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
 RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
+EMB_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'embeddings_cache')
 os.makedirs(RESULT_DIR, exist_ok=True)
+os.makedirs(EMB_CACHE_DIR, exist_ok=True)
 
 # Data paths
 HF_REPO_ID = "ronanhansel/data-reeval-multi"
@@ -59,6 +75,11 @@ LR_THETA = 0.02
 LR_GLOBAL = 0.005
 WD_THETA = 1e-3
 WD_W = 1e-5
+
+# Embedding Config
+PCA_DIM = 48
+SAE_FEATURES = 48
+SAE_K = 4
 
 warnings.filterwarnings('ignore')
 
@@ -93,6 +114,10 @@ def evaluate_auc(y_pred_tensor, y_true_tensor, mask_tensor):
     except ValueError:
         return 0.5
 
+def normalize_embeddings(embeddings):
+    """L2 normalize embeddings."""
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8
+    return embeddings / norms
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Model Definition
@@ -228,7 +253,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Data Loading
+# Data Loading & Processing
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_data():
@@ -293,17 +318,65 @@ def load_data():
     valid_indices = np.array(valid_indices)
     y_df = y_df.iloc[:, valid_indices]
     
-    x_j_dense = torch.tensor(np.array(aligned_embs), dtype=torch.float32).to(device)
-    x_j_dense = F.normalize(x_j_dense, p=2, dim=1)
-
+    # Raw embeddings (numpy array)
+    raw_embs_np = np.array(aligned_embs, dtype=np.float32)
     print(f"Final Data Shape: {y_df.shape}")
-    print(f"Embeddings Shape: {x_j_dense.shape}")
+    print(f"Embeddings Shape: {raw_embs_np.shape}")
 
-    return y_df, x_j_dense
+    return y_df, raw_embs_np
 
+def get_pca_embeddings(raw_embs_np):
+    """Generate or load PCA embeddings."""
+    cache_path = os.path.join(EMB_CACHE_DIR, f'embeddings_pca_{PCA_DIM}.npy')
+    
+    if os.path.exists(cache_path):
+        print(f"Loading cached PCA embeddings from {cache_path}")
+        return np.load(cache_path)
+    
+    print(f"Generating PCA embeddings (dim={PCA_DIM})...")
+    pca = PCA(n_components=PCA_DIM, random_state=RANDOM_SEED)
+    raw_norm = normalize_embeddings(raw_embs_np)
+    pca_embs = pca.fit_transform(raw_norm)
+    pca_embs = normalize_embeddings(pca_embs)
+    
+    np.save(cache_path, pca_embs)
+    print(f"Saved PCA embeddings to {cache_path}")
+    return pca_embs
 
-def prepare_experiment_data(y_df, x_j):
-    """Prepare train/test splits."""
+def get_sae_embeddings(raw_embs_np):
+    """Generate or load SAE embeddings."""
+    cache_path = os.path.join(EMB_CACHE_DIR, f'embeddings_sae_{SAE_FEATURES}.npy')
+    
+    if os.path.exists(cache_path):
+        print(f"Loading cached SAE embeddings from {cache_path}")
+        return np.load(cache_path)
+    
+    if not HAS_SAE_LIB:
+        print("SAE library not available, returning None")
+        return None
+
+    print(f"Generating SAE embeddings (dim={SAE_FEATURES}, k={SAE_K})...")
+    raw_norm = normalize_embeddings(raw_embs_np)
+    
+    sae = train_sae(
+        embeddings=raw_norm,
+        M=SAE_FEATURES,
+        K=SAE_K,
+        batch_size=512,
+        n_epochs=100,
+        learning_rate=5e-4,
+        checkpoint_dir='/tmp/_helm_sae_ckpt'
+    )
+    
+    sae_embs = sae.get_activations(raw_norm)
+    sae_embs = normalize_embeddings(sae_embs)
+    
+    np.save(cache_path, sae_embs)
+    print(f"Saved SAE embeddings to {cache_path}")
+    return sae_embs
+
+def prepare_experiment_data(y_df, x_j_raw, x_j_pca, x_j_sae):
+    """Prepare train/test splits and tensors."""
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
@@ -316,8 +389,6 @@ def prepare_experiment_data(y_df, x_j):
     test_idx = J_indices[:n_test]
     train_idx = J_indices[n_test:]
 
-    print(f"Train items: {len(train_idx)}, Test items: {len(test_idx)}")
-
     train_mask = np.zeros_like(y_vals, dtype=bool)
     train_mask[:, train_idx] = ~np.isnan(y_vals)[:, train_idx]
 
@@ -327,21 +398,25 @@ def prepare_experiment_data(y_df, x_j):
     y_data = torch.from_numpy(np.nan_to_num(y_vals, nan=0.5)).to(device)
     train_mask_t = torch.from_numpy(train_mask).to(device)
     test_mask_t = torch.from_numpy(test_mask).to(device)
+    
+    # Process embeddings to tensors
+    def to_tensor(arr):
+        if arr is None: return None
+        t = torch.tensor(arr, dtype=torch.float32).to(device)
+        return F.normalize(t, p=2, dim=1)
 
     return {
         'y_data': y_data,
-        'train_idx': train_idx,
-        'test_idx': test_idx,
         'train_mask': train_mask,
         'test_mask': test_mask,
         'train_mask_t': train_mask_t,
         'test_mask_t': test_mask_t,
-        'x_j': x_j,
+        'x_j_raw': to_tensor(x_j_raw),
+        'x_j_pca': to_tensor(x_j_pca),
+        'x_j_sae': to_tensor(x_j_sae),
         'N': N,
-        'J': J,
-        'embedding_dim': x_j.shape[1],
+        'J': J
     }
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Experiment
@@ -349,59 +424,79 @@ def prepare_experiment_data(y_df, x_j):
 
 def run_experiment(data):
     """Run experiment for all baselines."""
-    torch.manual_seed(RANDOM_SEED)
-    np.random.seed(RANDOM_SEED)
-
     N = data['N']
     J = data['J']
     y_data = data['y_data']
     train_mask_t = data['train_mask_t']
     test_mask = data['test_mask']
     test_mask_t = data['test_mask_t']
-    x_j = data['x_j']
-    embedding_dim = data['embedding_dim']
+    
+    results = {}
 
+    # 1. Global Mean
     print("\nRunning Model 1: Global Mean (Naive)...")
     mean_val = y_data[train_mask_t].mean()
     pred_mean = mean_val.expand_as(y_data)
-    rmse_mean = compute_rmse(pred_mean.cpu().numpy(), y_data.cpu().numpy(), test_mask)
-    auc_mean = evaluate_auc(pred_mean, y_data, test_mask_t)
-    print(f"  -> RMSE: {rmse_mean:.4f} | AUC: {auc_mean:.4f}")
+    results['rmse_mean'] = compute_rmse(pred_mean.cpu().numpy(), y_data.cpu().numpy(), test_mask)
+    results['auc_mean'] = evaluate_auc(pred_mean, y_data, test_mask_t)
+    print(f"  -> RMSE: {results['rmse_mean']:.4f} | AUC: {results['auc_mean']:.4f}")
 
+    # 2. Rasch IRT
     print("\nRunning Model 2: Rasch IRT...")
     p_rasch = train_rasch(N, J, y_data, train_mask_t)
-    rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_data.cpu().numpy(), test_mask)
-    auc_rasch = evaluate_auc(p_rasch, y_data, test_mask_t)
-    print(f"  -> RMSE: {rmse_rasch:.4f} | AUC: {auc_rasch:.4f}")
+    results['rmse_rasch'] = compute_rmse(p_rasch.cpu().numpy(), y_data.cpu().numpy(), test_mask)
+    results['auc_rasch'] = evaluate_auc(p_rasch, y_data, test_mask_t)
+    print(f"  -> RMSE: {results['rmse_rasch']:.4f} | AUC: {results['auc_rasch']:.4f}")
 
-    print("\nRunning Model 3: Amortized IRT...")
-    model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
-    best_rmse_amortized = train_amortized_irt(model, y_data, train_mask_t, y_data, test_mask)
-    
-    model.eval()
-    with torch.no_grad():
-        p_amortized = model()
-        auc_amortized = evaluate_auc(p_amortized, y_data, test_mask_t)
-    print(f"  -> RMSE: {best_rmse_amortized:.4f} | AUC: {auc_amortized:.4f}")
+    # Helper for Amortized Models
+    def run_amortized(name, x_j):
+        if x_j is None:
+            print(f"\nSkipping Model: Amortized IRT ({name}) - Embeddings missing")
+            return float('nan'), float('nan')
+        
+        print(f"\nRunning Model: Amortized IRT ({name})...")
+        emb_dim = x_j.shape[1]
+        model = AmortizedIRTModel(N, J, K_MODEL, emb_dim, x_j, dropout=0.5).to(device)
+        best_rmse = train_amortized_irt(model, y_data, train_mask_t, y_data, test_mask)
+        
+        model.eval()
+        with torch.no_grad():
+            p_out = model()
+            auc = evaluate_auc(p_out, y_data, test_mask_t)
+        
+        print(f"  -> RMSE: {best_rmse:.4f} | AUC: {auc:.4f}")
+        return best_rmse, auc
 
-    return {
-        'rmse_mean': rmse_mean,
-        'rmse_rasch': rmse_rasch,
-        'rmse_amortized': best_rmse_amortized,
-        'auc_mean': auc_mean,
-        'auc_rasch': auc_rasch,
-        'auc_amortized': auc_amortized,
-    }
+    # 3. Amortized (Raw)
+    r, a = run_amortized("Raw", data['x_j_raw'])
+    results['rmse_amortized_raw'] = r
+    results['auc_amortized_raw'] = a
+
+    # 4. Amortized (PCA)
+    r, a = run_amortized("PCA", data['x_j_pca'])
+    results['rmse_amortized_pca'] = r
+    results['auc_amortized_pca'] = a
+
+    # 5. Amortized (SAE)
+    r, a = run_amortized("SAE", data['x_j_sae'])
+    results['rmse_amortized_sae'] = r
+    results['auc_amortized_sae'] = a
+
+    return results
 
 
 def main():
     print(f"Using device: {device}")
 
     # Load data
-    y_df, x_j = load_data()
+    y_df, raw_embs_np = load_data()
+    
+    # Get/Generate Embeddings
+    pca_embs_np = get_pca_embeddings(raw_embs_np)
+    sae_embs_np = get_sae_embeddings(raw_embs_np)
 
     # Prepare experiment data
-    data = prepare_experiment_data(y_df, x_j)
+    data = prepare_experiment_data(y_df, raw_embs_np, pca_embs_np, sae_embs_np)
 
     # Run experiment
     results = run_experiment(data)

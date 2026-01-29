@@ -23,6 +23,15 @@ except ImportError:
     print("Warning: style_icml not found, using default style.")
 
 RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
+os.makedirs(RESULT_DIR, exist_ok=True)
+
+colors = sns.color_palette("muted")
+
+
+muted_blue   = colors[0]
+muted_orange = colors[1]
+muted_green  = colors[2]
+muted_red    = colors[3]
 
 def plot_helm_results():
     results_path = os.path.join(RESULT_DIR, 'helm_results.csv')
@@ -37,42 +46,61 @@ def plot_helm_results():
 
     # Melt dataframe for plotting
     rmse_melt = df_results.melt(
-        value_vars=['rmse_mean', 'rmse_rasch', 'rmse_amortized'],
+        value_vars=['rmse_mean', 'rmse_rasch', 'rmse_amortized_raw', 'rmse_amortized_pca', 'rmse_amortized_sae'],
         var_name='Model', value_name='RMSE'
     )
     auc_melt = df_results.melt(
-        value_vars=['auc_mean', 'auc_rasch', 'auc_amortized'],
+        value_vars=['auc_mean', 'auc_rasch', 'auc_amortized_raw', 'auc_amortized_pca', 'auc_amortized_sae'],
         var_name='Model', value_name='AUC'
     )
 
     model_map = {
-        'rmse_mean': 'Global Mean', 'rmse_rasch': 'Rasch-IRT', 'rmse_amortized': 'Amortized IRT',
-        'auc_mean': 'Global Mean', 'auc_rasch': 'Rasch-IRT', 'auc_amortized': 'Amortized IRT'
+        'rmse_mean': 'Global Mean', 
+        'rmse_rasch': 'Rasch-IRT', 
+        'rmse_amortized_raw': 'Amortized (Raw)',
+        'rmse_amortized_pca': 'Amortized (PCA)',
+        'rmse_amortized_sae': 'Amortized (SAE)',
+        'auc_mean': 'Global Mean', 
+        'auc_rasch': 'Rasch-IRT', 
+        'auc_amortized_raw': 'Amortized (Raw)',
+        'auc_amortized_pca': 'Amortized (PCA)',
+        'auc_amortized_sae': 'Amortized (SAE)'
     }
+    
     rmse_melt['Model'] = rmse_melt['Model'].map(model_map)
     auc_melt['Model'] = auc_melt['Model'].map(model_map)
 
-    model_order = ['Global Mean', 'Rasch-IRT', 'Amortized IRT']
+    model_order = ['Global Mean', 'Rasch-IRT', 'Amortized (PCA)', 'Amortized (SAE)', 'Amortized (Raw)']
     
-    # Colors
-    colors = sns.color_palette("muted")
+    # Filter out NaNs (e.g. if SAE failed)
+    rmse_melt = rmse_melt.dropna(subset=['RMSE'])
+    auc_melt = auc_melt.dropna(subset=['AUC'])
     
+    # Update order if items are missing
+    existing_models = set(rmse_melt['Model'].unique())
+    model_order = [m for m in model_order if m in existing_models]
+
     # Plot AUC
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(10, 5))
     sns.barplot(
         data=auc_melt,
         x='Model',
         y='AUC',
         order=model_order,
         ax=ax,
-        palette="muted"
+        color=muted_blue,
+        legend=False
     )
     ax.set_xlabel('')
     ax.set_ylabel('AUC')
+    plt.xticks(rotation=45, ha='center')
     
     # Add values on top of bars
-    for i, v in enumerate(auc_melt.set_index('Model').loc[model_order]['AUC']):
-        ax.text(i, v + 0.01, f'{v:.4f}', ha='center')
+    for i, model in enumerate(model_order):
+        rows = auc_melt[auc_melt['Model'] == model]
+        if not rows.empty:
+            v = rows['AUC'].values[0]
+            ax.text(i, v + 0.01, f'{v:.4f}', ha='center')
         
     ax.set_ylim(0.4, 1.0)
     ax.grid(axis='y', linestyle='--', alpha=0.6)
@@ -85,21 +113,26 @@ def plot_helm_results():
     plt.close()
 
     # Plot RMSE
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(10, 5))
     sns.barplot(
         data=rmse_melt,
         x='Model',
         y='RMSE',
         order=model_order,
         ax=ax,
-        palette="muted"
+        color=muted_blue,
+        legend=False
     )
     ax.set_xlabel('')
     ax.set_ylabel('RMSE')
+    plt.xticks(rotation=45, ha='center')
     
     # Add values on top of bars
-    for i, v in enumerate(rmse_melt.set_index('Model').loc[model_order]['RMSE']):
-        ax.text(i, v + 0.005, f'{v:.4f}', ha='center')
+    for i, model in enumerate(model_order):
+        rows = rmse_melt[rmse_melt['Model'] == model]
+        if not rows.empty:
+            v = rows['RMSE'].values[0]
+            ax.text(i, v + 0.005, f'{v:.4f}', ha='center')
 
     ax.set_ylim(0.0, rmse_melt['RMSE'].max() + 0.1)
     ax.grid(axis='y', linestyle='--', alpha=0.6)

@@ -1,12 +1,15 @@
 #!/bin/bash
 # Reproduce HELM Analysis
 
+# Use the reeval conda environment python
+PYTHON_EXEC="/home/v-tatruong/miniconda3/envs/reeval/bin/python3"
+
 # 1. Run Analysis (Fitting Models)
 echo "Running HELM Analysis..."
-python3 run_helm_analysis.py
+$PYTHON_EXEC run_helm_analysis.py
 
 # 2. Plot Results
 echo "Plotting Results..."
-python3 plot_helm_results.py
+$PYTHON_EXEC plot_helm_results.py
 
 echo "Done. Results saved in helm/result/"
