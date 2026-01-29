@@ -134,7 +134,7 @@ def visualize_binary_response_matrix(Y, title="Response Matrix Y", output_path=N
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-        fig, ax = plt.subplots(figsize=(14, 6))
+        fig, ax = plt.subplots(figsize=(6.75, 2.5))  # Full ICML page width
         cax = ax.imshow(values, aspect='auto', cmap=cmap, norm=norm, interpolation='nearest')
 
         ax.set_title(title)
@@ -142,9 +142,9 @@ def visualize_binary_response_matrix(Y, title="Response Matrix Y", output_path=N
         ax.set_ylabel('Models (sorted by performance)')
 
         # Add model labels on y-axis
-        short_labels = [lbl.split('.')[-1][:30] if '.' in lbl else lbl[:30] for lbl in row_labels]
+        short_labels = [lbl.split('.')[-1][:25] if '.' in lbl else lbl[:25] for lbl in row_labels]
         ax.set_yticks(range(len(row_labels)))
-        ax.set_yticklabels(short_labels, fontsize=4)
+        ax.set_yticklabels(short_labels, fontsize=6)
 
         # Colorbar
         cbar = plt.colorbar(cax, ax=ax, shrink=0.8)
@@ -152,7 +152,7 @@ def visualize_binary_response_matrix(Y, title="Response Matrix Y", output_path=N
         cbar.set_ticklabels(['0 (Fail)', '1 (Pass)'])
 
         if output_path:
-            plt.savefig(output_path, dpi=600, bbox_inches='tight')
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
             print(f"[OUTPUT] Saved binary response matrix plot: {output_path}")
 
         plt.close()
@@ -192,7 +192,7 @@ def visualize_probability_matrix(P_hat, title="Empirical Probability Matrix $\\h
     cmap = plt.cm.RdBu
 
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
-        fig, ax = plt.subplots(figsize=(14, 6))
+        fig, ax = plt.subplots(figsize=(6.75, 2.5))  # Full ICML page width
         cax = ax.imshow(values, aspect='auto', cmap=cmap, vmin=0, vmax=1, interpolation='nearest')
 
         ax.set_title(title)
@@ -200,16 +200,16 @@ def visualize_probability_matrix(P_hat, title="Empirical Probability Matrix $\\h
         ax.set_ylabel('Models (sorted by performance)')
 
         # Add model labels on y-axis
-        short_labels = [lbl.split('.')[-1][:30] if '.' in lbl else lbl[:30] for lbl in row_labels]
+        short_labels = [lbl.split('.')[-1][:25] if '.' in lbl else lbl[:25] for lbl in row_labels]
         ax.set_yticks(range(len(row_labels)))
-        ax.set_yticklabels(short_labels, fontsize=4)
+        ax.set_yticklabels(short_labels, fontsize=6)
 
         # Colorbar
         cbar = plt.colorbar(cax, ax=ax, shrink=0.8)
         cbar.set_label('Probability')
 
         if output_path:
-            plt.savefig(output_path, dpi=600, bbox_inches='tight')
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
             print(f"[OUTPUT] Saved probability matrix plot: {output_path}")
 
         plt.close()
