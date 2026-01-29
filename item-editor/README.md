@@ -56,7 +56,7 @@ conda activate item-editor
 pip install -r requirements.txt
 
 # Clone and install docent (required for rubric evaluation)
-git clone https://github.com/ronanhansel/docent.git
+git clone https://github.com/TransluceAI/docent.git
 pip install -e docent/docent/
 pip install -e docent/
 ```
@@ -87,8 +87,9 @@ export WANDB_API_KEY="your-wandb-key"
 pip install huggingface_hub
 
 # Download traces to data-reeval-multi/traces/
+# Download traces (update with your dataset path)
 huggingface-cli download ronanhansel/data-reeval-multi \
-    --local-dir ./data-reeval-multi \
+    --local-dir ../data-reeval-multi \
     --repo-type dataset
 
 # Your traces will be in data-reeval-multi/traces/
@@ -362,7 +363,7 @@ Model configs in `configs/model_to_baseline_{benchmark}.json` specify:
 # 1. Setup
 cd item-editor
 pip install -r requirements.txt
-git clone https://github.com/ronanhansel/docent.git
+git clone https://github.com/TransluceAI/docent.git
 pip install -e docent/docent/ && pip install -e docent/
 
 # 2. Download traces
@@ -423,6 +424,6 @@ diff rubrics_output/scicode/ rubrics_output/scicode_after/
 
 ## References
 
-- HAL Harness: https://github.com/ronanhansel/hal-harness
-- Docent Framework: https://github.com/ronanhansel/docent
-- Traces Dataset: https://huggingface.co/datasets/ronanhansel/data-reeval-multi
+- [HAL Harness](https://github.com/princeton-pli/hal-harness) - Princeton PLI's Holistic Agent Leaderboard evaluation framework
+- [Docent](https://github.com/TransluceAI/docent) - TransluceAI's agent analysis platform for rubric-based evaluation
+- [HAL Leaderboard](https://hal.cs.princeton.edu/) - Official HAL leaderboard website

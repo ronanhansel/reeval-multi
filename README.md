@@ -25,7 +25,8 @@ jupyter nbextension enable --py widgetsnbextension
 ## Download existing external evaluations
 
 ```bash
-hf download ronanhansel/data-reeval-multi \
+# Download traces dataset (update with your dataset path after upload)
+huggingface-cli download <your-hf-username>/data-reeval-multi \
     --local-dir ./data-reeval-multi \
     --repo-type dataset
 ```
@@ -50,8 +51,8 @@ Traces → Rubric Evaluation → Verdict Aggregation → Fix Generation → Fix 
 cd item-editor
 pip install -r requirements.txt
 
-# Clone docent dependency
-git clone https://github.com/ronanhansel/docent.git
+# Clone docent dependency (TransluceAI's agent analysis platform)
+git clone https://github.com/TransluceAI/docent.git
 pip install -e docent/docent/ && pip install -e docent/
 
 # Run rubric evaluation

@@ -3,7 +3,7 @@
 # Install with: pip install -r requirements.txt
 #
 # Then also install docent (required for rubric evaluation):
-#   git clone https://github.com/ronanhansel/docent.git
+#   git clone https://github.com/TransluceAI/docent.git
 #   pip install -e docent/docent/
 #   pip install -e docent/
 
