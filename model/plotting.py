@@ -27,7 +27,6 @@ from huggingface_hub import snapshot_download
 from tueplots import bundles
 
 sys.path.append('..')
-import style_icml
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration

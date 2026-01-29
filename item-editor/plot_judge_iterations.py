@@ -8,11 +8,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import sys
+from tueplots import bundles
 
-sys.path.append('..')
+plt.rcParams.update(bundles.icml2024())
 colors = sns.color_palette("muted")
-import style_icml
 
 RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
 os.makedirs(RESULT_DIR, exist_ok=True)
