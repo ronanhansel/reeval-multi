@@ -50,8 +50,7 @@ except ImportError:
 
 HF_REPO_ID = "ronanhansel/data-reeval-multi"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, '..', 'data-reeval-multi')
-CACHE_DIR = os.path.join(SCRIPT_DIR, '.cache/huggingface')
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'processed_embeddings')
 
 # Benchmarks for raw embedding generation
 BENCHMARKS = [
@@ -167,19 +166,14 @@ def generate_raw_embeddings_from_text(data_dir, output_file, model_name=DEFAULT_
 # ══════════════════════════════════════════════════════════════════════════════
 
 def ensure_data_downloaded():
-    """Download raw data from HuggingFace if not present."""
-    emb_file = os.path.join(DATA_DIR, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
+    """Download raw data from HuggingFace (uses cache if already downloaded).
 
-    if not os.path.exists(emb_file):
-        print(f"Raw embeddings not found. Downloading from HuggingFace ({HF_REPO_ID})...")
-        snapshot_download(
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            local_dir=DATA_DIR,
-        )
-        print("Download complete.")
-
-    return emb_file
+    Returns:
+        tuple: (data_dir, emb_file) paths
+    """
+    data_dir = snapshot_download(repo_id=HF_REPO_ID, repo_type="dataset")
+    emb_file = os.path.join(data_dir, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
+    return data_dir, emb_file
 
 
 def load_raw_embeddings(emb_file):
@@ -451,7 +445,7 @@ Examples:
 
     # Output options
     parser.add_argument('--output-dir', type=str,
-                        default=os.path.join(DATA_DIR, 'hal', 'processed_embeddings'),
+                        default=OUTPUT_DIR,
                         help='Output directory for embeddings')
     parser.add_argument('--push-to-hf', action='store_true',
                         help='Push generated embeddings to HuggingFace')
@@ -480,13 +474,13 @@ Examples:
     print()
 
     # Step 1: Get raw embeddings
-    raw_emb_file = os.path.join(DATA_DIR, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
+    data_dir, raw_emb_file = ensure_data_downloaded()
 
     if args.from_text:
         print("=" * 60)
         print("STEP 1: GENERATING RAW EMBEDDINGS FROM TEXT")
         print("=" * 60)
-        input_dir = os.path.join(DATA_DIR, 'hal')
+        input_dir = os.path.join(data_dir, 'hal')
         raw_emb_file = generate_raw_embeddings_from_text(
             data_dir=input_dir,
             output_file=raw_emb_file,
@@ -494,8 +488,6 @@ Examples:
             batch_size=args.batch_size
         )
         print()
-    else:
-        raw_emb_file = ensure_data_downloaded()
 
     # Step 2: Load raw embeddings
     task_ids, raw_embeddings, texts = load_raw_embeddings(raw_emb_file)
