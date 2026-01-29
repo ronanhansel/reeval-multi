@@ -26,6 +26,7 @@ item-editor/
 │   ├── judge.py              # Verdict aggregation
 │   ├── claude_fixer_*.py     # Fix generation (per benchmark)
 │   ├── run_*_fixes.py        # Fix application (per benchmark)
+│   ├── fix_loader.py         # Fix package utilities
 │   ├── merge_traces.py       # Trace merging utility
 │   ├── extract_weave_traces.py   # Weave log extraction
 │   └── add_colbench_dialogues.py # ColBench dialogue extraction
@@ -40,6 +41,8 @@ item-editor/
 │   └── *.schema.json         # Output schemas
 ├── configs/                  # Model configurations
 │   └── model_to_baseline_*.json
+├── patches/                  # Compatibility patches
+│   └── docent_openai_compat.patch
 └── examples/                 # Example outputs (optional)
 ```
 
@@ -57,11 +60,28 @@ pip install -r requirements.txt
 
 # Clone and install docent (required for rubric evaluation)
 git clone https://github.com/TransluceAI/docent.git
+
+# Apply compatibility patch for newer openai SDK versions
+cd docent && patch -p1 < ../patches/docent_openai_compat.patch && cd ..
+
+# Create minimal .env file for docent
+cp docent/.env.template docent/.env
+
+# Install docent
 pip install -e docent/docent/
 pip install -e docent/
 ```
 
-### 2. Set Environment Variables
+### 2. Install HAL Harness (for fix application only)
+
+The fix runner scripts require HAL Harness. Skip this if you only need rubric evaluation and judging.
+
+```bash
+git clone https://github.com/princeton-pli/hal-harness.git hal-harness
+pip install -e hal-harness/
+```
+
+### 3. Set Environment Variables
 
 Create a `.env` file or export these variables:
 
@@ -363,11 +383,15 @@ Model configs in `configs/model_to_baseline_{benchmark}.json` specify:
 # 1. Setup
 cd item-editor
 pip install -r requirements.txt
+
+# Clone and patch docent
 git clone https://github.com/TransluceAI/docent.git
+cd docent && patch -p1 < ../patches/docent_openai_compat.patch && cd ..
+cp docent/.env.template docent/.env
 pip install -e docent/docent/ && pip install -e docent/
 
-# 2. Download traces
-huggingface-cli download ronanhansel/data-reeval-multi \
+# 2. Download traces (update with your dataset path)
+huggingface-cli download <your-hf-username>/data-reeval-multi \
     --local-dir ../data-reeval-multi --repo-type dataset
 
 # 3. Create output directories
@@ -400,13 +424,30 @@ python scripts/run_scicode_fixes.py --all --prefix honey_ --docker
 
 ## Troubleshooting
 
+### Docent Compatibility
+
+The original Docent framework (TransluceAI/docent) may have compatibility issues with newer OpenAI SDK versions. If you encounter import errors:
+
+1. **Apply the compatibility patch** (included in `patches/`):
+   ```bash
+   cd docent && patch -p1 < ../patches/docent_openai_compat.patch
+   ```
+
+2. **Pin openai SDK version** if needed:
+   ```bash
+   pip install 'openai>=1.50.0,<1.60.0'
+   ```
+
+3. **Alternative**: If docent issues persist, you can still use the **Claude fixer** and **fix runner** scripts without docent - they only require the trace files and verdicts.
+
 ### Common Errors
 
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `docent not found` | Missing docent installation | `pip install -e docent/docent/ && pip install -e docent/` |
-| `TRAPI permission denied` | Wrong API version | Set `TRAPI_API_VERSION=2025-03-01-preview` |
-| `No accounts in MSAL cache` | Azure auth expired | Run `az login` to refresh |
+| `cannot import name 'omit'` | OpenAI SDK version mismatch | Apply patch: `cd docent && patch -p1 < ../patches/docent_openai_compat.patch` |
+| `TRAPI permission denied` | Wrong API version or no Azure access | Use `--openai-base-url` with OpenAI API directly |
+| `No accounts in MSAL cache` | Azure auth expired (Microsoft internal) | Run `az login` or use OpenAI directly |
 | `rate limit exceeded` | Too many parallel requests | Reduce `--parallel` value |
 
 ### Debug Tips

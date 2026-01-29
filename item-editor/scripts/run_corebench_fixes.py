@@ -100,7 +100,8 @@ sys.path.insert(0, str(REPO_ROOT / "hal-harness"))
 DEFAULT_COREBENCH_DATA = REPO_ROOT / "hal-harness" / "hal" / "benchmarks" / "corebench" / "core_test.json"
 SMOLAGENTS_SRC = REPO_ROOT / "hal-harness" / "agents" / "open_deep_research" / "src" / "smolagents"
 
-from hal.debugger.fix_loader import (  # type: ignore
+# Use local fix_loader instead of hal.debugger.fix_loader
+from fix_loader import (
     load_fix_package,
     apply_agent_overlay,
     apply_agent_patch,

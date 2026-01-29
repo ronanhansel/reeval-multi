@@ -256,7 +256,8 @@ DEFAULT_RUBRIC_TEXT = dedent(
     """
 ).strip()
 
-DEFAULT_RUBRIC_PROVIDER = os.getenv("DOCENT_RUBRIC_PROVIDER", "azure_openai")
+# Default to openai provider for external users; Azure users can override with DOCENT_RUBRIC_PROVIDER=azure_openai
+DEFAULT_RUBRIC_PROVIDER = os.getenv("DOCENT_RUBRIC_PROVIDER", "openai")
 DEFAULT_RUBRIC_BATCH_SIZE = int(os.getenv("DOCENT_RUBRIC_BATCH_SIZE", "4"))
 
 @dataclass
