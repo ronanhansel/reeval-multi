@@ -1,0 +1,636 @@
+#!/usr/bin/env python3
+"""
+Amortized IRT Experiment (Contribution 1)
+
+Evaluates the Amortized Factor Model with pre-computed embeddings.
+Compares Global Mean, Rasch-IRT, and Amortized IRT across different
+numbers of response matrix samples.
+
+Embeddings should be pre-generated using generate_embeddings.py.
+
+Usage:
+    python amortized_irt.py --embedding-type pca        # Use PCA embeddings (default)
+    python amortized_irt.py --embedding-type sae        # Use SAE embeddings
+    python amortized_irt.py --embedding-type raw        # Use raw 4096-dim embeddings
+    python amortized_irt.py --n-samples 22              # Run only n=22 (fast)
+    python amortized_irt.py --n-samples 1,22            # Run n=1 and n=22
+"""
+
+import matplotlib
+matplotlib.use("Agg")
+
+import argparse
+import ast
+import os
+import sys
+import warnings
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from huggingface_hub import snapshot_download
+
+from utils import compute_rmse, evaluate_auc
+
+sys.path.append('..')
+import style_icml
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuration
+# ══════════════════════════════════════════════════════════════════════════════
+
+RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
+os.makedirs(RESULT_DIR, exist_ok=True)
+
+# Data paths
+HF_REPO_ID = "ronanhansel/data-reeval-multi"
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data-reeval-multi')
+
+# Data split
+TEST_SIZE = 0.1
+RANDOM_SEED = 42
+
+# Model architecture
+K_MODEL = 30
+
+# Tau sparsity settings
+LAMBDA_TAU = 0.002
+TAU_INIT = 0.5
+TAU_WARMUP = 200
+RAMP_EPOCHS = 200
+SNAPPING_THRESHOLD = 0.005
+DEAD_ZONE_VALUE = -0.1
+TAU_THRESHOLD = 0.01
+
+# Training settings
+EPOCHS = 1000
+EVAL_EVERY = 100
+
+# Learning rates
+LR_THETA = 0.02
+LR_GLOBAL = 0.005
+WD_THETA = 1e-3
+WD_W = 1e-5
+
+warnings.filterwarnings('ignore')
+
+# Device selection
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif torch.backends.mps.is_available():
+    device = torch.device('mps')
+else:
+    device = torch.device('cpu')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Model Definition
+# ══════════════════════════════════════════════════════════════════════════════
+
+class AmortizedIRTModel(nn.Module):
+    """
+    Amortized IRT model with automatic relevance determination (ARD).
+
+    Item loadings are amortized from pre-computed embeddings via learned projection W.
+    Tau parameters enable automatic dimensionality discovery through sparsity.
+    """
+
+    def __init__(self, N, J, K, d, x_j_emb, dropout=0.0):
+        super().__init__()
+        self.register_buffer('x_j', x_j_emb)  # Pre-computed embeddings (J x d)
+        self.dropout = dropout
+
+        # User (model) parameters
+        self.theta = nn.Parameter(torch.randn(N, K) * 0.01)  # Latent abilities
+        self.theta_bias = nn.Parameter(torch.zeros(N))
+
+        # Global parameters
+        self.global_bias = nn.Parameter(torch.zeros(1))
+        self.W = nn.Parameter(torch.randn(K, d) * 0.01)  # Projection matrix
+        self.tau_raw = nn.Parameter(torch.ones(K) * TAU_INIT)  # ARD scales
+
+        # Item difficulty projection
+        self.difficulty_proj = nn.Linear(d, 1)
+
+    def get_tau(self):
+        """Get non-negative tau values (ReLU ensures exact sparsity)."""
+        return F.relu(self.tau_raw)
+
+    def forward(self):
+        # Normalize W for scale invariance
+        W_norm = F.normalize(self.W, dim=1)
+
+        # Amortized item loadings: a_j = tau * (W @ x_j)
+        base_loadings = self.x_j @ W_norm.T  # (J, K)
+        tau = self.get_tau()
+        a_j = base_loadings * tau.unsqueeze(0)
+
+        # Dropout for regularization
+        if self.training and self.dropout > 0:
+            a_j = F.dropout(a_j, p=self.dropout)
+
+        # Item difficulty
+        diff = self.difficulty_proj(self.x_j).squeeze()
+
+        # Response probability: sigmoid(theta @ a_j + difficulty + biases)
+        logits = self.theta @ a_j.T + diff.unsqueeze(0) + self.theta_bias.unsqueeze(1) + self.global_bias
+        return torch.sigmoid(logits)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Training Functions
+# ══════════════════════════════════════════════════════════════════════════════
+
+def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
+    """Train a basic Rasch IRT model (baseline)."""
+    theta = nn.Parameter(torch.randn(N, device=device) * 0.1)
+    beta = nn.Parameter(torch.randn(J, device=device) * 0.1)
+
+    optimizer = torch.optim.LBFGS(
+        [theta, beta], lr=0.1, max_iter=20,
+        history_size=10, line_search_fn="strong_wolfe"
+    )
+
+    def closure():
+        optimizer.zero_grad()
+        probs = torch.sigmoid(theta.unsqueeze(1) - beta.unsqueeze(0))
+        loss = F.binary_cross_entropy(probs, y_train, reduction='none')
+        total_loss = (loss * train_mask_t).sum() / train_mask_t.sum()
+        total_loss.backward()
+        return total_loss
+
+    for _ in range(n_outer_iter):
+        optimizer.step(closure)
+
+    with torch.no_grad():
+        probs = torch.sigmoid(theta.unsqueeze(1) - beta.unsqueeze(0))
+
+    return probs
+
+
+def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle, epochs=EPOCHS):
+    """Train amortized IRT model with ARD sparsity regularization."""
+    optimizer = optim.AdamW([
+        {'params': [model.theta, model.theta_bias], 'lr': LR_THETA, 'weight_decay': WD_THETA},
+        {'params': [model.W, model.tau_raw, model.global_bias], 'lr': LR_GLOBAL, 'weight_decay': WD_W},
+        {'params': model.difficulty_proj.parameters(), 'lr': LR_GLOBAL}
+    ])
+
+    best_rmse = float('inf')
+
+    for epoch in range(epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+        probs = model()
+
+        # Reconstruction loss
+        loss_fit = F.binary_cross_entropy(probs[train_mask_t], y_train[train_mask_t])
+
+        # ARD sparsity schedule (warmup -> ramp -> full)
+        if epoch < TAU_WARMUP:
+            current_lambda = 0.0
+        elif epoch < TAU_WARMUP + RAMP_EPOCHS:
+            progress = (epoch - TAU_WARMUP) / RAMP_EPOCHS
+            current_lambda = LAMBDA_TAU * progress
+        else:
+            current_lambda = LAMBDA_TAU
+
+        tau = model.get_tau()
+        loss_sparsity = current_lambda * torch.sum(tau)
+        (loss_fit + loss_sparsity).backward()
+        optimizer.step()
+
+        # Tau snapping (enforce exact zeros)
+        if epoch > TAU_WARMUP + 50 and epoch % 10 == 0:
+            with torch.no_grad():
+                active_mask = model.get_tau() > SNAPPING_THRESHOLD
+                for k in range(K_MODEL):
+                    if not active_mask[k]:
+                        model.tau_raw[k] = DEAD_ZONE_VALUE
+
+        # Evaluation
+        if epoch % EVAL_EVERY == 0:
+            model.eval()
+            with torch.no_grad():
+                p_eval = model()
+                curr_rmse = compute_rmse(p_eval.cpu().numpy(), y_oracle.cpu().numpy(), test_mask_oracle)
+                best_rmse = min(best_rmse, curr_rmse)
+
+    return best_rmse
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Data Loading
+# ══════════════════════════════════════════════════════════════════════════════
+
+def load_data(embedding_type='pca', embedding_dim=48):
+    """
+    Load response matrices and pre-computed embeddings.
+
+    Args:
+        embedding_type: 'raw', 'pca', or 'sae'
+        embedding_dim: dimension for pca/sae embeddings (ignored for raw)
+    """
+    resmat_dir = os.path.join(DATA_DIR, 'colbench')
+    processed_emb_dir = os.path.join(DATA_DIR, 'hal', 'processed_embeddings')
+    raw_emb_file = os.path.join(DATA_DIR, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
+
+    # Download from HuggingFace if data not present
+    if not os.path.exists(resmat_dir):
+        print(f"Data not found locally. Downloading from HuggingFace ({HF_REPO_ID})...")
+        snapshot_download(
+            repo_id=HF_REPO_ID,
+            repo_type="dataset",
+            local_dir=DATA_DIR,
+        )
+        print("Download complete.")
+
+    # Load response matrices
+    all_files = sorted([f for f in os.listdir(resmat_dir) if f.startswith('resmat')])
+    all_dfs = [pd.read_csv(os.path.join(resmat_dir, f), index_col=0) for f in all_files]
+
+    # Find global shared indices (models present in all matrices)
+    global_shared_indices = set(all_dfs[0].index)
+    for df in all_dfs[1:]:
+        global_shared_indices = global_shared_indices.intersection(set(df.index))
+    global_shared_indices = sorted(list(global_shared_indices))
+
+    # Load embeddings based on type
+    if embedding_type == 'raw':
+        emb_file = raw_emb_file
+    elif embedding_type == 'pca':
+        emb_file = os.path.join(processed_emb_dir, f'embeddings_pca_{embedding_dim}.pkl')
+    elif embedding_type == 'sae':
+        emb_file = os.path.join(processed_emb_dir, f'embeddings_sae_{embedding_dim}.pkl')
+    else:
+        raise ValueError(f"Unknown embedding type: {embedding_type}")
+
+    # Fall back to raw if processed embeddings don't exist
+    if not os.path.exists(emb_file):
+        print(f"Warning: {emb_file} not found. Falling back to raw embeddings.")
+        print("Run 'python generate_embeddings.py' to generate processed embeddings.")
+        emb_file = raw_emb_file
+        embedding_type = 'raw'
+
+    print(f"Loading {embedding_type} embeddings from {emb_file}...")
+    emb_df = pd.read_pickle(emb_file)
+
+    # Build embedding map
+    raw_embs_map = {}
+    id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
+
+    for _, r in emb_df.iterrows():
+        task_id = str(r[id_col])
+        raw_embs_map[task_id] = r['embedding']
+
+        # Handle colbench naming variations
+        if task_id.startswith('colbench_backend_programming'):
+            suffix = task_id.split('.')[-1]
+            raw_embs_map[f'colbench.{suffix}'] = r['embedding']
+
+    return all_dfs, global_shared_indices, raw_embs_map, embedding_type
+
+
+def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
+    """Prepare oracle ground truth, train/test splits, and embedding tensors."""
+    print("=" * 60)
+    print("PREPARING EXPERIMENT DATA")
+    print("=" * 60)
+
+    # Create oracle matrix (average across all response matrices)
+    oracle_dfs_filtered = [df.loc[global_shared_indices] for df in all_dfs]
+    oracle_stacked = np.array([df.values for df in oracle_dfs_filtered])
+    oracle_matrix = np.nanmean(oracle_stacked, axis=0)
+    oracle_df = pd.DataFrame(oracle_matrix, index=global_shared_indices, columns=oracle_dfs_filtered[0].columns)
+
+    print(f"Total matrices: {len(all_dfs)}")
+    print(f"Global user intersection: {len(global_shared_indices)} users")
+    print(f"Oracle matrix shape: {oracle_df.shape}")
+
+    # Train/test split (by items/columns)
+    torch.manual_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+
+    N, J = oracle_df.shape
+    J_indices = np.arange(J)
+    np.random.shuffle(J_indices)
+
+    n_test = int(TEST_SIZE * J)
+    test_idx = J_indices[:n_test]
+    train_idx = J_indices[n_test:]
+
+    print(f"Train items: {len(train_idx)}, Test items: {len(test_idx)}")
+
+    # Prepare tensors
+    oracle_values_clean = np.nan_to_num(oracle_df.values, nan=0.5)
+    y_oracle = torch.from_numpy(oracle_values_clean.astype(np.float32)).to(device)
+
+    train_mask = np.zeros_like(oracle_df.values, dtype=bool)
+    train_mask[:, train_idx] = ~np.isnan(oracle_df.values)[:, train_idx]
+
+    test_mask = np.zeros_like(oracle_df.values, dtype=bool)
+    test_mask[:, test_idx] = ~np.isnan(oracle_df.values)[:, test_idx]
+
+    train_mask_t = torch.from_numpy(train_mask).to(device)
+    test_mask_t = torch.from_numpy(test_mask).to(device)
+
+    # Align embeddings with oracle columns
+    task_ids = oracle_df.columns.tolist()
+    embeddings = []
+    for task_id in task_ids:
+        emb = raw_embs_map.get(str(task_id))
+        if emb is None and task_id.startswith('colbench.'):
+            number = task_id.split('.')[-1]
+            emb = raw_embs_map.get(f'colbench_backend_programming.{number}')
+        if emb is None:
+            # Use zeros for missing embeddings
+            sample_emb = next(iter(raw_embs_map.values()))
+            emb = np.zeros(len(sample_emb) if hasattr(sample_emb, '__len__') else 4096)
+        elif isinstance(emb, str):
+            emb = ast.literal_eval(emb)
+        embeddings.append(np.array(emb, dtype=np.float32))
+
+    embeddings = np.stack(embeddings)
+
+    # Normalize embeddings
+    embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
+    x_j = torch.tensor(embeddings, dtype=torch.float32).to(device)
+
+    print(f"Embeddings shape: {x_j.shape}")
+
+    return {
+        'oracle_df': oracle_df,
+        'y_oracle': y_oracle,
+        'train_idx': train_idx,
+        'test_idx': test_idx,
+        'train_mask': train_mask,
+        'test_mask': test_mask,
+        'train_mask_t': train_mask_t,
+        'test_mask_t': test_mask_t,
+        'x_j': x_j,
+        'N': N,
+        'J': J,
+        'embedding_dim': x_j.shape[1],
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Experiment
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_experiment(n_files, all_dfs, global_shared_indices, data):
+    """Run experiment for a specific number of sample files."""
+    torch.manual_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+
+    N = data['N']
+    J = data['J']
+    y_oracle = data['y_oracle']
+    train_idx = data['train_idx']
+    test_mask = data['test_mask']
+    test_mask_t = data['test_mask_t']
+    x_j = data['x_j']
+    embedding_dim = data['embedding_dim']
+
+    # Prepare training data from n_files samples
+    current_dfs = [all_dfs[i].loc[global_shared_indices] for i in range(n_files)]
+    current_stacked = np.array([df.values for df in current_dfs])
+    train_target_matrix = np.nanmean(current_stacked, axis=0)
+    train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=current_dfs[0].columns)
+
+    train_values = np.nan_to_num(train_target_df.values, nan=0.5)
+    y_train = torch.from_numpy(train_values.astype(np.float32)).to(device)
+
+    train_mask_current = np.zeros_like(train_target_df.values, dtype=bool)
+    train_mask_current[:, train_idx] = ~np.isnan(train_target_df.values)[:, train_idx]
+    train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
+
+    # 1. Global Mean baseline
+    mean_val = y_train[train_mask_current_t].mean()
+    pred_mean = mean_val.expand_as(y_oracle)
+    rmse_mean = compute_rmse(pred_mean.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_mean = evaluate_auc(pred_mean, y_oracle, test_mask_t)
+
+    # 2. Rasch IRT baseline
+    p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
+    rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_rasch = evaluate_auc(p_rasch, y_oracle, test_mask_t)
+
+    # 3. Amortized IRT (our method)
+    model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
+    best_rmse = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask)
+
+    model.eval()
+    with torch.no_grad():
+        p_amortized = model()
+        auc_amortized = evaluate_auc(p_amortized, y_oracle, test_mask_t)
+        active_dims = (model.get_tau() > TAU_THRESHOLD).sum().item()
+
+    return {
+        'n_samples': n_files,
+        'rmse_mean': rmse_mean,
+        'rmse_rasch': rmse_rasch,
+        'rmse_amortized': best_rmse,
+        'auc_mean': auc_mean,
+        'auc_rasch': auc_rasch,
+        'auc_amortized': auc_amortized,
+        'active_dims': active_dims,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Plotting
+# ══════════════════════════════════════════════════════════════════════════════
+
+def plot_comparison(df_results, embedding_type):
+    """Generate comparison bar plots for n=1 vs n=max."""
+    n_max = df_results['n_samples'].max()
+    df_comp = df_results[df_results['n_samples'].isin([1, n_max])].copy()
+
+    if len(df_comp) < 2:
+        print("[WARN] Need both n=1 and n=max for comparison plots, skipping...")
+        return
+
+    df_comp['n_label'] = df_comp['n_samples'].apply(lambda x: f"n={x}")
+
+    rmse_melt = df_comp.melt(
+        id_vars=['n_label'],
+        value_vars=['rmse_mean', 'rmse_rasch', 'rmse_amortized'],
+        var_name='Model', value_name='RMSE'
+    )
+    auc_melt = df_comp.melt(
+        id_vars=['n_label'],
+        value_vars=['auc_mean', 'auc_rasch', 'auc_amortized'],
+        var_name='Model', value_name='AUC'
+    )
+
+    model_map = {
+        'rmse_mean': 'Global Mean', 'rmse_rasch': 'Rasch-IRT', 'rmse_amortized': 'Amortized IRT',
+        'auc_mean': 'Global Mean', 'auc_rasch': 'Rasch-IRT', 'auc_amortized': 'Amortized IRT'
+    }
+    rmse_melt['Model'] = rmse_melt['Model'].map(model_map)
+    auc_melt['Model'] = auc_melt['Model'].map(model_map)
+
+    model_order = ['Global Mean', 'Rasch-IRT', 'Amortized IRT']
+
+    # RMSE Comparison
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(data=rmse_melt, x='Model', y='RMSE', hue='n_label', order=model_order, ax=ax, palette="muted")
+    ax.set_xlabel('')
+    ax.set_ylim(0.15, 0.35)
+    ax.set_yticks(np.linspace(0.15, 0.35, 5))
+    ax.grid(axis='y', linestyle='--', alpha=0.6)
+    ax.tick_params(axis='x', rotation=15)
+    ax.legend(loc='upper left')
+    ax.set_title(f'RMSE Comparison ({embedding_type.upper()} embeddings)')
+    plt.tight_layout()
+    out = os.path.join(RESULT_DIR, f'rmse_comparison_{embedding_type}.pdf')
+    plt.savefig(out, bbox_inches='tight')
+    print(f"[OUTPUT] Saved plot: {out}")
+    plt.close()
+
+    # AUC Comparison
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(data=auc_melt, x='Model', y='AUC', hue='n_label', order=model_order, ax=ax, palette="muted")
+    ax.set_xlabel('')
+    ax.set_ylim(0.45, 0.9)
+    ax.grid(axis='y', linestyle='--', alpha=0.6)
+    ax.tick_params(axis='x', rotation=15)
+    ax.legend(loc='upper left')
+    ax.set_yticks(np.linspace(0.4, 1, 5))
+    ax.set_title(f'AUC Comparison ({embedding_type.upper()} embeddings)')
+    plt.tight_layout()
+    out = os.path.join(RESULT_DIR, f'auc_comparison_{embedding_type}.pdf')
+    plt.savefig(out, bbox_inches='tight')
+    print(f"[OUTPUT] Saved plot: {out}")
+    plt.close()
+
+
+def plot_convergence(df_results, embedding_type):
+    """Generate convergence line plots."""
+    if len(df_results) < 2:
+        print("[WARN] Need multiple n values for convergence plots, skipping...")
+        return
+
+    # RMSE Convergence
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(df_results['n_samples'], df_results['rmse_mean'], 's--', label='Global Mean', color='gray', linewidth=0.75)
+    ax.plot(df_results['n_samples'], df_results['rmse_rasch'], '^--', label='Rasch-IRT', color='tab:red', linewidth=0.75)
+    ax.plot(df_results['n_samples'], df_results['rmse_amortized'], 'o-', label='Amortized IRT', color='tab:blue', linewidth=0.75)
+    ax.set_xlabel('Number of samples')
+    ax.set_ylabel('RMSE')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_title(f'RMSE Convergence ({embedding_type.upper()} embeddings)')
+    plt.tight_layout()
+    out = os.path.join(RESULT_DIR, f'rmse_convergence_{embedding_type}.pdf')
+    plt.savefig(out, bbox_inches='tight')
+    print(f"[OUTPUT] Saved plot: {out}")
+    plt.close()
+
+    # AUC Convergence
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(df_results['n_samples'], df_results['auc_mean'], 's--', label='Global Mean', color='gray', linewidth=0.75)
+    ax.plot(df_results['n_samples'], df_results['auc_rasch'], '^--', label='Rasch-IRT', color='tab:red', linewidth=0.75)
+    ax.plot(df_results['n_samples'], df_results['auc_amortized'], 'o-', label='Amortized IRT', color='tab:blue', linewidth=0.75)
+    ax.set_xlabel('Number of samples')
+    ax.set_ylabel('AUC')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_title(f'AUC Convergence ({embedding_type.upper()} embeddings)')
+    plt.tight_layout()
+    out = os.path.join(RESULT_DIR, f'auc_convergence_{embedding_type}.pdf')
+    plt.savefig(out, bbox_inches='tight')
+    print(f"[OUTPUT] Saved plot: {out}")
+    plt.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Main
+# ══════════════════════════════════════════════════════════════════════════════
+
+def parse_n_samples(arg, total_files):
+    """Parse --n-samples argument into list of integers."""
+    if arg == 'all':
+        return list(range(1, total_files + 1))
+
+    result = []
+    for part in arg.split(','):
+        part = part.strip()
+        if '-' in part:
+            start, end = part.split('-')
+            result.extend(range(int(start), int(end) + 1))
+        else:
+            result.append(int(part))
+
+    result = [n for n in result if 1 <= n <= total_files]
+    return sorted(set(result))
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Amortized IRT Experiment')
+    parser.add_argument(
+        '--embedding-type', type=str, default='pca',
+        choices=['raw', 'pca', 'sae'],
+        help='Type of embeddings to use (default: pca)'
+    )
+    parser.add_argument(
+        '--embedding-dim', type=int, default=48,
+        help='Embedding dimension for pca/sae (default: 48)'
+    )
+    parser.add_argument(
+        '--n-samples', type=str, default='all',
+        help='Which n values to run. Examples: "all", "22", "1,22", "1-5,22"'
+    )
+    args = parser.parse_args()
+
+    print(f"Using device: {device}")
+    print(f"Embedding type: {args.embedding_type}")
+
+    # Load data
+    all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
+        embedding_type=args.embedding_type,
+        embedding_dim=args.embedding_dim
+    )
+    total_files = len(all_dfs)
+
+    # Parse n_samples argument
+    n_values = parse_n_samples(args.n_samples, total_files)
+    print(f"\nWill run experiments for n = {n_values}")
+
+    # Prepare experiment data
+    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
+
+    # Run experiments
+    print("\n" + "=" * 60)
+    print(f"STARTING EXPERIMENTS ({actual_emb_type.upper()} embeddings)")
+    print("=" * 60)
+
+    results = []
+    for i, n in enumerate(n_values):
+        print(f"\n[{i+1}/{len(n_values)}] Processing with n={n} sample(s)...")
+        result = run_experiment(n, all_dfs, global_shared_indices, data)
+        results.append(result)
+
+        print(f"   -> RMSE | Mean: {result['rmse_mean']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
+              f"Amortized: {result['rmse_amortized']:.4f}")
+        print(f"   -> AUC  | Mean: {result['auc_mean']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
+              f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
+
+    print("\n" + "=" * 60)
+    print("EXPERIMENT COMPLETE")
+    print("=" * 60)
+
+    # Generate plots
+    df_results = pd.DataFrame(results)
+    plot_comparison(df_results, actual_emb_type)
+    plot_convergence(df_results, actual_emb_type)
+
+
+if __name__ == '__main__':
+    main()
