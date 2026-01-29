@@ -60,17 +60,17 @@ RANDOM_SEED = 42
 # Model architecture
 K_MODEL = 30
 
-# Tau sparsity settings
-LAMBDA_TAU = 0.002
+# Tau sparsity settings (tuned for ColBench/Beta IRT)
+LAMBDA_TAU = 0.0005  # Lower regularization to preserve dimensions
 TAU_INIT = 0.5
-TAU_WARMUP = 200
-RAMP_EPOCHS = 200
-SNAPPING_THRESHOLD = 0.005
+TAU_WARMUP = 300     # Longer warmup before applying sparsity
+RAMP_EPOCHS = 300    # Longer ramp to final sparsity
+SNAPPING_THRESHOLD = 0.001  # Less aggressive snapping
 DEAD_ZONE_VALUE = -0.1
 TAU_THRESHOLD = 0.01
 
 # Training settings
-EPOCHS = 1000
+EPOCHS = 1001  # Longer training for better convergence
 EVAL_EVERY = 100
 
 # Learning rates
@@ -515,12 +515,13 @@ def run_helm_experiment(embedding_type='pca', embedding_dim=48, k_sparsity=4):
     return pd.DataFrame(results)
 
 
-def run_colbench_experiment(embedding_type='pca', embedding_dim=48, k_sparsity=4,
-                            model_type='beta'):
+def run_colbench_experiment(embedding_dim=48, k_sparsity=4, model_type='beta'):
     """
-    Run ColBench benchmark evaluation.
+    Run ColBench benchmark evaluation with both PCA and SAE embeddings.
 
     Args:
+        embedding_dim: dimension for PCA/SAE embeddings
+        k_sparsity: sparsity parameter for SAE
         model_type: 'bernoulli' or 'beta'
 
     Returns results DataFrame.
@@ -533,18 +534,7 @@ def run_colbench_experiment(embedding_type='pca', embedding_dim=48, k_sparsity=4
     oracle_df, task_ids, all_dfs = load_colbench_data()
     N, J = oracle_df.shape
 
-    # Load and align embeddings
-    embeddings, emb_task_ids, emb_meta = get_embeddings(
-        embedding_type=embedding_type,
-        dim=embedding_dim,
-        k_sparsity=k_sparsity,
-        benchmark='colbench'
-    )
-
-    aligned_emb = align_embeddings_to_tasks(embeddings, emb_task_ids, task_ids, 'colbench')
-    x_j = torch.tensor(aligned_emb, dtype=torch.float32).to(device)
-
-    # Train/test split
+    # Train/test split (do this BEFORE loading embeddings to ensure consistency)
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
@@ -556,12 +546,14 @@ def run_colbench_experiment(embedding_type='pca', embedding_dim=48, k_sparsity=4
     test_idx = J_indices[:n_test]
     train_idx = J_indices[n_test:]
 
+    # Create masks - NaN entries are excluded via mask, not imputed
     train_mask = np.zeros_like(y_vals, dtype=bool)
     train_mask[:, train_idx] = ~np.isnan(y_vals)[:, train_idx]
     test_mask = np.zeros_like(y_vals, dtype=bool)
     test_mask[:, test_idx] = ~np.isnan(y_vals)[:, test_idx]
 
-    y_data = torch.from_numpy(np.nan_to_num(y_vals, nan=0.5)).to(device)
+    # Keep original values, masked entries won't be used in loss
+    y_data = torch.from_numpy(np.nan_to_num(y_vals, nan=0.0)).to(device)
     train_mask_t = torch.from_numpy(train_mask).to(device)
     test_mask_t = torch.from_numpy(test_mask).to(device)
 
@@ -575,6 +567,14 @@ def run_colbench_experiment(embedding_type='pca', embedding_dim=48, k_sparsity=4
         y_bin = (y_flat > 0.5).astype(int)
         auc = roc_auc_score(y_bin, p_flat) if len(np.unique(y_bin)) > 1 else 0.5
         return rmse, auc
+
+    # Load PCA embeddings for baselines and PCA model
+    print("\nLoading PCA embeddings...")
+    pca_emb, pca_task_ids, _ = get_embeddings(
+        embedding_type='pca', dim=embedding_dim, benchmark='colbench'
+    )
+    pca_aligned = align_embeddings_to_tasks(pca_emb, pca_task_ids, task_ids, 'colbench')
+    x_j_pca = torch.tensor(pca_aligned, dtype=torch.float32).to(device)
 
     # 1. Global Mean
     print("\n--- Global Mean Baseline ---")
@@ -590,25 +590,86 @@ def run_colbench_experiment(embedding_type='pca', embedding_dim=48, k_sparsity=4
     print(f"Test RMSE: {rmse_rasch:.4f}, AUC: {auc_rasch:.4f}")
     results.append({'Model': 'Rasch-IRT', 'RMSE': rmse_rasch, 'AUC': auc_rasch})
 
-    # 3. Amortized IRT
-    print(f"\n--- Amortized IRT ({model_type}) ---")
-    if model_type == 'bernoulli':
-        model = BernoulliIRT(N, J, K_MODEL, x_j.shape[1], x_j, dropout=0.5).to(device)
-    else:
-        model = BetaIRT(N, J, K_MODEL, x_j.shape[1], x_j, dropout=0.5).to(device)
+    # 3. Amortised Difficulty (theta + amortized difficulty, no latent factors)
+    print("\n--- Amortised Difficulty ---")
 
-    _, history = train_model(model, y_data, train_mask_t, y_data, test_mask_t,
-                             epochs=EPOCHS, model_type=model_type)
+    class AmortizedDifficulty(nn.Module):
+        def __init__(self, N, d, x_j):
+            super().__init__()
+            self.register_buffer('x_j', x_j)
+            self.theta = nn.Parameter(torch.zeros(N))
+            self.diff_proj = nn.Linear(d, 1)
 
-    model.eval()
+        def forward(self):
+            pred_beta = self.diff_proj(self.x_j).squeeze().unsqueeze(0)
+            return torch.sigmoid(self.theta.unsqueeze(1) + pred_beta)
+
+    model_ad = AmortizedDifficulty(N, x_j_pca.shape[1], x_j_pca).to(device)
+    opt_ad = optim.Adam(model_ad.parameters(), lr=0.01)
+
+    for e in range(1001):
+        model_ad.train()
+        opt_ad.zero_grad()
+        probs = model_ad()
+        loss = F.mse_loss(probs[train_mask_t], y_data[train_mask_t])
+        loss.backward()
+        opt_ad.step()
+
+    model_ad.eval()
     with torch.no_grad():
-        probs = model()
-        rmse_amort, auc_amort = compute_metrics(probs, y_data, test_mask_t)
-        active_dims = model.get_active_dims()
+        p_ad = model_ad()
+        rmse_ad, auc_ad = compute_metrics(p_ad, y_data, test_mask_t)
+    print(f"Test RMSE: {rmse_ad:.4f}, AUC: {auc_ad:.4f}")
+    results.append({'Model': 'Amortised Difficulty', 'RMSE': rmse_ad, 'AUC': auc_ad})
 
-    print(f"Test RMSE: {rmse_amort:.4f}, AUC: {auc_amort:.4f}, Active dims: {active_dims}")
-    results.append({'Model': 'Amortized IRT', 'RMSE': rmse_amort, 'AUC': auc_amort,
-                    'Active_Dims': active_dims})
+    # 4. Amortized IRT (PCA)
+    print(f"\n--- Amortised IRT (PCA) ---")
+    torch.manual_seed(RANDOM_SEED)  # Reset seed for reproducibility
+    if model_type == 'bernoulli':
+        model_pca = BernoulliIRT(N, J, K_MODEL, x_j_pca.shape[1], x_j_pca, dropout=0.5).to(device)
+    else:
+        model_pca = BetaIRT(N, J, K_MODEL, x_j_pca.shape[1], x_j_pca, dropout=0.5).to(device)
+
+    _, _ = train_model(model_pca, y_data, train_mask_t, y_data, test_mask_t,
+                       epochs=EPOCHS, model_type=model_type)
+
+    model_pca.eval()
+    with torch.no_grad():
+        probs = model_pca()
+        rmse_pca, auc_pca = compute_metrics(probs, y_data, test_mask_t)
+        active_dims_pca = model_pca.get_active_dims()
+
+    print(f"Test RMSE: {rmse_pca:.4f}, AUC: {auc_pca:.4f}, Active dims: {active_dims_pca}")
+    results.append({'Model': 'Amortised IRT (PCA)', 'RMSE': rmse_pca, 'AUC': auc_pca,
+                    'Active_Dims': active_dims_pca})
+
+    # 5. Amortized IRT (SAE)
+    print(f"\n--- Amortised IRT (SAE) ---")
+    print("Loading SAE embeddings...")
+    sae_emb, sae_task_ids, _ = get_embeddings(
+        embedding_type='sae', dim=embedding_dim, k_sparsity=k_sparsity, benchmark='colbench'
+    )
+    sae_aligned = align_embeddings_to_tasks(sae_emb, sae_task_ids, task_ids, 'colbench')
+    x_j_sae = torch.tensor(sae_aligned, dtype=torch.float32).to(device)
+
+    torch.manual_seed(RANDOM_SEED)  # Reset seed for reproducibility
+    if model_type == 'bernoulli':
+        model_sae = BernoulliIRT(N, J, K_MODEL, x_j_sae.shape[1], x_j_sae, dropout=0.5).to(device)
+    else:
+        model_sae = BetaIRT(N, J, K_MODEL, x_j_sae.shape[1], x_j_sae, dropout=0.5).to(device)
+
+    _, _ = train_model(model_sae, y_data, train_mask_t, y_data, test_mask_t,
+                       epochs=EPOCHS, model_type=model_type)
+
+    model_sae.eval()
+    with torch.no_grad():
+        probs = model_sae()
+        rmse_sae, auc_sae = compute_metrics(probs, y_data, test_mask_t)
+        active_dims_sae = model_sae.get_active_dims()
+
+    print(f"Test RMSE: {rmse_sae:.4f}, AUC: {auc_sae:.4f}, Active dims: {active_dims_sae}")
+    results.append({'Model': 'Amortised IRT (SAE)', 'RMSE': rmse_sae, 'AUC': auc_sae,
+                    'Active_Dims': active_dims_sae})
 
     return pd.DataFrame(results)
 
@@ -624,7 +685,7 @@ def main():
     parser.add_argument('--model', type=str, default='beta', choices=['bernoulli', 'beta'],
                         help='Model type (default: beta)')
     parser.add_argument('--embedding-type', type=str, default='pca', choices=['raw', 'pca', 'sae'],
-                        help='Embedding type (default: pca)')
+                        help='Embedding type for HELM (default: pca). ColBench runs both PCA and SAE.')
     parser.add_argument('--embedding-dim', type=int, default=48,
                         help='Embedding dimension (default: 48)')
     parser.add_argument('--k-sparsity', type=int, default=4,
@@ -642,8 +703,8 @@ def main():
         )
         output_file = os.path.join(RESULT_DIR, 'helm_results.csv')
     else:
+        # ColBench runs both PCA and SAE embeddings
         results_df = run_colbench_experiment(
-            embedding_type=args.embedding_type,
             embedding_dim=args.embedding_dim,
             k_sparsity=args.k_sparsity,
             model_type=args.model

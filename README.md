@@ -42,18 +42,20 @@ The `generalisability/` folder provides a unified pipeline for evaluating Amorti
 ```bash
 cd generalisability
 
-# Interactive mode - choose HELM, ColBench, or both
+# Interactive mode - choose HELM, ColBench, Aggregate, or all
 ./reproduce.sh
 
 # Or run directly
 ./reproduce.sh helm      # HELM benchmark (Bernoulli IRT)
 ./reproduce.sh colbench  # ColBench (Beta IRT)
-./reproduce.sh both      # Both evaluations
+./reproduce.sh aggregate # N-holdout survey (convergence analysis)
+./reproduce.sh all       # All evaluations
 ```
 
 **Structure:**
 - `embeddings.py` - Handles Raw/Qwen, PCA, SAE embeddings
 - `models.py` - Bernoulli and Beta IRT models
+- `aggregate.py` - N-holdout survey across response matrices
 - `plotting.py` - Unified plotting with tueplots icml2024 (font size 15)
 
 Data is automatically downloaded from HuggingFace if not present locally.

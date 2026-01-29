@@ -8,3 +8,4 @@ inspect_ai
 sentence_transformers
 hypothesaes
 seaborn
+tueplots

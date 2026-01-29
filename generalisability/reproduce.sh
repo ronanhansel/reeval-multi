@@ -113,6 +113,46 @@ run_colbench() {
     return 0
 }
 
+# Function to run aggregate survey (n-holdout)
+run_aggregate() {
+    echo "=========================================================="
+    echo "  RUNNING: Aggregate Survey (N-Holdout)"
+    echo "=========================================================="
+    echo ""
+
+    # Clean caches
+    echo "[CLEAN] Removing caches..."
+    rm -rf /tmp/_sae_embeddings_ckpt
+    rm -f "${RESULT_DIR}/convergence_results.csv"
+
+    echo "[RUN] Running aggregate survey across n values..."
+    set +e
+    (cd "${SCRIPT_DIR}" && python aggregate.py --embedding-type pca --model beta 2>&1)
+    rc=$?
+    set -e
+
+    if [ $rc -ne 0 ]; then
+        echo "[ERROR] aggregate.py exited with code ${rc}"
+        return 1
+    fi
+
+    echo ""
+    echo "[RUN] Generating convergence plots..."
+    set +e
+    (cd "${SCRIPT_DIR}" && python plotting.py --plot convergence 2>&1)
+    rc=$?
+    set -e
+
+    if [ $rc -ne 0 ]; then
+        echo "[ERROR] plotting.py --plot convergence exited with code ${rc}"
+        return 1
+    fi
+
+    echo ""
+    echo "[OK] Aggregate Survey completed successfully."
+    return 0
+}
+
 # Show menu
 show_menu() {
     echo "Please select which evaluation to run:"
@@ -122,14 +162,19 @@ show_menu() {
     echo "     - Uses Bernoulli IRT for binary response prediction"
     echo "     - Generates AUC comparison plot"
     echo ""
-    echo "  2) ColBench Aggregate Evaluation"
+    echo "  2) ColBench Evaluation"
     echo "     - Trains on aggregated response matrices"
     echo "     - Uses Beta IRT for continuous [0,1] predictions"
     echo "     - Generates RMSE and AUC comparison plots"
     echo ""
-    echo "  3) Both evaluations"
+    echo "  3) Aggregate Survey (N-Holdout)"
+    echo "     - Runs experiments across varying n (1 to max response matrices)"
+    echo "     - Shows performance improvement with more data"
+    echo "     - Generates convergence plots"
     echo ""
-    echo "  4) Exit"
+    echo "  4) All evaluations (HELM + ColBench + Aggregate)"
+    echo ""
+    echo "  5) Exit"
     echo ""
 }
 
@@ -140,21 +185,24 @@ if [ $# -gt 0 ]; then
         helm|HELM|1)
             choice="1"
             ;;
-        colbench|COLBENCH|hal|HAL|2)
+        colbench|COLBENCH|2)
             choice="2"
             ;;
-        both|BOTH|all|ALL|3)
+        aggregate|AGGREGATE|survey|3)
             choice="3"
+            ;;
+        all|ALL|both|BOTH|4)
+            choice="4"
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [helm|colbench|both]"
+            echo "Usage: $0 [helm|colbench|aggregate|all]"
             exit 1
             ;;
     esac
 else
     show_menu
-    read -p "Enter your choice [1-4]: " choice
+    read -p "Enter your choice [1-5]: " choice
 fi
 
 # Create result directory
@@ -170,11 +218,16 @@ case "$choice" in
         run_colbench || overall_ok=false
         ;;
     3)
+        run_aggregate || overall_ok=false
+        ;;
+    4)
         run_helm || overall_ok=false
         echo ""
         run_colbench || overall_ok=false
+        echo ""
+        run_aggregate || overall_ok=false
         ;;
-    4)
+    5)
         echo "Exiting."
         exit 0
         ;;

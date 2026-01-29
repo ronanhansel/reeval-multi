@@ -165,7 +165,8 @@ def plot_colbench_comparison(results_file=None, output_dir=None):
     print(f"[INFO] Loading ColBench results from: {results_file}")
     df = pd.read_csv(results_file)
 
-    model_order = ['Global Mean', 'Rasch-IRT', 'Amortized IRT']
+    model_order = ['Global Mean', 'Rasch-IRT', 'Amortised Difficulty',
+                   'Amortised IRT (PCA)', 'Amortised IRT (SAE)']
     available_models = [m for m in model_order if m in df['Model'].values]
 
     # RMSE comparison
@@ -248,8 +249,19 @@ def plot_convergence(results_file=None, output_dir=None, metric='rmse'):
                 color='gray', linewidth=1.5, markersize=6)
         ax.plot(df['n_samples'], df['rmse_rasch'], '^--', label='Rasch-IRT',
                 color=MUTED_RED, linewidth=1.5, markersize=6)
-        ax.plot(df['n_samples'], df['rmse_amortized'], 'o-', label='Amortized IRT',
-                color=MUTED_BLUE, linewidth=1.5, markersize=6)
+        if 'rmse_ad' in df.columns:
+            ax.plot(df['n_samples'], df['rmse_ad'], 'd--', label='Amortised Difficulty',
+                    color=MUTED_ORANGE, linewidth=1.5, markersize=6)
+        if 'rmse_pca' in df.columns:
+            ax.plot(df['n_samples'], df['rmse_pca'], 'o-', label='Amortised IRT (PCA)',
+                    color=MUTED_BLUE, linewidth=1.5, markersize=6)
+        if 'rmse_sae' in df.columns:
+            ax.plot(df['n_samples'], df['rmse_sae'], 'v-', label='Amortised IRT (SAE)',
+                    color=MUTED_GREEN, linewidth=1.5, markersize=6)
+        # Backwards compatibility for old format
+        if 'rmse_amortized' in df.columns and 'rmse_pca' not in df.columns:
+            ax.plot(df['n_samples'], df['rmse_amortized'], 'o-', label='Amortized IRT',
+                    color=MUTED_BLUE, linewidth=1.5, markersize=6)
         ax.set_ylabel('RMSE')
         out_name = 'rmse_convergence.pdf'
     else:
@@ -257,8 +269,19 @@ def plot_convergence(results_file=None, output_dir=None, metric='rmse'):
                 color='gray', linewidth=1.5, markersize=6)
         ax.plot(df['n_samples'], df['auc_rasch'], '^--', label='Rasch-IRT',
                 color=MUTED_RED, linewidth=1.5, markersize=6)
-        ax.plot(df['n_samples'], df['auc_amortized'], 'o-', label='Amortized IRT',
-                color=MUTED_BLUE, linewidth=1.5, markersize=6)
+        if 'auc_ad' in df.columns:
+            ax.plot(df['n_samples'], df['auc_ad'], 'd--', label='Amortised Difficulty',
+                    color=MUTED_ORANGE, linewidth=1.5, markersize=6)
+        if 'auc_pca' in df.columns:
+            ax.plot(df['n_samples'], df['auc_pca'], 'o-', label='Amortised IRT (PCA)',
+                    color=MUTED_BLUE, linewidth=1.5, markersize=6)
+        if 'auc_sae' in df.columns:
+            ax.plot(df['n_samples'], df['auc_sae'], 'v-', label='Amortised IRT (SAE)',
+                    color=MUTED_GREEN, linewidth=1.5, markersize=6)
+        # Backwards compatibility for old format
+        if 'auc_amortized' in df.columns and 'auc_pca' not in df.columns:
+            ax.plot(df['n_samples'], df['auc_amortized'], 'o-', label='Amortized IRT',
+                    color=MUTED_BLUE, linewidth=1.5, markersize=6)
         ax.set_ylabel('AUC')
         out_name = 'auc_convergence.pdf'
 
@@ -301,11 +324,23 @@ def plot_n_comparison(results_file=None, output_dir=None):
 
     df_comp['n_label'] = df_comp['n_samples'].apply(lambda x: f"n={x}")
 
+    # Determine available columns (new format vs old format)
+    has_ad = 'rmse_ad' in df.columns
+    has_pca_sae = 'rmse_pca' in df.columns and 'rmse_sae' in df.columns
+
     # RMSE comparison
     fig, ax = plt.subplots()
 
-    model_names = ['Global Mean', 'Rasch-IRT', 'Amortized IRT']
-    rmse_cols = ['rmse_mean', 'rmse_rasch', 'rmse_amortized']
+    if has_pca_sae:
+        model_names = ['Global Mean', 'Rasch-IRT', 'Amortised Difficulty',
+                       'Amortised IRT (PCA)', 'Amortised IRT (SAE)']
+        rmse_cols = ['rmse_mean', 'rmse_rasch', 'rmse_ad', 'rmse_pca', 'rmse_sae']
+    elif has_ad:
+        model_names = ['Global Mean', 'Rasch-IRT', 'Amortised Difficulty', 'Amortized IRT']
+        rmse_cols = ['rmse_mean', 'rmse_rasch', 'rmse_ad', 'rmse_amortized']
+    else:
+        model_names = ['Global Mean', 'Rasch-IRT', 'Amortized IRT']
+        rmse_cols = ['rmse_mean', 'rmse_rasch', 'rmse_amortized']
 
     x = np.arange(len(model_names))
     width = 0.35
@@ -331,7 +366,12 @@ def plot_n_comparison(results_file=None, output_dir=None):
     # AUC comparison
     fig, ax = plt.subplots()
 
-    auc_cols = ['auc_mean', 'auc_rasch', 'auc_amortized']
+    if has_pca_sae:
+        auc_cols = ['auc_mean', 'auc_rasch', 'auc_ad', 'auc_pca', 'auc_sae']
+    elif has_ad:
+        auc_cols = ['auc_mean', 'auc_rasch', 'auc_ad', 'auc_amortized']
+    else:
+        auc_cols = ['auc_mean', 'auc_rasch', 'auc_amortized']
 
     for i, (_, row) in enumerate(df_comp.iterrows()):
         offset = (i - 0.5) * width

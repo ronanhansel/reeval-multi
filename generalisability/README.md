@@ -8,6 +8,7 @@ Reproducible evaluation of Amortized IRT models on HELM and ColBench benchmarks.
 generalisability/
 ├── embeddings.py     # Embedding generation (Raw/Qwen, PCA, SAE)
 ├── models.py         # IRT models (Bernoulli and Beta versions)
+├── aggregate.py      # N-holdout survey across response matrices
 ├── plotting.py       # Unified plotting with tueplots icml2024
 ├── reproduce.sh      # Main reproducibility script
 └── result/           # Output directory (CSVs and PDFs)
@@ -55,6 +56,18 @@ python models.py --benchmark helm --model bernoulli
 python models.py --benchmark colbench --model beta
 ```
 
+### aggregate.py
+
+N-holdout survey: evaluates model performance across varying numbers of response matrices.
+Runs both PCA and SAE Amortised IRT models for comprehensive comparison.
+
+```bash
+python aggregate.py                      # Run all n values (1 to max)
+python aggregate.py --n-samples 1,22     # Run only n=1 and n=22
+python aggregate.py --n-samples 1-5,22   # Run n=1 through 5, plus 22
+python aggregate.py --model beta         # Use Beta IRT (default)
+```
+
 ### plotting.py
 
 Generates all plots with consistent ICML 2024 styling:
@@ -75,10 +88,15 @@ Results are saved to `result/`:
 | File | Description |
 |------|-------------|
 | `helm_results.csv` | HELM model comparison (Model, AUC) |
-| `colbench_results.csv` | ColBench comparison (Model, RMSE, AUC) |
+| `colbench_results.csv` | ColBench comparison with PCA and SAE models (Model, RMSE, AUC) |
+| `convergence_results.csv` | N-holdout results with PCA/SAE metrics (n_samples, RMSE, AUC per model) |
 | `auc_comparison_helm.pdf` | HELM AUC bar chart |
 | `rmse_comparison_colbench.pdf` | ColBench RMSE bar chart |
 | `auc_comparison_colbench.pdf` | ColBench AUC bar chart |
+| `rmse_convergence.pdf` | RMSE vs n_samples line plot (includes PCA and SAE) |
+| `auc_convergence.pdf` | AUC vs n_samples line plot (includes PCA and SAE) |
+| `rmse_comparison.pdf` | N=1 vs N=max RMSE comparison |
+| `auc_comparison.pdf` | N=1 vs N=max AUC comparison |
 
 ## Data Dependencies
 
