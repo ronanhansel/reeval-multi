@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data-reeval-multi"
 PRE_DIR = DATA_ROOT / "pre-revision"
 POST_DIR = DATA_ROOT / "post-revision"
-RUBRICS_DIR = DATA_ROOT / "rubrics" / "post-revision"
+RUBRICS_DIR = DATA_ROOT / "rubrics" / "judge-output"
 
 
 def _normalize_value(val) -> Optional[int]:
@@ -156,6 +156,7 @@ def post_revision_rubrics(rubric_maps: Dict[str, Dict[int, Dict[str, int]]]) -> 
         "assistantbench": "assistantbench",
         "colbench": "colbench_backend_programming",
         "corebench": "corebench",
+        "corebench_hard": "corebench",
         "scienceagentbench": "scienceagentbench",
         "scicode": "scicode",
         "swebench": "swebench",
