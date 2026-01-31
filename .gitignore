@@ -22,3 +22,4 @@ temp/
 embeddings_cache/
 .claude/
 data-reeval-multi/
+traces/

@@ -196,6 +196,13 @@ python scripts/claude_fixer_scicode.py \
 python scripts/run_scicode_fixes.py --all --prefix honey_ --docker
 ```
 
+Download rubrics and existing benchmarks 
+```bash
+hf download ronanhansel/data-reeval-multi \
+    --local-dir ./data-reeval-multi \
+    --repo-type dataset
+```
+
 If you want to use existing runs from HAL for rubrics evaluation, you can use `data-collection/hal.py` to download the traces and decrypt with `hal-decrypt -D traces`, make sure to have done `pip install -e .` in the submodule agent-debug/hal-harness
 
 ### Running New Benchmarks
