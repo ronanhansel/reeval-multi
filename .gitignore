@@ -1,12 +1,12 @@
 data
 __pycache__
 .ipynb_aml_checkpoints
-.DSD_store
+.DS_store
 result
 *.amlignore
 *.amlignore.amltmp
-.ipynb_aml_checkpoints/ 
-*.amltmp 
+.ipynb_aml_checkpoints/
+*.amltmp
 *.amltemp
 output/
 output-*/
