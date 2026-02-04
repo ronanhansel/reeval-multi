@@ -1,6 +1,0 @@
-{
-  "description": "Add scipy.integrate.simps and numpy.trapz compatibility shims for deprecated APIs",
-  "preamble": "# Compatibility shims for deprecated NumPy/SciPy APIs\nimport numpy as np\nif not hasattr(np, 'trapz'):\n    np.trapz = np.trapezoid\n# Note: scipy.integrate.simps -> simpson shim handled at import level\n# The benchmark uses 'from scipy.integrate import simps' so we alias in scipy.integrate module\ntry:\n    from scipy import integrate as _sci_int\n    if not hasattr(_sci_int, 'simps'):\n        _sci_int.simps = _sci_int.simpson\nexcept ImportError:\n    pass\n",
-  "apply_to_all_steps": true,
-  "notes": "The benchmark's required_dependencies explicitly requires 'from scipy.integrate import simps'. In SciPy 1.14+, simps was deprecated and in 1.17+ it was removed, replaced by simpson. Similarly, numpy.trapz was deprecated in favor of numpy.trapezoid. These shims ensure backward compatibility."
-}

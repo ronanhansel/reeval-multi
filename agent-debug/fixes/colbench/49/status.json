@@ -1,7 +1,0 @@
-{
-  "fix_created": "2026-01-20",
-  "verified": true,
-  "fix_type": "instruction_override",
-  "ife_category": "hidden_information_not_discoverable",
-  "cross_model_agreement": "3/3 models (GPT-4.1, O3-low, O4-mini-high) graded 1.0"
-}

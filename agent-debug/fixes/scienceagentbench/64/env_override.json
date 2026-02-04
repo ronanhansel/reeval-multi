@@ -1,7 +1,0 @@
-{
-  "HAL_NETWORK_ACCESS": "true",
-  "HAL_TIMEOUT_SECONDS": 1200,
-  "HAL_PIP_PACKAGES": "oggm salem tables geopandas",
-  "FORCE_INSTALL_PACKAGES": "oggm salem tables geopandas",
-  "notes": "OGGM may require network access for climate data. The Dockerfile has special handling for OGGM (adds salem, tables, geopandas) but only if pipreqs detects 'oggm' in imports. Extended timeout for potential downloads. The instruction_override ensures agents write code with proper oggm imports so these dependencies are installed."
-}

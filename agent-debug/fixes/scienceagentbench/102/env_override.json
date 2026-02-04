@@ -1,6 +1,0 @@
-{
-  "HAL_PIP_PACKAGES": "modnet pymatgen matminer",
-  "HAL_CONDA_CHANNELS": "conda-forge",
-  "FORCE_INSTALL_PACKAGES": "modnet pymatgen matminer",
-  "notes": "CRITICAL: MODNet does NOT have special handling in the Docker harness unlike DeepChem/OGGM/Scanpy. The Dockerfile must be modified to add: `if echo \"$extracted_pkgs\" | grep -q 'modnet'; then echo 'pymatgen' >> /testbed/instance_requirements.txt && echo 'matminer' >> /testbed/instance_requirements.txt; fi;`. The pickled training data contains MODNet-specific objects that cannot be deserialized without modnet installed."
-}
