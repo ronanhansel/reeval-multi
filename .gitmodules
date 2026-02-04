@@ -1,6 +1,6 @@
-[submodule "agent-debug/hal-harness"]
-	path = agent-debug/hal-harness
+[submodule "item-editor/hal-harness"]
+	path = item-editor/hal-harness
 	url = https://github.com/ronanhansel/hal-harness.git
-[submodule "agent-debug/docent"]
-	path = agent-debug/docent
+[submodule "item-editor/docent"]
+	path = item-editor/docent
 	url = https://github.com/ronanhansel/docent.git
