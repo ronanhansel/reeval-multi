@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "This is a mock/placeholder translation function for internal use, not a real translation API.",
+    "The function should only support language codes 'es' (Spanish), 'fr' (French), and 'en' (English).",
+    "For supported languages other than English, the output should be the language name followed by ' - ' and then the original text (e.g., for Spanish: 'Spanish - Hello' for input 'Hello').",
+    "For English ('en'), return the text unchanged.",
+    "For any unsupported language code, return exactly the string 'Unsupported language'."
+  ],
+  "notes": "The original task description asks for 'translation' but the hidden solution implements text labeling with language prefixes. This clarification makes the actual expected behavior explicit so agents can implement the correct function."
+}

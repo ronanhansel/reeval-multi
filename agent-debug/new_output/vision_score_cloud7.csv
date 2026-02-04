@@ -1,0 +1,9 @@
+agent,corebench.capsule-8536428,corebench.capsule-3418007,corebench.capsule-1624349,corebench.capsule-9832712,corebench.capsule-3821950,corebench.capsule-9911222,corebench.capsule-2345790,corebench.capsule-9137200,corebench.capsule-4252248,corebench.capsule-7186268,corebench.capsule-5136217
+corebench.gpt-5-codex_core_agent,,,,,,,,,,,
+corebench.gpt-5.1-codex_core_agent,,,,,,,,,,,
+corebench.gpt-5_1_core_agent,,,,,,,,,,,
+corebench.gpt-5_2_core_agent,,,,,,,,,,,
+corebench.gpt-5_core_agent,,,,,,,,,,,
+corebench.gpt_4_1_core_agent,,0.0,0.0,0.0,0.0,0.0,,,0.0,0.0,0.0
+corebench.o3-mini_core_agent,,0.0,0.0,0.0,0.0,0.0,,,0.0,0.0,0.0
+corebench.o4-mini_core_agent,,,,,,,,,,,

@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "Input format: `releases` is a list of dictionaries, each with a 'sales' key containing sales in absolute units (e.g., 100000 means 100,000 copies).",
+    "Input format: `awards` is a LIST of award names (e.g., ['Grammy', 'MTV']), not a count.",
+    "Scoring formula: For each release, add 1 + (sales // 100000) to the base score.",
+    "Final score = base_score + (years_experience * 2) + len(awards)"
+  ],
+  "notes": "The task description says 'sales in thousands' and 'number of awards' (implying int), but the hidden implementation expects absolute sales values and awards as a list. The formula constants (100000 divisor, 2x years multiplier) are arbitrary and not stated."
+}

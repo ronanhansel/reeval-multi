@@ -1,0 +1,20 @@
+{
+  "task_id": "52",
+  "clarifications": [
+    "CRITICAL: Your final Python code MUST include these import statements at the top: `import deepchem as dc`, `from deepchem.feat import MolGraphConvFeaturizer`, `from deepchem.models import GraphConvModel`, `from rdkit import Chem`, `from rdkit.Chem import Draw`. The evaluation environment has these packages pre-installed.",
+    "The development sandbox blocks these imports, but the evaluation Docker container has TensorFlow 2.17, DeepChem, RDKit, and DGL properly configured. Write your code as if imports work.",
+    "Use MolGraphConvFeaturizer with per_atom_fragmentation=True for atomic contribution analysis.",
+    "For molecular visualization with atomic contributions, use rdkit.Chem.Draw.SimilarityMaps or highlight atoms based on model attribution scores.",
+    "Load SDF files using: `molecules = Chem.SDMolSupplier('path/to/file.sdf')` or DeepChem's `dc.data.SDFLoader`.",
+    "Save the final figure to 'pred_results/atomic_contrib_pred.png' using matplotlib's savefig()."
+  ],
+  "critical_imports": [
+    "import deepchem as dc",
+    "from deepchem.feat import MolGraphConvFeaturizer",
+    "from deepchem.models import GraphConvModel",
+    "from rdkit import Chem",
+    "from rdkit.Chem import Draw",
+    "import matplotlib.pyplot as plt"
+  ],
+  "notes": "The evaluation Docker uses Python 3.10 with TensorFlow 2.17 pre-installed. DeepChem works in this environment. The sandbox limitation only affects agent development, not final evaluation."
+}

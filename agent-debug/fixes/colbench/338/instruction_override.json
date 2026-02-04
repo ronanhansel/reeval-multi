@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "A team is eligible if and only if ALL THREE conditions are met:",
+    "1. team_conf is in the conf_teams list",
+    "2. team_wins >= min_wins_required",
+    "3. prev_bowl_appearances >= min_conf_teams_required",
+    "Return True if all three conditions are satisfied, False otherwise."
+  ],
+  "notes": "The simulated user gave contradictory guidance, explicitly telling the agent to ignore the prev_bowl_appearances condition. However, the hidden implementation requires all three conditions. This fix clarifies the actual requirements."
+}

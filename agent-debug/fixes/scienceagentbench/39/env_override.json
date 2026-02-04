@@ -1,0 +1,5 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_PIP_PACKAGES": "prolif MDAnalysis matplotlib",
+  "notes": "Task requires ProLIF (which depends on MDAnalysis) for protein-protein interaction fingerprints. The sandbox interpreter blocks importing these packages during agent execution, but Docker evaluation needs them installed. ProLIF is built on MDAnalysis for trajectory analysis."
+}

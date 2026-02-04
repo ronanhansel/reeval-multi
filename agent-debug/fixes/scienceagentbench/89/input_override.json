@@ -1,0 +1,10 @@
+{
+  "task_id": "89",
+  "clarifications": [
+    "When creating a GeoDataFrame, always specify the geometry column explicitly in the constructor: gpd.GeoDataFrame(data, geometry='geometry_column_name') or use set_geometry() after construction.",
+    "Required imports: geopandas (as gpd), geoplot (as gplt), geoplot.crs as gcrs",
+    "Use geoplot.quadtree() with a GeoDataFrame that has an active geometry column set",
+    "For spatial joins and analysis, ensure geometry columns are properly set before operations"
+  ],
+  "notes": "This clarification addresses GeoDataFrame API deprecation warnings that agents cannot discover due to sandbox restrictions blocking geopandas imports during development."
+}

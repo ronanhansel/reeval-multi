@@ -1,0 +1,19 @@
+{
+  "task_id": "97",
+  "clarifications": [
+    "CRITICAL: Your final Python code MUST include these import statements at the top: `import deepchem as dc`, `from deepchem.models import CGCNNModel`, `from deepchem.feat import CGCNNFeaturizer`, `import pickle`, `import numpy as np`. The evaluation environment has DeepChem, DGL, and TensorFlow pre-installed.",
+    "The development sandbox blocks these imports, but the evaluation Docker container has Python 3.10, TensorFlow 2.17, DGL, and DeepChem's CGCNN properly configured. Write your code as if imports work.",
+    "Load the pickled NumpyDataset files using: `import pickle; with open('train_data.pkl', 'rb') as f: train_data = pickle.load(f)`",
+    "CGCNNModel (Crystal Graph Convolutional Neural Network) is designed for crystal structure property prediction.",
+    "Use CGCNNFeaturizer to featurize crystal structures from CIF files or pymatgen Structure objects.",
+    "Save formation energy predictions to the specified output file format."
+  ],
+  "critical_imports": [
+    "import deepchem as dc",
+    "from deepchem.models import CGCNNModel",
+    "from deepchem.feat import CGCNNFeaturizer",
+    "import pickle",
+    "import numpy as np"
+  ],
+  "notes": "The evaluation Docker uses Python 3.10 with TensorFlow 2.17 and DGL pre-installed. DeepChem CGCNN works in this environment. The sandbox limitation only affects development."
+}

@@ -1,0 +1,5 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_PIP_PACKAGES": "neurokit2 mne matplotlib scipy",
+  "notes": "Task requires NeuroKit2 for EOG signal analysis. NeuroKit2's nk.eog_findpeaks function internally calls _eog_findpeaks_mne which requires the 'mne' package (neuroimaging library). The sandbox blocks neurokit2, matplotlib, and scipy.signal imports. Docker evaluation needs both neurokit2 AND mne installed."
+}

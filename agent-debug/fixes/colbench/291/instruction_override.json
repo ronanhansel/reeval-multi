@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "For this simplified model, use a flat 15% tax rate on the excess salary (team_salary - luxury_tax_threshold).",
+    "For repeat offenders, add an additional surcharge: for each complete $5,000,000 of excess salary, add $0.05 to the tax.",
+    "Return 0 if team salary does not exceed the luxury tax threshold."
+  ],
+  "notes": "The hidden implementation uses a simplified formula (15% flat rate + repeat offender surcharge per 5M) that differs from actual NBA CBA brackets. Without specifying these constants, agents cannot derive the expected behavior."
+}

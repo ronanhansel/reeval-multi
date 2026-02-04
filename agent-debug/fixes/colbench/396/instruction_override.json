@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "The function should return the number of shelters needed (as an integer) if there are enough shelters available, or the string 'Not enough shelters' if there aren't enough. The number of shelters needed is calculated by ceiling division of displaced people count by capacity per shelter."
+  ],
+  "notes": "The simulated user contradicted the hidden expected behavior by first suggesting a boolean return, then explicitly requesting a tuple format (fits, capacity, needed). This made it impossible for the agent to match the expected output while following user guidance. This fix clarifies the expected return format."
+}

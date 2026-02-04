@@ -1,0 +1,4 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_CONDA_PACKAGES": "r-base=4.0 r-rmarkdown r-knitr r-remotes r-data.table r-ggplot2 r-zoo pandoc"
+}

@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "Note: This implements simple value-based grouping, NOT range partitioning.",
+    "Group rows by the exact value of row[column], creating one partition per unique value.",
+    "Return a dictionary where keys are the unique values and values are lists of rows with that value.",
+    "The `dates` parameter is NOT used in the partitioning logic."
+  ],
+  "notes": "The task description mentions 'range partitioning' and includes a dates parameter suggesting boundary values, but the hidden implementation simply groups by exact value equality and ignores the dates parameter entirely."
+}

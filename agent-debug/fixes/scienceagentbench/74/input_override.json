@@ -1,0 +1,8 @@
+{
+  "task_id": "74",
+  "clarifications": [
+    "For OGGM's 2D distribution functionality (distribute_thickness_from_simulation, etc.), import from 'oggm.sandbox.distribute_2d' not 'oggm.core.flowline'. The distribute_2d module is part of OGGM's sandbox namespace.",
+    "Required imports for this task include: oggm, oggm.workflow, oggm.sandbox.distribute_2d, matplotlib.pyplot, salem (for visualization)"
+  ],
+  "notes": "This clarification compensates for the agent sandbox blocking OGGM imports during development. The correct API structure is publicly documented but agents cannot discover it through testing."
+}

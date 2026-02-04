@@ -1,0 +1,7 @@
+{
+  "clarifications": [
+    "The function should calculate what fraction of the truck bed volume can be utilized given the weight capacity constraint. Specifically, compute the weight-limited volume (weight_capacity / rock_density) and divide by the geometric bed volume (height * width * length) to get a utilization ratio.",
+    "The return value is a dimensionless ratio (fraction), not an absolute volume in cubic units."
+  ],
+  "notes": "The hidden implementation returns (weight_capacity/rock_density)/(height*width*length), which is a utilization ratio, not a volume as suggested by the prompt 'volume of rocks a dump truck can carry'. This formula is dimensionally unusual and cannot be derived from the natural reading of the prompt."
+}

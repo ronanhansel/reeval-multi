@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rubric-output-schema",
+  "title": "Unified Rubric Output Schema",
+  "description": "Standard output schema for all benchmark rubric evaluations in the Item Fixing Pipeline",
+  "type": "object",
+  "properties": {
+    "score": {
+      "type": "number",
+      "enum": [0, 1],
+      "description": "Binary score: 1 if benchmark deficiency exists AND caused failure (IFE), 0 if agent capability issue."
+    },
+    "deficiency_exists": {
+      "type": "boolean",
+      "description": "Does a benchmark/formation deficiency exist, regardless of whether it caused this specific failure?"
+    },
+    "deficiency_caused_failure": {
+      "type": "boolean",
+      "description": "Did the identified deficiency actually cause this specific failure?"
+    },
+    "deficiency_type": {
+      "type": "string",
+      "description": "Brief label for the type of deficiency (e.g., 'deprecated_api', 'missing_import', 'test_suite_defect') or 'none'."
+    },
+    "existence_reasoning": {
+      "type": "string",
+      "description": "Analysis of whether and what deficiency exists in the benchmark."
+    },
+    "causation_reasoning": {
+      "type": "string",
+      "description": "Analysis of whether the deficiency caused the failure, or what else caused it."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "Specific quotes or references from the trace supporting the conclusion."
+    }
+  },
+  "required": [
+    "score",
+    "deficiency_exists",
+    "deficiency_caused_failure",
+    "deficiency_type",
+    "existence_reasoning",
+    "causation_reasoning",
+    "evidence"
+  ]
+}

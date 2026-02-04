@@ -1,0 +1,5 @@
+{
+  "HAL_PIP_PACKAGES": "scanpy anndata squidpy leidenalg scikit-misc igraph tables",
+  "HAL_CONDA_PACKAGES": "pytables",
+  "notes": "Spatial visualization (pl.spatial) may require squidpy or properly configured spatial coordinates. leidenalg needed for leiden clustering. igraph is the new default backend. tables/pytables for HDF5 reading."
+}

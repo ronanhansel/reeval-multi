@@ -1,0 +1,7 @@
+{
+  "task_id": "12",
+  "original_dependencies": "from scipy import integrate\nfrom scipy import optimize\nimport numpy as np",
+  "fixed_dependencies": "from scipy import integrate\nfrom scipy import optimize\nimport numpy as np",
+  "additional_imports": [],
+  "reason": "Task 12 uses 'from scipy import integrate' which works fine. Agent should use integrate.simpson() instead of integrate.simps(). The evaluation_override provides a shim for backward compatibility."
+}

@@ -1,0 +1,11 @@
+{
+  "clarifications": [
+    "Calculate the average of state_temperatures: avgtemp = sum(state_temperatures) / len(state_temperatures)",
+    "Check if any shadow in the shadows list is True (indicating the groundhog saw its shadow).",
+    "Prediction rules based on temperature threshold 40:",
+    "  - If avgtemp < 40: return 42 if any shadow is True, else return 34",
+    "  - If avgtemp >= 40: return 21 if any shadow is True, else return 14",
+    "The dates parameter is used to pair with shadows but does not affect the calculation otherwise."
+  ],
+  "notes": "The hidden implementation uses arbitrary magic constants (threshold 40, return values 42/34/21/14) that are not derivable from the task description or Groundhog Day traditions. The simulated user cannot provide these specific values."
+}

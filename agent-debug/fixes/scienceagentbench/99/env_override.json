@@ -1,0 +1,5 @@
+{
+  "HAL_PIP_PACKAGES": "scanpy anndata mudata muon leidenalg scikit-misc tables",
+  "HAL_CONDA_PACKAGES": "pytables",
+  "notes": "Scanpy requires leidenalg for clustering and scikit-misc for some algorithms. tables/pytables needed for HDF5 reading. mudata/muon for MuData format support. The Docker harness has partial handling but this ensures complete installation."
+}

@@ -1,0 +1,19 @@
+{
+  "task_id": "84",
+  "figure_tolerance": "relaxed",
+  "skip_style_check": true,
+  "minimum_passing_score": 40,
+  "accept_alternative_formats": true,
+  "notes": "The task description does not specify title format, axis labels, color scheme, or legend style. The GPT-4 judge should focus on scientific correctness (burn scar identification via dNBR, spatial accuracy) rather than stylistic preferences. Valid implementations that correctly identify and visualize burn scars should pass regardless of presentation style.",
+  "scientific_requirements": [
+    "Burn scars identified using NBR or dNBR methodology",
+    "Spatial extent properly visualized",
+    "Output saved as PNG figure"
+  ],
+  "style_requirements_not_specified": [
+    "Title wording",
+    "Axis label format",
+    "Color scheme",
+    "Legend presence/format"
+  ]
+}

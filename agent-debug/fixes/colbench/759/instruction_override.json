@@ -1,0 +1,11 @@
+{
+  "clarifications": [
+    "A DNA sequence is patent eligible if ALL of the following conditions are true:",
+    "1. is_isolated is True",
+    "2. is_human_dna is True",
+    "3. sequence_length > 1000",
+    "4. The dna_sequence string either contains 'hand of man' as a substring OR starts with 'cDNA'",
+    "Return True only if all four conditions are met, otherwise return False."
+  ],
+  "notes": "The hidden implementation uses specific magic thresholds (>1000) and string checks ('hand of man', 'cDNA' prefix) that cannot be derived from the vague prompt. The 'hand of man' and 'cDNA' checks relate to patent law concepts but the prompt doesn't mention them. These arbitrary conditions make the task unsolvable without clarification."
+}

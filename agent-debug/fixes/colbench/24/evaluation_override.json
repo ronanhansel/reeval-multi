@@ -1,0 +1,30 @@
+{
+  "issue_type": "multiple_infrastructure_failures",
+  "severity": "critical",
+  "description": "Backend has information gap; Frontend has broken simulated user and parser issues",
+  "backend_issues": {
+    "hidden_formula": "revenue = num_ads * ad_type['revenue_per_ad'] * clicks_per_ad * ad_duration * click_revenue * ad_display_probability",
+    "simulated_user_cannot_explain": [
+      "I don't know how 'ad_duration' influences revenue",
+      "I don't know if 'click_revenue' is redundant"
+    ],
+    "problem": "Parameter interactions cannot be determined through dialogue"
+  },
+  "frontend_issues": {
+    "simulated_user_broken": {
+      "returns_system_prompts": "Your task is to simulate a human user... The agent did not provide any visualization",
+      "refuses_to_answer": [
+        "I'm sorry, I can't provide a description of the image",
+        "I'm sorry, I can't provide a description of the agent's image"
+      ],
+      "symptom": "ask_user tool routing is broken"
+    },
+    "parser_error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found"
+  },
+  "required_fix": {
+    "backend": "Document formula parameters or allow user to explain interactions",
+    "frontend_simulated_user": "Fix ask_user routing - should not echo system prompts",
+    "frontend_parser": "Accept HTML fenced blocks for frontend tasks"
+  },
+  "notes": "The frontend simulated user is completely non-functional - it returns meta-instructions and refuses to provide any task-specific information. This makes the collaborative task impossible."
+}

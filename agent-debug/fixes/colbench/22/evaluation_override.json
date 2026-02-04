@@ -1,0 +1,38 @@
+{
+  "issue_type": "hidden_solution_undiscoverable_mappings",
+  "severity": "critical",
+  "description": "Hidden solution expects specific character-color mappings that cannot be fully communicated through dialogue",
+  "evidence": {
+    "task_description": "different characters from The Wizard of Oz (no specific list provided)",
+    "hidden_solution_expects": {
+      "Emerald City guard": "green",
+      "Munchkin": "colorful",
+      "Glinda, the Good Witch of the North": "light",
+      "Tin Man": "metal silver"
+    },
+    "agent_implemented": {
+      "glinda": "light pink",
+      "tin man": "silver"
+    },
+    "discrepancies": [
+      "Different key format (case, punctuation)",
+      "Different color values",
+      "Missing non-obvious characters"
+    ],
+    "simulated_user_response": "I don't have a complete list... Can you help me with the rest?"
+  },
+  "frontend_issues": {
+    "parser_error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found",
+    "simulated_user_broken": [
+      "Claims no visualization when agent provided HTML",
+      "Provides comparison feedback based on non-existent images",
+      "Contradicts task requirements"
+    ]
+  },
+  "required_fix": {
+    "backend_option_a": "Provide complete character-color mapping in task description",
+    "backend_option_b": "Accept reasonable Wizard of Oz character-color associations",
+    "frontend": "Fix parser and simulated user image handling"
+  },
+  "notes": "The exact string keys and color values are arbitrary implementation details that cannot be naturally discovered through collaborative dialogue."
+}

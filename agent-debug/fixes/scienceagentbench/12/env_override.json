@@ -1,0 +1,9 @@
+{
+  "HAL_PIP_PACKAGES": "DeepPurpose git+https://github.com/bp-kelley/descriptastorus",
+  "FORCE_INSTALL_PACKAGES": "DeepPurpose",
+  "HAL_PRE_INSTALL_COMMANDS": [
+    "pip install rdkit-pypi",
+    "pip install torch --upgrade"
+  ],
+  "notes": "DeepPurpose requires descriptastorus and compatible rdkit/torch. The Dockerfile has special handling for DeepPurpose (adds descriptastorus) but only if pipreqs detects 'DeepPurpose' in the agent's code. Note the capitalization: 'DeepPurpose' not 'deeppurpose'. The instruction_override ensures agents use the correct import: 'from DeepPurpose import utils, models'."
+}

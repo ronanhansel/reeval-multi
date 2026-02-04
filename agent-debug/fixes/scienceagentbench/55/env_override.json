@@ -1,0 +1,5 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_PIP_PACKAGES": "scitools-iris matplotlib cartopy netCDF4",
+  "notes": "Task requires Iris library (scitools-iris) for NetCDF oceanographic data analysis. The sandbox blocks 'import iris' and 'import matplotlib.pyplot'. Docker has special handling to map 'iris' to 'scitools-iris'. The 'empty CubeList' error suggests the agent's code has issues loading/filtering the data, but root cause is inability to test imports during development."
+}

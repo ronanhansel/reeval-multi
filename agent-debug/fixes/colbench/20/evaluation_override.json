@@ -1,0 +1,29 @@
+{
+  "issue_type": "hidden_solution_undiscoverable_vocabularies",
+  "severity": "critical",
+  "description": "Hidden solution expects exact word lists that cannot be communicated through dialogue",
+  "evidence": {
+    "task_description": "identify leader, location, organization, sentiment from statements",
+    "hidden_solution_expects": {
+      "leaders": ["Shakirullah", "Ajmal"],
+      "locations": ["Pakistan", "Afghanistan", "East Timor", "Kashmir"],
+      "organizations": ["Al Qaeda", "Taliban", "US", "Jews"],
+      "sentiments": ["hate", "like"]
+    },
+    "simulated_user_response": [
+      "I don't have specific example statements or expected outputs",
+      "I don't have explicit lists of leaders, organizations, or locations",
+      "Using a heuristic for capitalized words and a small sentiment keyword list is acceptable"
+    ]
+  },
+  "problem": "Agent cannot discover these exact lists through dialogue; user claims heuristics are acceptable but tests expect exact matching",
+  "frontend_parser_issue": {
+    "error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found"
+  },
+  "required_fix": {
+    "option_a": "Provide word lists in task description or allow user to share them",
+    "option_b": "Change evaluation to accept reasonable NLP approaches (not just exact matching)",
+    "recommended": "option_b - accept any reasonable approach to this NLP task"
+  },
+  "notes": "This task conflates specific implementation details with the general NLP capability being tested. The hidden word lists are arbitrary and cannot be derived from the problem description."
+}

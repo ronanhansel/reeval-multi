@@ -1,0 +1,31 @@
+{
+  "issue_type": "spec_ground_truth_mismatch",
+  "severity": "critical",
+  "description": "Task specification describes a full real-estate website but ground truth is a minimal centered text box",
+  "evidence": {
+    "specification_requires": [
+      "property listings in grid format",
+      "top navigation bar",
+      "sections for featured properties and areas",
+      "footer with links to community information and contact forms"
+    ],
+    "ground_truth_is": [
+      "simple centered text box",
+      "welcome message",
+      "no navigation",
+      "no grid",
+      "no property sections"
+    ],
+    "simulated_user_feedback": "The ground truth image is a simple, centered text box with a welcome message. It lacks images, multiple sections, and navigation elements."
+  },
+  "contradiction": "Agent cannot satisfy both written spec (full website) AND match ground truth (minimal text box) - they are fundamentally incompatible designs",
+  "parser_issue": {
+    "error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found",
+    "affects": "HTML submissions rejected before visual evaluation"
+  },
+  "required_fix": {
+    "primary": "Replace ground truth with a real-estate website design matching the specification",
+    "secondary": "Fix parser to accept HTML for frontend tasks"
+  },
+  "notes": "This is a data quality issue where the ground truth does not match the task specification."
+}

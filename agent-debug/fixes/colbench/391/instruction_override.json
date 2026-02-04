@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "The emission rates to use are: electricity=20, industry=150, transportation=350, buildings=50, oil_and_gas=100 (all in tonnes per year per unit). The total emissions should be calculated as the weighted sum of each source multiplied by its rate."
+  ],
+  "notes": "The original task contained arbitrary magic constants (20, 150, 350, 50, 100) that are not real-world values and cannot be discovered through dialogue. The simulated user explicitly claims not to know the units and suggests using 'widely cited average values', but the test cases expect these exact hidden constants. This fix makes the constants discoverable while preserving the coding challenge."
+}

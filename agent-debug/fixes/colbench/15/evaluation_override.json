@@ -1,0 +1,25 @@
+{
+  "issue_type": "hidden_solution_logic_error",
+  "severity": "critical",
+  "description": "Hidden reference solution uses arbitrary formula that contradicts task semantics",
+  "evidence": {
+    "task_description": "calculate total tips based on 'number of individuals I need to tip in each category'",
+    "natural_interpretation": "sum(tip * count for each category)",
+    "hidden_solution_formula": "sum(tip_amounts.values()) * len(individuals_tipped)",
+    "problem": "Hidden solution ignores per-category counts and uses list length instead"
+  },
+  "frontend_parser_issue": {
+    "error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found",
+    "affects": "HTML submissions rejected"
+  },
+  "simulated_user_issue": {
+    "behavior": "Reports 'I don't know' when asked about formula",
+    "cause": "Hidden info is code, not natural language - cannot extract arbitrary implementation details"
+  },
+  "required_fix": {
+    "option_a": "Correct hidden solution to match natural task interpretation",
+    "option_b": "Clarify task description to explain the unusual formula",
+    "recommended": "option_a - fix the formula to match semantics"
+  },
+  "notes": "The hidden solution's formula is mathematically incorrect given the task description. This prevents agents from deriving the expected behavior through natural dialogue."
+}

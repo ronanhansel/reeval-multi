@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "For Saab model categorization, use the following horsepower ranges:",
+    "  - 'Linear': horsepower < 200",
+    "  - 'Aero': 200 <= horsepower < 240",
+    "  - For horsepower >= 240, return 'Unknown'",
+    "The function should only handle these three categories with these exact thresholds."
+  ],
+  "notes": "The original task asked the agent to suggest ranges, but the simulated user didn't know them either. The test cases evaluate against hidden thresholds (200, 240) that were never communicated in the dialogue. This clarification provides the actual ranges that the test cases expect, making the evaluation fair without giving away the implementation."
+}

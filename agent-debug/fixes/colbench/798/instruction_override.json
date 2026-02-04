@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The function must use exactly 3 parameters: asbestos_exposure_level, age, and years_of_exposure.",
+    "Calculate risk using: risk = (asbestos_exposure_level * years_of_exposure) / (100 * age)",
+    "Return a boolean: True if risk > 0.5, False otherwise.",
+    "Do not add additional parameters like smoking history.",
+    "Do not return categorical labels - return a simple boolean for high risk status."
+  ],
+  "notes": "The original task allows for multiple reasonable interpretations (categorical vs boolean, different risk formulas). The hidden solution uses a specific formula with arbitrary constants. The simulated user explicitly contradicted the expected behavior by approving additional parameters and categorical output. This fix makes the exact expected behavior clear."
+}

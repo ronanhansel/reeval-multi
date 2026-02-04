@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "Generate issue numbers from 1 to 199 (inclusive) where issue number is strictly greater than min_value.",
+    "Only include issues if the publisher is exactly 'Metro Comix' OR the hero_name is exactly 'Metro Man'. If neither condition is met, return an empty list.",
+    "Return strings in the format '{series} {issue}' (e.g., 'Justice Companions 11'), without a '#' symbol."
+  ],
+  "notes": "The hidden solution uses arbitrary magic strings ('Metro Comix', 'Metro Man') and a synthetic range(1,200) that cannot be discovered through dialogue. The simulated user explicitly said it doesn't have data source details. This fix makes the arbitrary constants discoverable while preserving the programming challenge."
+}

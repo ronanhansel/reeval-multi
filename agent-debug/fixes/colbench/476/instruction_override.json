@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "Use this piecewise formula based on age:",
+    "  - If age < 25: distance = (30 - age) * (velocity / 100) * 50",
+    "  - If age >= 25 and age < 31: distance = (35 - age) * (velocity / 100) * 40",
+    "  - If age >= 31: distance = (40 - age) * (velocity / 100) * 30",
+    "Return the calculated distance value."
+  ],
+  "notes": "The problem description and simulated user both explicitly acknowledge not knowing the formula. The hidden solution contains specific piecewise constants (thresholds at 25/31, offsets 30/35/40, multipliers 50/40/30) that cannot be discovered through dialogue. This fix provides the formula."
+}

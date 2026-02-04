@@ -1,0 +1,262 @@
+# ColBench Intrinsic Formation Error Detection Rubric
+
+## Purpose
+This rubric evaluates whether a task failure on the ColBench benchmark (backend programming or frontend design) stems from an **Intrinsic Formation Error (IFE)** in the benchmark itself, rather than agent capability limitations.
+
+## Benchmark Overview
+ColBench evaluates collaborative agents through multi-turn dialogue with a simulated human user:
+- **Backend Programming**: Agent helps user write Python code (1000 tasks)
+- **Frontend Design**: Agent helps user create HTML/CSS designs (100 tasks)
+
+Key architecture:
+1. Agent receives problem description
+2. Agent asks questions via `ask_user` tool (up to 10 rounds)
+3. Simulated user (GPT-4o) responds based on hidden information
+4. Agent provides final answer (code or HTML)
+5. Evaluation: test cases (backend) or CLIP similarity (frontend)
+
+## Scoring
+- **Score 1**: An intrinsic benchmark defect exists AND caused the failure (no agent could succeed)
+- **Score 0**: The failure is due to agent capability issues (a better agent could have succeeded)
+
+## Two-Question Framework
+
+### Question 1: Does an Intrinsic Formation Defect Exist?
+Analyze whether the benchmark item contains any of the deficiency categories below.
+
+### Question 2: Did the Defect Cause This Failure?
+Even if a defect exists, determine whether it actually prevented success, or whether the agent failed for other reasons.
+
+---
+
+## Deficiency Categories for ColBench
+
+### 1. Simulated User Response Issues
+Problems with how the simulated user responds to agent questions:
+
+**1a. Information Extraction Failure**
+- Hidden information contains specific values (weights, thresholds, conditions) encoded in code
+- Simulated user cannot extract answerable facts from code structure
+- User says "I don't know" when the information IS in the hidden info but not as natural language facts
+- User prompt instructs: "SAY YOU DON'T KNOW IF THE ANSWER CAN NOT BE FOUND" - but hidden info is CODE, not facts
+
+**1b. Inconsistent Feedback**
+- Simulated user provides contradictory information across turns
+- User confirms one approach, then test cases expect different implementation
+- User feedback doesn't align with what hidden information actually requires
+
+**1c. Insufficient Detail**
+- User feedback is too vague to determine exact implementation
+- User describes requirements in natural language that maps to multiple valid implementations
+- Critical implementation details (edge cases, boundary conditions) not communicated
+
+### 2. Hidden Information Design Issues
+Problems with how the expected solution is structured:
+
+**2a. Arbitrary Implementation Details**
+- Expected code contains "magic numbers" with no justifiable source
+- Specific constants (0.4, 0.3, 0.2, 0.1 weights) that user "shouldn't know explicitly"
+- Arbitrary algorithmic choices that can't be inferred from problem description
+
+**2b. Complex Conditional Logic**
+- Nested if/else structures that are difficult to communicate through dialogue
+- Edge case handling that isn't mentioned in problem description
+- Specific return value formatting not derivable from requirements
+
+**2c. Underdefined Requirements**
+- Hidden information specifies implementation details absent from problem description
+- Test cases check behaviors not mentioned in task specification
+- Gap between what user "wants" and what test cases actually verify
+
+### 3. Evaluation Issues
+
+**3a. Backend: Overly Strict Test Cases**
+- Test cases require exact output matching when approximate would be valid
+- Floating point precision issues (0.999999 vs 1.0)
+- String formatting requirements not specified (spaces, newlines, case)
+- Test cases verify undocumented behavior
+
+**3b. Frontend: CLIP Similarity Limitations**
+- CLIP penalizes functionally equivalent but visually different designs
+- Small CSS differences cause large similarity drops
+- Color scheme variations penalized despite meeting requirements
+- Layout differences that don't affect functionality scored as failures
+
+**3c. Rendering Environment Issues**
+- Browser-dependent rendering differences
+- External resource loading failures (fonts, images)
+- Tailwind CSS version mismatches
+- Screenshot capture timing issues
+
+### 4. Task Specification Ambiguity
+The problem description lacks necessary information:
+
+**4a. Missing Functional Requirements**
+- Output format not specified
+- Edge case handling not defined
+- Input validation requirements unclear
+- Return type expectations ambiguous
+
+**4b. Frontend: Design Underspecification**
+- Vague color descriptions ("appetizing colors", "warm academic shades")
+- Layout requirements described but not specific enough
+- Component positioning not precisely defined
+- Interactive elements (hover effects, sliders) hard to specify in dialogue
+
+### 5. Dialogue Round Limitations
+Structural constraints that prevent success:
+
+**5a. Insufficient Rounds**
+- Complex tasks require more than 10 question-answer rounds
+- Agent cannot gather all necessary implementation details
+- Particularly affects tasks with many conditional branches
+
+**5b. Question-Answer Asymmetry**
+- Agent can only ask questions, not iterate on partial solutions
+- No ability to get feedback on intermediate code
+- One-shot final answer with no revision opportunity
+
+---
+
+## CRITICAL EXCLUSIONS: Agent Capability Issues (Score 0)
+
+Do NOT classify the following as benchmark deficiencies:
+
+### 1. Dialogue Strategy Errors
+- Agent asked vague or unhelpful questions
+- Agent failed to probe for necessary details
+- Agent didn't ask about edge cases
+- Agent wasted rounds on unnecessary clarifications
+- These are collaboration skill issues, not benchmark defects
+
+### 2. Code Quality Issues
+- Agent wrote syntactically incorrect code
+- Agent implemented wrong algorithm despite correct information
+- Agent made calculation errors
+- Agent misunderstood user's responses
+- These are programming capability issues
+
+### 3. Design Implementation Errors
+- Agent created valid HTML but wrong styling
+- Agent missed requirements that were communicated
+- Agent used wrong colors despite being told correct ones
+- Agent failed to implement described layout
+- These are frontend development capability issues
+
+### 4. Information Available But Not Extracted
+- If the simulated user DID provide necessary information
+- And the agent failed to use it correctly
+- This is agent failure, not benchmark defect
+
+### 5. Partial Success Possible
+- If some models partially succeeded on the task
+- Or if the dialogue shows the user provided actionable information
+- The benchmark allowed for success; agent capability was insufficient
+
+---
+
+## Evidence Requirements
+
+For Score 1, you MUST provide:
+1. **Specific defect identification**: Quote exact problematic element
+2. **Impossibility proof**: Show why NO agent could overcome this
+3. **Cross-model consistency**: Confirm same issue appears across all model runs
+4. **Information gap analysis**: Show what info was needed but couldn't be obtained
+
+For Score 0, explain:
+1. What information the agent could have gathered
+2. What questions would have helped
+3. Why the task was achievable with better dialogue strategy
+
+---
+
+## Response Format
+
+Respond with a JSON object:
+
+```json
+{
+  "score": 0 or 1,
+  "deficiency_exists": true/false,
+  "deficiency_caused_failure": true/false,
+  "deficiency_type": "category name or 'none'",
+  "existence_reasoning": "analysis of whether a benchmark defect exists",
+  "causation_reasoning": "analysis of whether the defect caused failure",
+  "evidence": "specific quotes from transcript supporting conclusion"
+}
+```
+
+---
+
+## Cross-Run Analysis Guidelines
+
+### Strong IFE Indicators (Lean toward Score 1):
+1. **Same task fails ALL models** - Universal failure despite varied approaches
+2. **Simulated user provides inconsistent/unhelpful responses** - Not agent's fault
+3. **Hidden info contains arbitrary values** - No way to derive through dialogue
+4. **Test cases verify undocumented behavior** - Task-test mismatch
+5. **Frontend: Drastically different ground truth** - Impossible to infer exact design
+
+### Weak IFE Indicators (Lean toward Score 0):
+1. **Some models succeeded** - Task is achievable
+2. **User provided necessary information** - Agent failed to use it
+3. **Agent asked poor questions** - Dialogue strategy issue
+4. **Code was close but had minor errors** - Implementation capability issue
+5. **Partial correctness achieved** - Task fundamentally solvable
+
+---
+
+## ColBench-Specific Evaluation Notes
+
+### Backend Programming Tasks
+- Evaluation runs test cases against agent's Python function
+- Binary pass/fail per test case, averaged for overall correctness
+- **Key IFE signal**: Test cases require specific values that user said "I don't know"
+
+### Frontend Design Tasks
+- Evaluation renders both agent HTML and ground truth HTML as images
+- CLIP model computes embedding similarity (0-1 scale)
+- Threshold: < 0.8 considered "low similarity"
+- **Key IFE signal**: Multiple valid designs exist but only one matches ground truth
+
+### Dialogue Analysis Tips
+Look for these patterns in the conversation:
+- User responses like "I don't know the exact [value]" when hidden info HAS exact values
+- User confirming agent's proposed approach, but test cases expecting different approach
+- Agent asking specific questions, user giving vague answers
+- Circular conversations where no new information is gained
+
+### Known Problematic Patterns
+Based on trace analysis, these task types tend to have IFE issues:
+- Tasks with complex weighted scoring (multiple magic numbers)
+- Tasks with multi-branch conditional logic
+- Frontend tasks requiring exact color schemes
+- Tasks where problem description is generic but hidden info is very specific
+
+---
+
+## Exploratory Analysis: Discovering Hidden Benchmark Issues
+
+### Questions to Ask Yourself
+
+1. **"Could any agent, no matter how skilled, derive the expected solution from the dialogue?"**
+2. **"Does the simulated user have the ability to communicate what's needed?"**
+3. **"Are the test cases testing what the problem description asks for?"**
+4. **"For frontend: Is the ground truth design the ONLY valid interpretation?"**
+
+### Areas to Investigate
+
+**Dialogue Quality**
+- Did the simulated user provide actionable information?
+- Were responses consistent across the conversation?
+- Did the user understand the agent's questions?
+
+**Information Completeness**
+- Could all required implementation details be discovered through dialogue?
+- Were arbitrary constants justifiable from the problem context?
+- Did the task specification match the evaluation criteria?
+
+**Evaluation Fairness**
+- Backend: Do test cases match documented requirements?
+- Frontend: Does CLIP fairly compare functionally equivalent designs?
+- Are alternative valid solutions rejected?

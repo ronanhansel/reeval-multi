@@ -1,0 +1,10 @@
+{
+  "task_id": "74",
+  "ife_detected": true,
+  "ife_type": "sandbox_import_restriction + api_location",
+  "fix_applied": true,
+  "fix_types": ["instruction_override", "env_override"],
+  "root_cause": "Agent sandbox blocks oggm/salem imports during development AND agents used wrong import path (oggm.core.flowline instead of oggm.sandbox.distribute_2d)",
+  "fix_description": "instruction_override tells agent to include proper import statements with CORRECT path (oggm.sandbox.distribute_2d); this triggers pipreqs detection and automatic addition of salem, tables, geopandas",
+  "notes": "The distribute_2d module is in oggm.sandbox namespace, not oggm.core.flowline. This is publicly documented but agents cannot discover it without testing imports."
+}

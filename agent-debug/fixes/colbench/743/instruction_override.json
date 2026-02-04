@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "Despite the prompt mentioning 'kick in and wear off', the function should return only the effects DURATION in minutes (a single integer value).",
+    "Calculate thc_per_pound = thc_amount / user_weight",
+    "Duration rules: if thc_per_pound < 0.01, return 30; if thc_per_pound < 0.05, return 60; otherwise return 120.",
+    "The function returns one of three values: 30, 60, or 120 (minutes)."
+  ],
+  "notes": "The prompt asks for 'kick in and wear off' (two values) but the hidden implementation only returns duration. Additionally, the piecewise thresholds (0.01, 0.05) and values (30, 60, 120) are arbitrary and cannot be derived from the prompt."
+}

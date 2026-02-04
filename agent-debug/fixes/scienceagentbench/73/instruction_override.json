@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "The data arrays have shape (num_images, num_channels, num_timepoints) - timepoints is the last dimension.",
+    "Average over the first two dimensions (images and channels) to get a 1D signal for each timepoint.",
+    "The final plot should show the averaged signal value at each of the original timepoints (should have 200 points on the x-axis).",
+    "Plot both the original (sub03.npy) and generated (fake_sub03.npy) signals on the same figure with different colors."
+  ],
+  "additional_context": "The averaging should reduce (images, channels, timepoints) to (timepoints,) by averaging across the image and channel dimensions while preserving all time points."
+}

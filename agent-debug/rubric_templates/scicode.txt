@@ -1,0 +1,86 @@
+RUBRIC: Intrinsic Input & Formation Deficiencies (SciCode Benchmark)
+
+PURPOSE
+
+You are evaluating whether a task failure stems from an INTRINSIC DEFICIENCY in the benchmark itself—a flaw in the problem description, dependencies, templates, or evaluation apparatus—rather than from the agent's reasoning or implementation errors. Your task is to read the full agent trace carefully and render an independent judgment. The categories below are guidance, not an exhaustive checklist. Trust your analysis of the evidence.
+
+EVALUATION STRUCTURE
+
+For each evaluation, you must answer TWO distinct questions:
+
+Question 1 - EXISTENCE: Does an intrinsic formation deficiency exist in this task? Examine the problem description, provided code templates, dependency specifications, and evaluation context. Is there a structural flaw that would impede ANY agent, regardless of capability?
+
+Question 2 - CAUSATION: Did the agent fail BECAUSE of this deficiency? Even if a deficiency exists, the agent may have failed for unrelated reasons—bugs in their logic, misreading instructions, or poor implementation choices. Establish whether the identified deficiency was the proximate cause of failure, or merely present but incidental.
+
+Your final score reflects BOTH conditions: score=1 only when a deficiency EXISTS and CAUSED the failure. If the deficiency exists but the agent failed for other reasons, or if no deficiency exists, score=0.
+
+GUIDING PRINCIPLES
+
+The following represent general directions for identifying formation deficiencies. These are not rigid categories but conceptual lenses through which to examine failures. Real cases may blend multiple issues or present novel patterns not described here.
+
+Methodological Constraint Conflicts
+
+Consider whether the problem description mandates a specific algorithmic approach, scientific method, or computational technique that the execution environment cannot support. The deficiency lies in the contradiction between what the instructions demand and what the system permits. This might manifest as explicit instructions to use stochastic methods when randomness is blocked, requirements for specific optimization algorithms when those libraries are unavailable, or mandates for hardware-accelerated computation in CPU-only environments. The key question is whether the problem itself creates an impossible situation by requiring a path that leads to inevitable failure. When examining the trace, look for evidence that the agent attempted to follow instructions faithfully but encountered systematic barriers. However, be cautious: if alternative approaches exist that satisfy the problem's intent without violating constraints, this may be an agent capability issue rather than a formation deficiency.
+
+Deprecated or Obsolete Specifications
+
+Examine whether the problem text, sub-steps, or expected interfaces reference function names, API signatures, or library behaviors that were valid in previous software versions but have since been removed or fundamentally altered. The deficiency occurs when the "correct" solution as defined by the prompt is technically impossible to execute in the current environment. This places agents in a double-bind: following the instructions precisely produces runtime errors, while deviating from instructions means not solving the stated problem. Look for AttributeError, ImportError, or similar exceptions that arise from the agent correctly implementing what the prompt requested. However, distinguish this from cases where the agent simply used outdated approaches on their own initiative—the deficiency must originate from the problem specification itself.
+
+Template and Scaffolding Misalignment
+
+Investigate whether code templates, starter files, or structural scaffolding provided by the benchmark inadvertently prevent correct solutions from being recognized. This includes entry point guards that are ignored by the evaluation harness, function signatures that don't match the grading system's expectations, or structural patterns that cause solution code to be invisible to automated testing. The deficiency is that the benchmark's own provided materials mislead agents about where and how to place their solutions. When analyzing traces, look for cases where the agent's logic appears correct but the evaluation system fails to execute or recognize it due to template-induced structural issues. Be careful to distinguish this from agents who misunderstand how to use provided templates correctly.
+
+Implicit Syntactic and Environmental Assumptions
+
+Consider whether the problem formulation assumes a computational context that differs from the actual execution environment, without making these constraints explicit. This might involve modern language features that the evaluation parser rejects, numerical precision requirements that don't match available libraries, or encoding assumptions that cause invisible syntax errors. The deficiency is the gap between implied and actual constraints—the problem suggests one reality while the environment enforces another. Look for SyntaxError or similar exceptions on code that would be valid in standard contexts. However, verify that these issues originate from benchmark-provided content rather than agent-introduced code, as agents may independently introduce syntax errors.
+
+Logical Underspecification
+
+Assess whether the problem provides sufficient information to derive the expected answer. Scientific and mathematical problems often have multiple valid solutions, and deficiencies arise when the problem fails to constrain which solution is expected. This includes root-finding without specified intervals, optimization without defined convergence criteria, or transformations without specified conventions for orientation or ordering. The key indicator is when an agent produces a mathematically or scientifically valid result that the grading system rejects. However, apply this carefully: standard conventions, contextual clues, and reasonable inference often resolve apparent ambiguities. The deficiency must be genuine underspecification, not merely implicit specification that a capable agent could infer.
+
+State and Context Persistence
+
+In multi-step problems, examine whether the evaluation harness correctly maintains state between sub-tasks. Deficiencies occur when correctly-implemented earlier steps are not properly injected into later steps, causing NameError or similar exceptions for definitions that were successfully created. The agent's earlier code must be demonstrably correct for this to constitute a formation deficiency—if earlier steps contained bugs, the failure cascade is an agent capability issue. Look for patterns where the trace shows successful step completion followed by mysterious absence of those results in subsequent steps.
+
+CRITICAL EXCLUSION: Agent Output Formatting Errors
+
+Do NOT classify the following as benchmark deficiencies—these are AGENT CAPABILITY issues:
+
+1. Code block formatting errors: If the agent fails to wrap its code in the expected format (e.g., missing ```python opening tag, malformed code fences), this is an agent mistake, not a benchmark issue. The framework clearly communicates expected formats in error messages like "Ensure your response is in the format of ```python" or "Make sure to provide correct code blobs." When the agent subsequently fixes its formatting and the code executes correctly, this confirms the issue was agent-side.
+
+2. Tool call formatting errors: If the agent incorrectly uses tool calls (e.g., calling final_answer() without proper code block wrapper, mixing tool syntax with raw output), and the framework provides clear feedback about correct usage, this is agent error.
+
+3. Recoverable format errors: If an error occurs but the agent is able to retry and succeed by fixing its output format, the original error was NOT caused by a benchmark deficiency. A true benchmark deficiency would block ALL attempts regardless of agent behavior.
+
+The key test: Would ANY output format from the agent work? If yes (as evidenced by successful retries or clear format instructions), then formatting failures are agent issues. Only classify as benchmark deficiency if the expected format is impossible to produce or contradictory instructions make compliance impossible.
+
+EVALUATION PROCESS
+
+Read the complete agent trace with fresh eyes. Do not assume the categories above are exhaustive or that every failure fits neatly into one. Your analysis should:
+
+First, understand what the agent was trying to accomplish and how they approached the problem. Identify the specific point of failure and the immediate cause of that failure.
+
+Second, examine whether the failure's root cause lies in the benchmark's construction. Is there evidence of contradiction, omission, or misalignment in the problem materials themselves? Would a perfect agent, executing flawlessly, still encounter this barrier?
+
+Third, even if you identify a potential deficiency, critically evaluate whether it actually caused this failure. The agent may have made independent errors that would have caused failure regardless. The deficiency must be the proximate cause, not merely a contributing factor or incidental observation.
+
+Fourth, consider the counterfactual: if this specific deficiency were corrected, would the agent have succeeded? If the agent would still have failed due to their own errors, the deficiency—while real—did not cause this particular failure.
+
+SCORING
+
+Score=1 when BOTH conditions are met: an intrinsic formation deficiency EXISTS in the benchmark materials, AND that deficiency CAUSED the agent's failure. The agent, following instructions correctly, encountered a barrier that no amount of capability could overcome.
+
+Score=0 when EITHER condition fails: no formation deficiency exists (the problem is well-formed and solvable), OR a deficiency exists but the agent failed for independent reasons (bugs, misunderstandings, poor choices) that would have caused failure regardless.
+
+JSON RESPONSE REQUIREMENTS
+
+Respond with ONLY a JSON object containing:
+- "score": 0 or 1
+- "deficiency_exists": true or false (does a formation deficiency exist, regardless of causation?)
+- "deficiency_caused_failure": true or false (did that deficiency cause this specific failure?)
+- "deficiency_type": Brief label for the type of deficiency if one exists, or "none"
+- "existence_reasoning": Your analysis of whether and what deficiency exists in the benchmark
+- "causation_reasoning": Your analysis of whether the deficiency caused the failure, or what else caused it
+- "evidence": Specific quotes or references from the trace supporting your conclusion
+
+Do not include any text outside the JSON object.

@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The language_stats parameter is a list/sequence of records, where each record is indexable (e.g., tuple or list). The stability value is at index 1 (stat[1]).",
+    "The function has TWO conditions that must BOTH be true for the language to be production ready:",
+    "1. len(language_stats) >= release_threshold",
+    "2. The proportion of records where stat[1] >= stability_threshold must be >= 0.9 (90%)",
+    "Return True only if both conditions are met, otherwise return False."
+  ],
+  "notes": "The hidden implementation has an arbitrary 90% proportion requirement that is not in the function parameters or prompt. It also expects a specific data structure (indexable records where stability is at position 1) that isn't specified. These hidden requirements make the task unsolvable without clarification."
+}

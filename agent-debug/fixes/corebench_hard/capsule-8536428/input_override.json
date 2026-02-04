@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "Use the execute_bash tool for filesystem operations and running Python scripts (e.g., execute_bash(\"python script.py\")). The python_interpreter tool has restricted imports and cannot be used for filesystem operations.",
+    "Files are located in the ./environment/ directory. The code is in ./environment/code/ and data is in ./environment/data/."
+  ]
+}

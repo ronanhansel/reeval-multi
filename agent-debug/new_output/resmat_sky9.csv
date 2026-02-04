@@ -1,0 +1,9 @@
+agent,scienceagentbench.1,scienceagentbench.12,scienceagentbench.16,scienceagentbench.20,scienceagentbench.24,scienceagentbench.39,scienceagentbench.43,scienceagentbench.44,scienceagentbench.52,scienceagentbench.55,scienceagentbench.56,scienceagentbench.63,scienceagentbench.64,scienceagentbench.69,scienceagentbench.73,scienceagentbench.74,scienceagentbench.84,scienceagentbench.89,scienceagentbench.95,scienceagentbench.96,scienceagentbench.97,scienceagentbench.99,scienceagentbench.100,scienceagentbench.102
+scienceagentbench.gpt-5-codex_sab_example_agent,0,,,0,,,0,0,,,,,,0,1,,,,,1,1,,,
+scienceagentbench.gpt-5.1-codex_sab_example_agent,0,,0,1,,,0,,,,,,,0,1,,,0,,1,1,,,
+scienceagentbench.gpt-5_1_sab_example_agent,0,,0,1,,,0,,,,,,,,1,,,0,,1,1,1,,
+scienceagentbench.gpt-5_2_sab_example_agent,,,0,1,,,0,,,,1,,,1,,,,,,1,1,0,0,
+scienceagentbench.gpt-5_sab_example_agent,0,,0,,,,0,,,,,,,1,,,,,,1,,,,
+scienceagentbench.gpt_4_1_sab_example_agent,0,0,0,0,0,0,0,0,0,0,0,,0,0,1,0,0,0,0,1,1,0,0,0
+scienceagentbench.o3-mini_sab_example_agent,0,0,1,1,0,1,0,0,,0,0,1,,0,1,0,0,0,0,1,0,0,0,0
+scienceagentbench.o4-mini_sab_example_agent,0,0,0,1,0,0,0,0,0,0,0,1,,1,1,,0,0,0,1,0,0,0,0

@@ -1,0 +1,6 @@
+{
+  "figure_tolerance": "relaxed",
+  "skip_style_check": false,
+  "accept_alternative_formats": true,
+  "notes": "Primary evaluation should focus on UMAP clustering correctness and cell type coloring. Label placement style (legend vs inline) should be secondary consideration. Functionally equivalent visualizations showing correct clustering structure should receive partial credit."
+}

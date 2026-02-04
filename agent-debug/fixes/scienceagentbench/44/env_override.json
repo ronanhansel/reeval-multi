@@ -1,0 +1,5 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_PIP_PACKAGES": "biopsykit pandas numpy",
+  "notes": "Task requires BioPsyKit for sleep IMU data analysis. Specifically requires sleep_processing_pipeline.predict_pipeline_acceleration() function. The sandbox blocks all BioPsyKit imports and even dynamic __import__. Some agents worked around by implementing heuristic methods, but this doesn't satisfy the task's explicit requirement to use BioPsyKit functions."
+}
