@@ -26,17 +26,23 @@ HAL_HARNESS_PATH = REPO_ROOT / "hal-harness"
 if str(HAL_HARNESS_PATH) not in sys.path:
     sys.path.insert(0, str(HAL_HARNESS_PATH))
 
-BENCHMARKS = ("scicode", "scienceagentbench", "corebench", "colbench")
+BENCHMARKS = ("scicode", "scienceagentbench", "corebench", "colbench", "assistantbench", "swebench_verified_mini", "usaco")
 HAL_BENCHMARK_MAP = {
     "scicode": "scicode",
     "scienceagentbench": "scienceagentbench",
     "corebench": "corebench_hard",
     "colbench": "colbench_backend_programming",
+    "assistantbench": "assistantbench",
+    "swebench_verified_mini": "swebench_verified_mini",
+    "usaco": "usaco",
 }
 TASK_ID_FIELD = {
     "scicode": "problem_id",
     "scienceagentbench": "instance_id",
     "corebench": "capsule_id",
+    "usaco": "problem_id",
+    "assistantbench": "task_id",
+    "swebench_verified_mini": "instance_id",
 }
 
 AUTH_ERROR_SNIPPETS = (
@@ -352,10 +358,10 @@ def find_run_ids_from_results(
             
             if rid:
                 if regex:
-                    m = regex.search(rid)
+                    m = regex.search(f.name)
                     if m:
                         run_ids.append((rid, m.group(0)))
-                elif prefix_pattern in rid:
+                elif prefix_pattern in f.name:
                     run_ids.append((rid, prefix_pattern))
         return sorted(list(set(run_ids)))
 
@@ -871,7 +877,8 @@ def load_judge_verdicts(judge_dir: Path, benchmark: str, run_id_prefix: str) -> 
     - [prefix]_verdict.csv
     """
     verdicts: Dict[str, int] = {}
-    clean_prefix = run_id_prefix.rstrip("_")
+    # Clean up prefix for filename matching (remove regex chars)
+    clean_prefix = re.sub(r'[^a-zA-Z0-9_]', '', run_id_prefix).rstrip("_")
     
     # Map internal benchmark keys to descriptive names used by judge
     full_name = HAL_BENCHMARK_MAP.get(benchmark, benchmark)
@@ -882,10 +889,12 @@ def load_judge_verdicts(judge_dir: Path, benchmark: str, run_id_prefix: str) -> 
         f"{full_name}_{clean_prefix}_verdict.csv",
         f"{benchmark}_verdict_{clean_prefix}.csv",
         f"{benchmark}_{clean_prefix}_verdict.csv",
-        f"{clean_prefix}_verdict.csv"
+        f"{clean_prefix}_verdict.csv",
+        f"{full_name}_verdict.csv",
+        f"{benchmark}_verdict.csv",
     ]
     
-    for fname in candidates:
+    for fname in sorted(set(candidates), key=len, reverse=True):
         verdict_path = judge_dir / fname
         if verdict_path.exists():
             try:
@@ -1023,7 +1032,7 @@ def main() -> None:
 
     if args.extract_subscores:
         for b in active_benchmarks:
-            if b not in ("scicode", "scienceagentbench", "corebench", "colbench"):
+            if b not in BENCHMARKS:
                 print(f"Error: --extract-subscores not implemented for {b}")
                 sys.exit(1)
 
@@ -1195,6 +1204,47 @@ def main() -> None:
                 else:
                     continue
 
+        # Precise mapping of subscores to their respective benchmarks
+        BENCHMARK_TO_SUBSCORES = {
+            "scicode": ["subtask_score", "rubric_score"],
+            "scienceagentbench": ["success_rate", "valid_program", "codebert_score", "rubric_score"],
+            "corebench": ["written_score", "vision_score", "rubric_score"],
+            "colbench": ["raw_score", "rubric_score"],
+            "assistantbench": ["rubric_score"],
+            "swebench_verified_mini": ["rubric_score"],
+            "usaco": ["rubric_score"]
+        }
+        # Flatten for initialization
+        ALL_SUBSCORE_NAMES = sorted(list(set(s for scores in BENCHMARK_TO_SUBSCORES.values() for s in scores)))
+
+        # Load Judge Verdicts and Rubrics for this prefix (to export separately later and fallback task IDs)
+        judge_dir = REPO_ROOT / "eval_traces" / "judge_output"
+        rubric_dir = REPO_ROOT / "eval_traces" / "rubrics_output"
+        benchmark_to_verdicts: Dict[str, Dict[str, int]] = {}
+        
+        for benchmark in active_benchmarks:
+            # If --original, we want to look for [benchmark]_verdict.csv directly
+            # because judge.py saves them that way when run with --original
+            pfx_to_load = actual_prefix
+            if args.original:
+                pfx_to_load = "" # This will trigger the fallback to [benchmark]_verdict.csv
+            
+            v_map = load_judge_verdicts(judge_dir, benchmark, pfx_to_load)
+            benchmark_to_verdicts[benchmark] = v_map
+
+            # FALLBACK: If standard discovery failed to find task IDs, pull them from verdicts and rubrics
+            if not benchmark_task_ids.get(benchmark):
+                found_ids = set(v_map.keys())
+                
+                # Also check rubrics for any other task IDs
+                run_ids = benchmark_run_ids.get(benchmark, [])
+                for rid in run_ids:
+                    r_scores = load_rubric_scores(rubric_dir, benchmark, rid)
+                    found_ids.update(r_scores.keys())
+                
+                if found_ids:
+                    benchmark_task_ids[benchmark] = sorted(list(found_ids), key=lambda x: int(x) if x.isdigit() else x)
+
         columns: List[str] = []
         for benchmark in active_benchmarks:
             # Use full benchmark names for columns
@@ -1213,27 +1263,12 @@ def main() -> None:
         # Map from subscore_name -> list of rows (one per agent/run)
         # Each row has the same length as columns
         subscore_type_to_rows: Dict[str, List[List[str]]] = {}
-        # Precise mapping of subscores to their respective benchmarks
-        BENCHMARK_TO_SUBSCORES = {
-            "scicode": ["subtask_score", "rubric_score"],
-            "scienceagentbench": ["success_rate", "valid_program", "codebert_score", "rubric_score"],
-            "corebench": ["written_score", "vision_score", "rubric_score"],
-            "colbench": ["raw_score", "rubric_score"]
-        }
-        # Flatten for initialization
-        ALL_SUBSCORE_NAMES = sorted(list(set(s for scores in BENCHMARK_TO_SUBSCORES.values() for s in scores)))
 
         if args.extract_subscores:
             for name in ALL_SUBSCORE_NAMES:
                 subscore_type_to_rows[name] = []
 
         row_labels: List[str] = []
-
-        # Load Judge Verdicts for this prefix (to export separately later)
-        judge_dir = REPO_ROOT / "eval_traces" / "judge_output"
-        benchmark_to_verdicts: Dict[str, Dict[str, int]] = {}
-        for benchmark in active_benchmarks:
-            benchmark_to_verdicts[benchmark] = load_judge_verdicts(judge_dir, benchmark, actual_prefix)
 
         for benchmark in active_benchmarks:
             # Use actual runs for this benchmark and prefix
@@ -1268,13 +1303,29 @@ def main() -> None:
             for rid in run_ids:
                 c_key = derive_config_key(rid, benchmark, actual_prefix)
                 # Check how many tasks are completed
-                r_dir = resolve_run_dir(run_root, repo_root, benchmark, rid)
+                r_dir = resolve_run_dir(run_root, repo_root, benchmark, rid, traces_dir=args.traces_dir)
                 count = 0
                 if r_dir:
-                    raw_path = r_dir / f"{rid}_RAW_SUBMISSIONS.jsonl"
+                    full_name = HAL_BENCHMARK_MAP.get(benchmark, benchmark)
+                    raw_path = r_dir / f"{full_name}_{rid}_RAW_SUBMISSIONS.jsonl"
+                    if not raw_path.exists():
+                        raw_path = r_dir / f"{benchmark}_{rid}_RAW_SUBMISSIONS.jsonl"
+                    if not raw_path.exists():
+                        raw_path = r_dir / f"{rid}_RAW_SUBMISSIONS.jsonl"
+                    
                     if raw_path.exists():
                         ok = load_raw_ok_tasks(raw_path, benchmark, task_meta)
                         count = len(ok)
+                    else:
+                        # Fallback: if UPLOAD exists, treat as valid run with unknown count for now
+                        upload_path = r_dir / f"{full_name}_{rid}_UPLOAD.json"
+                        if not upload_path.exists():
+                            upload_path = r_dir / f"{benchmark}_{rid}_UPLOAD.json"
+                        if not upload_path.exists():
+                            upload_path = r_dir / f"{rid}_UPLOAD.json"
+                        if upload_path.exists():
+                            count = 1 # Mark as having something
+                
                 current_best = best_runs.get(c_key)
                 if current_best is None:
                     best_runs[c_key] = (rid, count)
@@ -1290,18 +1341,30 @@ def main() -> None:
                 if args.traces_dir:
                     base_dir = Path(args.traces_dir)
                     run_dir = base_dir / "traces"
+                    if not run_dir.exists():
+                        run_dir = base_dir
                     raw_dir = base_dir / "raw_submission"
+                    if not raw_dir.exists():
+                        raw_dir = base_dir
                     full_name = HAL_BENCHMARK_MAP.get(benchmark, benchmark)
                     # Try full name first, then fallback to short name
                     upload_path = run_dir / f"{full_name}_{run_id}_UPLOAD.json"
                     if not upload_path.exists():
                         upload_path = run_dir / f"{benchmark}_{run_id}_UPLOAD.json"
+                    if not upload_path.exists():
+                        upload_path = run_dir / f"{run_id}_UPLOAD.json"
+                        
                     raw_path = raw_dir / f"{full_name}_{run_id}_RAW_SUBMISSIONS.jsonl"
                     if not raw_path.exists():
                         raw_path = raw_dir / f"{benchmark}_{run_id}_RAW_SUBMISSIONS.jsonl"
+                    if not raw_path.exists():
+                        raw_path = raw_dir / f"{run_id}_RAW_SUBMISSIONS.jsonl"
+                        
                     eval_path = raw_dir / f"{full_name}_{run_id}_eval.jsonl"
                     if not eval_path.exists():
                         eval_path = raw_dir / f"{benchmark}_{run_id}_eval.jsonl"
+                    if not eval_path.exists():
+                        eval_path = raw_dir / f"{run_id}_eval.jsonl"
                 else:
                     run_dir = resolve_run_dir(run_root, repo_root, benchmark, run_id)
                     if not run_dir:
@@ -1444,6 +1507,9 @@ def main() -> None:
         header = ["agent"] + columns
         # Remove trailing underscore from actual_prefix for filename
         pfx_for_file = actual_prefix.rstrip("_")
+        if args.original:
+            pfx_for_file = "original"
+            
         # Determine subfolder based on benchmarks found for this prefix
         contributing_benchmarks = [b for b, rids in benchmark_run_ids.items() if rids]
         if len(contributing_benchmarks) == 1:
@@ -1494,8 +1560,14 @@ def main() -> None:
             output_path = output_dir / f"resmat_{pfx_for_file}.csv"
             
         rows_with_labels = [[row_labels[i]] + rows[i] for i in range(len(rows))]
+        
+        # Ensure at least one agent row for original data if we have task columns
+        if args.original and not rows_with_labels and columns:
+            placeholder_row = ["original_agent"] + [""] * len(columns)
+            rows_with_labels.append(placeholder_row)
+
         output_path = write_csv(output_path, header, rows_with_labels)
-        print(f"Wrote CSV: {output_path}")
+        print(f"Wrote CSV: {output_path} with {len(rows_with_labels)} agent rows")
 
         # Export Judge Verdicts to a separate file if present
         has_any_verdicts = any(v for v in benchmark_to_verdicts.values())
@@ -1506,10 +1578,13 @@ def main() -> None:
             
             # Build the judge_verdict row matches 'columns' structure
             judge_row = ["judge_verdict"]
+            val_count = 0
             for b in active_benchmarks:
                 v_map = benchmark_to_verdicts.get(b, {})
                 for task_id in benchmark_task_ids.get(b, []):
                     val = v_map.get(task_id)
+                    if val is not None:
+                        val_count += 1
                     judge_row.append(str(val) if val is not None else "")
             
             write_csv(verdicts_path, header, [judge_row])

@@ -195,9 +195,6 @@ def setup_azure_environment(model: str | None = None) -> bool:
     return True
 
 
-# Pre-parse --openai-base-url BEFORE importing docent
-# (docent reads OPENAI_BASE_URL at import time)
-# If not provided, use Azure/TRAPI directly
 _pre_parser = argparse.ArgumentParser(add_help=False)
 _pre_parser.add_argument("--openai-base-url", type=str, default=None)
 _pre_parser.add_argument("--model", type=str, default=None)
@@ -205,21 +202,74 @@ _pre_args, _ = _pre_parser.parse_known_args()
 
 _using_azure_direct = False
 _resolved_model = None
+
+# Load model rubrics config
+try:
+    with open(REPO_ROOT / "model_configs" / "model_rubrics.json") as f:
+        _rubric_config = json.load(f)
+except Exception as e:
+    print(f"Warning: Could not load model_configs/model_rubrics.json: {e}")
+    _rubric_config = {}
+
+# Determine model to use (default to gpt-5.2_2025-12-11 if not specified)
+_target_model_key = "gpt-5.2_2025-12-11"
+if _pre_args.model:
+    # If user specified a model, try to find it in config, otherwise use as-is
+    if _pre_args.model in _rubric_config:
+        _target_model_key = _pre_args.model
+    elif _pre_args.model.startswith("openai:"):
+        model_name = _pre_args.model.split(":", 1)[1]
+        if model_name in _rubric_config:
+            _target_model_key = model_name
+
 if _pre_args.openai_base_url is None:
-    # No proxy URL provided - use Azure/TRAPI directly
-    _using_azure_direct = setup_azure_environment(_pre_args.model)
-    if _using_azure_direct and _pre_args.model:
-        # Resolve model name to TRAPI deployment name AND switch to azure_openai provider
-        if ':' in _pre_args.model:
-            provider, model_name = _pre_args.model.split(':', 1)
-            deployment_name = resolve_trapi_deployment(model_name)
-            # CRITICAL: Use azure_openai provider instead of openai
-            _resolved_model = f"azure_openai:{deployment_name}"
-            print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
-        else:
-            deployment_name = resolve_trapi_deployment(_pre_args.model)
-            _resolved_model = f"azure_openai:{deployment_name}"
-            print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
+    # No proxy URL provided - use Azure/TRAPI directly via config if available
+    _model_info = _rubric_config.get(_target_model_key)
+    
+    if _model_info:
+        # Use config-based setup
+        _using_azure_direct = setup_azure_environment(_target_model_key)
+        if _using_azure_direct:
+            base_urls = _model_info.get("available_base_urls", [])
+            if base_urls:
+                # Set primary URL
+                os.environ["OPENAI_BASE_URL"] = f"{base_urls[0]}/openai"
+                os.environ["AZURE_OPENAI_ENDPOINT"] = base_urls[0]
+                
+                # Set fallback URLs for rotation/retry
+                if len(base_urls) > 1:
+                    fallback_formatted = [f"{url}/openai" for url in base_urls]
+                    os.environ["OPENAI_FALLBACK_URLS"] = ",".join(fallback_formatted)
+                    print(f"[Azure] Configured {len(base_urls)} URLs for rotation/fallback")
+            
+            # Resolve model ID from config (e.g. "openai/gpt-5.2..." -> "azure_openai:gpt-5.2...")
+            raw_id = _model_info.get("model_id", _target_model_key)
+            if ":" in raw_id:
+                _resolved_model = raw_id
+            else:
+                # Map standard ID to azure_openai provider
+                # e.g. openai/gpt-5.2_2025-12-11 -> azure_openai:gpt-5.2_2025-12-11
+                clean_id = raw_id.replace("openai/", "").replace("azure/", "")
+                _resolved_model = f"azure_openai:{clean_id}"
+            
+            print(f"[Azure] Model configured from json: {_target_model_key} -> {_resolved_model}")
+            
+    # Fallback to old logic if config not found or setup failed
+    if not _resolved_model:
+        _using_azure_direct = setup_azure_environment(_pre_args.model)
+        if _using_azure_direct and _pre_args.model:
+            # Resolve model name to TRAPI deployment name AND switch to azure_openai provider
+            if ':' in _pre_args.model:
+                provider, model_name = _pre_args.model.split(':', 1)
+                deployment_name = resolve_trapi_deployment(model_name)
+                # CRITICAL: Use azure_openai provider instead of openai
+                _resolved_model = f"azure_openai:{deployment_name}"
+                print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
+            else:
+                deployment_name = resolve_trapi_deployment(_pre_args.model)
+                _resolved_model = f"azure_openai:{deployment_name}"
+                print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
+    
     if not _using_azure_direct:
         # Fallback to localhost proxy
         os.environ["OPENAI_BASE_URL"] = "http://localhost:4000/v1"
@@ -473,12 +523,12 @@ def parse_judge_response(response: str) -> dict:
 async def judge_tasks_with_docent(
     task_ids: list[str],
     evaluations: dict[str, list[TaskEvaluation]],
-    model_option: "ModelOption",
+    model_options: list[ModelOption],
     parallel: int = 5,
     retries: int = 3,
     use_cache: bool = True,
 ) -> list[JudgeVerdict]:
-    """Judge tasks using docent LLMManager with caching."""
+    """Judge tasks using docent LLMManager with caching and model rotation."""
     from tqdm.auto import tqdm
 
     # Build all prompts
@@ -495,11 +545,12 @@ async def judge_tasks_with_docent(
 
     # Create LLMManager
     llm_manager = LLMManager(
-        model_options=[model_option],
+        model_options=model_options,
         use_cache=use_cache,
     )
 
-    print(f"Calling {model_option.model_name} (temperature=0) with {parallel} concurrent requests...")
+    desc_models = "/".join([m.model_name for m in model_options])
+    print(f"Calling {desc_models} (temperature=0) with {parallel} concurrent requests...")
 
     # Call LLM with parallelism
     outputs = await llm_manager.get_completions(
@@ -780,6 +831,45 @@ def main():
         print(f"### PROCESSING PREFIX: {actual_prefix}")
         print(f"{'#'*80}")
 
+        # Map rubric dir name to benchmark name used in trace files
+        benchmark_name = rubric_dir.name
+        if benchmark_name == "colbench":
+            benchmark_name = "colbench_backend_programming"
+        elif benchmark_name == "corebench":
+            benchmark_name = "corebench_hard"
+
+        # Filter by traces-dir if provided
+        if args.traces_dir:
+            traces_path = Path(args.traces_dir)
+            search_dir = traces_path / "traces"
+            if not search_dir.exists():
+                search_dir = traces_path
+            
+            allowed_run_ids = set()
+            for f in search_dir.glob("*.json"):
+                if f.name.startswith(f"{benchmark_name}_") and f.name.endswith("_UPLOAD.json"):
+                    rid = f.name[len(benchmark_name)+1 : -len("_UPLOAD.json")]
+                    allowed_run_ids.add(rid)
+                elif f.name.startswith(f"{rubric_dir.name}_") and f.name.endswith("_UPLOAD.json"):
+                    rid = f.name[len(rubric_dir.name)+1 : -len("_UPLOAD.json")]
+                    allowed_run_ids.add(rid)
+
+            if allowed_run_ids:
+                filtered_csvs = []
+                for f in csv_files:
+                    rid_from_csv = None
+                    if f.name.startswith(f"{benchmark_name}_") and f.name.endswith("_UPLOAD.csv"):
+                        rid_from_csv = f.name[len(benchmark_name)+1 : -len("_UPLOAD.csv")]
+                    elif f.name.startswith(f"{rubric_dir.name}_") and f.name.endswith("_UPLOAD.csv"):
+                        rid_from_csv = f.name[len(rubric_dir.name)+1 : -len("_UPLOAD.csv")]
+                    
+                    if rid_from_csv in allowed_run_ids:
+                        filtered_csvs.append(f)
+                
+                if len(filtered_csvs) < len(csv_files):
+                    print(f"Filtered {len(csv_files)} down to {len(filtered_csvs)} CSV files based on traces in {search_dir}")
+                    csv_files = filtered_csvs
+
         print(f"Found {len(csv_files)} CSV files:")
         for f in csv_files:
             print(f"  - {f.name}")
@@ -890,15 +980,57 @@ def main():
         cache_status = "caching enabled" if use_cache else "caching disabled"
         print(f"\nUsing docent ({cache_status}, parallel={args.parallel})...")
 
-        model_option = ModelOption(
-            provider=provider,
-            model_name=model_name,
-            reasoning_effort=args.reasoning_effort,
-        )
+        model_options = []
+        if _using_azure_direct and _target_model_key in _rubric_config:
+            model_info = _rubric_config[_target_model_key]
+            base_urls = model_info.get("available_base_urls", [])
+            
+            if base_urls:
+                from docent_core._llm_util.providers.registry import PROVIDERS, ProviderConfig
+                from docent_core._llm_util.providers import openai as openai_provider
+                from openai import AsyncAzureOpenAI
+
+                # Create a unique provider for each base URL to enable rotation
+                for i, url in enumerate(base_urls):
+                    p_name = f"azure_openai_{i}"
+                    
+                    # Define a custom client getter that uses this specific URL
+                    def make_client_getter(target_url):
+                        def get_client(api_key=None):
+                            # Ensure env vars are set but then override with specific URL
+                            token = api_key or os.environ.get("AZURE_OPENAI_API_KEY")
+                            return AsyncAzureOpenAI(
+                                azure_endpoint=target_url,
+                                api_key=token,
+                                api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2025-03-01-preview")
+                            )
+                        return get_client
+
+                    # Register the new provider
+                    PROVIDERS[p_name] = ProviderConfig(
+                        async_client_getter=make_client_getter(url),
+                        single_output_getter=openai_provider.get_openai_chat_completion_async,
+                        single_streaming_output_getter=openai_provider.get_openai_chat_completion_streaming_async,
+                    )
+                    
+                    model_options.append(ModelOption(
+                        provider=p_name,
+                        model_name=model_name,
+                        reasoning_effort=args.reasoning_effort,
+                    ))
+                print(f"[Azure] Registered {len(model_options)} unique providers for rotation: {[m.provider for m in model_options]}")
+        
+        if not model_options:
+            model_options = [ModelOption(
+                provider=provider,
+                model_name=model_name,
+                reasoning_effort=args.reasoning_effort,
+            )]
+
         verdicts = asyncio.run(judge_tasks_with_docent(
             task_ids=task_ids,
             evaluations=evaluations,
-            model_option=model_option,
+            model_options=model_options,
             parallel=args.parallel,
             retries=args.retries,
             use_cache=use_cache,
