@@ -1,0 +1,21 @@
+{
+  "task_id": "64",
+  "clarifications": [
+    "CRITICAL: Your final Python code MUST include these import statements at the top: `import oggm`, `from oggm import cfg, workflow, tasks, utils`, `from oggm.core.massbalance import MultipleFlowlineMassBalance`, `import matplotlib.pyplot as plt`, `import salem`, `import geopandas as gpd`. The evaluation environment has OGGM and its dependencies pre-installed.",
+    "The development sandbox blocks these imports, but the evaluation Docker container has OGGM 1.6.1, salem, tables, and geopandas properly configured when pipreqs detects OGGM imports. Write your code as if imports work.",
+    "Initialize OGGM configuration FIRST: `cfg.initialize(logging_level='WARNING')` before any workflow calls.",
+    "The glacier data is provided locally in 'benchmark/datasets/ocean_glacier/per_glacier/RGI60-11/RGI60-11.00/RGI60-11.00001.tar.gz' - extract and use this data.",
+    "Configure OGGM working directory: `cfg.PATHS['working_dir'] = '/tmp/oggm_working'` and create the directory if needed.",
+    "Use salem for glacier visualization: `import salem` - this is automatically added when OGGM is detected.",
+    "Save the final mass balance plot to 'pred_results/mass_balance_pred.png' using matplotlib's savefig()."
+  ],
+  "critical_imports": [
+    "import oggm",
+    "from oggm import cfg, workflow, tasks, utils",
+    "from oggm.core.massbalance import MultipleFlowlineMassBalance",
+    "import matplotlib.pyplot as plt",
+    "import salem",
+    "import geopandas as gpd"
+  ],
+  "notes": "The evaluation Docker adds salem, tables, and geopandas when OGGM is detected in imports. Extended timeout configured for potential network operations. The local glacier data should be used instead of downloading from OGGM servers."
+}

@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "Note: Despite the function name, calculate a weighted yards TOTAL (not a per-game average).",
+    "The formula is: (total_rushing_yards * read_option_percentage / 100) + total_passing_yards",
+    "The read_option_percentage represents what fraction of rushing yards should be counted (as a percentage, e.g., 30 means 30%).",
+    "The total_offensive_plays parameter is not used in the calculation."
+  ],
+  "notes": "The function name says 'average_yards_per_game' but the hidden implementation computes a weighted season total with no averaging. This is a spec-implementation mismatch where the stated requirement contradicts the expected behavior."
+}

@@ -1,0 +1,89 @@
+{
+  "gpt-5.1-codex_scicode_tool_calling_agent": {
+    "model_id": "openai/gpt-5.1-codex_2025-11-13",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/redmond/interactive",
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/msra/shared"
+    ]
+  },
+  "gpt-5-codex_scicode_tool_calling_agent": {
+    "model_id": "openai/gpt-5-codex_2025-09-15",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/msra/shared",
+      "https://trapi.research.microsoft.com/redmond/interactive"
+    ]
+  },
+  "gpt-5_scicode_tool_calling_agent": {
+    "model_id": "openai/gpt-5_2025-08-07",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/redmond/interactive",
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/msra/shared"
+    ]
+  },
+  "o3-mini_scicode_tool_calling_agent": {
+    "model_id": "openai/o3-mini_2025-01-31",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/msra/shared"
+    ]
+  },
+  "gpt-5_1_scicode_tool_calling_agent": {
+    "model_id": "openai/gpt-5.1_2025-11-13",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/redmond/interactive",
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/msra/shared"
+    ]
+  },
+  "gpt-5_2_scicode_tool_calling_agent": {
+    "model_id": "openai/gpt-5.2_2025-12-11",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/redmond/interactive",
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/msra/shared"
+    ]
+  },
+  "o4-mini_scicode_tool_calling_agent": {
+    "model_id": "openai/o4-mini_2025-04-16",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/msra/shared",
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/redmond/interactive"
+    ]
+  },
+  "gpt_4_1_scicode_tool_calling_agent": {
+    "model_id": "openai/gpt-4.1_2025-04-14",
+    "agent_dir": "hal-harness/agents/scicode_tool_calling_agent",
+    "agent_function": "main.run",
+    "max_steps": 5,
+    "available_base_urls": [
+      "https://trapi.research.microsoft.com/msra/shared",
+      "https://trapi.research.microsoft.com/gcr/shared",
+      "https://trapi.research.microsoft.com/redmond/interactive"
+    ]
+  }
+}

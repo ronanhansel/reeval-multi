@@ -1,0 +1,23 @@
+{
+  "issue_type": "parser_regex_mismatch",
+  "severity": "critical",
+  "description": "Frontend HTML task uses Python-only code fence regex parser",
+  "evidence": {
+    "parser_error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found",
+    "task_requirement": "raw html code wrapped in <html> tag",
+    "agent_output": "Valid HTML fenced as ```html``` was rejected"
+  },
+  "additional_issues": {
+    "tool_name_mismatch": {
+      "prompt_says": "finish_answer",
+      "actual_tool": "final_answer",
+      "error": "InterpreterError: Forbidden function evaluation: 'finish_answer' is not among the explicitly allowed tools"
+    },
+    "simulated_user": "Returns generic comparison text instead of answering design questions"
+  },
+  "required_fix": {
+    "parser": "Accept html fenced blocks for frontend tasks",
+    "tools": "Use consistent tool names in prompt (final_answer)"
+  },
+  "notes": "Multiple infrastructure-level issues affecting this task"
+}

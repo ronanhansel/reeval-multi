@@ -1,0 +1,6 @@
+[submodule "hal-harness"]
+	path = hal-harness
+	url = https://github.com/ronanhansel/hal-harness.git
+[submodule "docent"]
+	path = docent
+	url = https://github.com/ronanhansel/docent.git

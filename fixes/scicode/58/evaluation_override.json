@@ -1,0 +1,8 @@
+{
+  "58.3": {
+    "test_case_fix": "replace_function_call",
+    "original_function": "eos_rho_from_press",
+    "corrected_function": "eos_eps_from_press",
+    "reason": "Test cases incorrectly call eos_rho_from_press instead of eos_eps_from_press for step 58.3"
+  }
+}

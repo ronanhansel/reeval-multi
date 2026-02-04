@@ -1,0 +1,11 @@
+{
+  "clarifications": [
+    "Convert the description to lowercase before processing.",
+    "Output format: Return a TUPLE of two dictionaries: (age_demographics, role_demographics)",
+    "age_demographics dict has keys: 'young', 'old', 'unknown' - all initialized to 0",
+    "role_demographics dict has keys: 'aggressor', 'defender', 'unknown' - all initialized to 0",
+    "Age detection: Check for 'older' -> increment 'old' by 1. Otherwise if 'young' or 'younger' in description -> increment 'young' by 1. (Only one age category per description)",
+    "Role detection: Check for 'throwing punches' or 'started a fight' -> increment 'aggressor' by 1. Otherwise if 'no aggression' or \"didn't want any part\" in description -> increment 'defender' by 1. (Only one role category per description)"
+  ],
+  "notes": "The hidden implementation uses very specific keyword triggers and a specific output format (tuple of dicts with 'unknown' keys) that are not specified in the task description. Without these details, agents implement broader heuristics that fail the exact-match tests."
+}

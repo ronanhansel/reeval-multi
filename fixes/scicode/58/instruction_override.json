@@ -1,0 +1,9 @@
+{
+  "58.2": {
+    "clarification": "NOTE: Despite the docstring mentioning 'eps' (specific internal energy), this function computes and returns DENSITY (rho) from pressure. The function name 'eos_rho_from_press' is correct - the output should be rho, not eps.",
+    "corrected_output_description": "rho: the density corresponding to the given pressure, a float"
+  },
+  "58.3": {
+    "clarification": "NOTE: Implement the eos_eps_from_press function as specified in the function header. This function computes specific internal energy from pressure for a polytropic EOS."
+  }
+}

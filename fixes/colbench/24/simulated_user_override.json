@@ -1,0 +1,25 @@
+{
+  "issue_type": "simulated_user_tool_routing_broken",
+  "severity": "critical",
+  "description": "Simulated user returns system prompts instead of answering questions and refuses to provide basic task requirements",
+  "evidence": {
+    "expected_behavior": "Answer agent's questions about business name, colors, CTA text, etc.",
+    "actual_behavior": [
+      "Returns benchmark system prompt: 'Your task is to simulate a human user...'",
+      "Refuses to answer: 'I'm sorry, I can't provide a description of the image'",
+      "Claims no visualization when agent provided HTML"
+    ]
+  },
+  "agent_questions_unanswered": [
+    "Could you please provide your business name for the startup site?",
+    "Business name and tagline",
+    "Primary CTA text and its URL",
+    "Brand primary & secondary hex colors"
+  ],
+  "required_fix": {
+    "tool_routing": "Ensure ask_user properly routes to simulated user, not echo system prompts",
+    "user_capability": "Simulated user should be able to provide basic task requirements",
+    "image_handling": "Fix image rendering/comparison for frontend tasks"
+  },
+  "notes": "The simulated user is completely non-functional for this task. The agent cannot complete the collaborative dialogue because the user tool is broken at the infrastructure level."
+}

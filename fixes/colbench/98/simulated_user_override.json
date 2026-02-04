@@ -1,0 +1,5 @@
+{
+  "additional_prompt": "When asked about the weighting factors for the safety rating formula, you should extract and provide the exact coefficients from the hidden code. The formula uses specific multipliers: train_age is multiplied by 2, track_condition by 3, and incidents by 5. These are then subtracted from 100.",
+  "allow_explicit_values": true,
+  "notes": "The simulated user was saying 'I don't know the weightings' even though the hidden code clearly defines them (2, 3, 5). This override ensures the user can communicate these critical implementation details that are necessary for the agent to match the expected behavior."
+}

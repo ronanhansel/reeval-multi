@@ -1,0 +1,5 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge bioconda",
+  "HAL_CONDA_PACKAGES": "r-prroc r-rocr r-snftool r-apcluster r-fingerprint r-proxy r-reshape2 r-hmisc r-rcdk bioconductor-pharmacogx bioconductor-survcomp bioconductor-annotate bioconductor-org.hs.eg.db bioconductor-netbiov",
+  "HAL_APT_PACKAGES": "default-jdk"
+}

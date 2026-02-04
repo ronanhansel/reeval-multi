@@ -1,0 +1,7 @@
+{
+  "step_overrides": {
+    "52.2": {
+      "step_description_prompt": "Define a function to perform the integral of $y'$ for given values of $l$ and $\\varepsilon$ over a range of $r$ using Schroed_deriv(y,r,l,En) function. Start the integration from large $r$. After integration, normalize the result using Simpson's rule for numerical integration (note: use `scipy.integrate.simpson`, not the deprecated `simps`)."
+    }
+  }
+}

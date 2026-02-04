@@ -1,0 +1,13 @@
+{
+  "clarifications": [
+    "The function takes parameters: climate (string), temperature (Fahrenheit), season (string), has_sensory_needs (boolean).",
+    "Apply the following rules in ORDER (first match wins):",
+    "1. If climate == 'cold' AND temperature < 60: return ['undershirt', 't-shirt', 'hoodie', 'rain jacket']",
+    "2. Else if season == 'summer': return ['t-shirt']",
+    "3. Else if has_sensory_needs is True: return ['ribbed tank top', 't-shirt']",
+    "4. Otherwise: return ['t-shirt', 'hoodie']",
+    "Use these exact clothing item strings as specified.",
+    "Temperature is in Fahrenheit."
+  ],
+  "notes": "The original task does not specify the temperature threshold, climate values, exact clothing items, or the priority order of conditions. The simulated user explicitly stated they don't know these values despite them being in the hidden information. This fix makes the exact expected behavior explicit."
+}

@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "score": {
+      "type": "number",
+      "enum": [0, 1],
+      "description": "Binary score: 1 if deficiency exists AND caused failure, else 0."
+    },
+    "deficiency_exists": {
+      "type": "boolean",
+      "description": "Does a formation deficiency exist in the benchmark, regardless of causation?"
+    },
+    "deficiency_caused_failure": {
+      "type": "boolean",
+      "description": "Did the identified deficiency cause this specific failure?"
+    },
+    "deficiency_type": {
+      "type": "string",
+      "description": "Brief label for the type of deficiency if one exists, or 'none'."
+    },
+    "existence_reasoning": {
+      "type": "string",
+      "description": "Analysis of whether and what deficiency exists in the benchmark."
+    },
+    "causation_reasoning": {
+      "type": "string",
+      "description": "Analysis of whether the deficiency caused the failure, or what else caused it."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "Specific quotes or references from the trace supporting the conclusion."
+    }
+  },
+  "required": ["score", "deficiency_exists", "deficiency_caused_failure", "deficiency_type", "existence_reasoning", "causation_reasoning", "evidence"]
+}

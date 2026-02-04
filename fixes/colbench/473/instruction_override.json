@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "The winning_votes_per_district parameter is a list of vote requirements for each district.",
+    "Return the sum of all values in winning_votes_per_district (i.e., the total votes required to win ALL districts).",
+    "The electoral_districts and total_votes parameters are informational only and not used in the calculation."
+  ],
+  "notes": "The simulated user incorrectly described the requirement as 'win a majority of districts' and 'minimum votes to win those districts', but the hidden solution simply sums all per-district requirements. This fix clarifies the actual expected behavior."
+}

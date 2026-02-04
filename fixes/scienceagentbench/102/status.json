@@ -1,0 +1,11 @@
+{
+  "task_id": "102",
+  "ife_detected": true,
+  "ife_type": "missing_docker_handler",
+  "fix_applied": true,
+  "fix_types": ["instruction_override", "env_override", "harness_modification"],
+  "root_cause": "MODNet had NO special handling in Docker harness (unlike deepchem/oggm/scanpy). Also, pickle files contain MODNet-specific objects that cannot be deserialized without modnet installed.",
+  "fix_description": "1) Added MODNet handler to dockerfiles.py to install pymatgen and matminer when modnet is detected. 2) instruction_override tells agent to include proper modnet imports.",
+  "harness_modification": "Added to dockerfiles.py: if grep -q 'modnet' then add pymatgen and matminer to requirements",
+  "notes": "This was the most critical IFE because even loading the input data was impossible without MODNet installed. The pickle files contain MODData class instances."
+}

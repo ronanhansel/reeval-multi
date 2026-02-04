@@ -1,0 +1,5 @@
+{
+  "clarifications": [
+    "Note: The code in classes/NERController.py contains hardcoded absolute paths (e.g., '/data/cache/...', '/results/') that assume Docker volume mounts which are not present in this environment. You will need to modify these paths to relative paths (e.g., '../../data/cache/...', '../../results/') before running the code from the code/PGAT directory."
+  ]
+}

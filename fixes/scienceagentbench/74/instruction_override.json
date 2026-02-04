@@ -1,0 +1,21 @@
+{
+  "task_id": "74",
+  "clarifications": [
+    "CRITICAL: Your final Python code MUST include these import statements at the top: `import oggm`, `from oggm import cfg, workflow`, `from oggm.sandbox.distribute_2d import distribute_thickness_from_simulation`, `import matplotlib.pyplot as plt`, `import salem`, `import geopandas as gpd`. The evaluation environment has OGGM and its dependencies pre-installed.",
+    "The development sandbox blocks these imports, but the evaluation Docker container has OGGM 1.6.1, salem, tables, and geopandas properly configured when pipreqs detects OGGM imports. Write your code as if imports work.",
+    "IMPORTANT: For OGGM's 2D distribution functionality (distribute_thickness_from_simulation, etc.), import from 'oggm.sandbox.distribute_2d' NOT 'oggm.core.flowline'. The distribute_2d module is in OGGM's sandbox namespace.",
+    "Initialize OGGM configuration FIRST: `cfg.initialize(logging_level='WARNING')` before any workflow calls.",
+    "Configure OGGM working directory: `cfg.PATHS['working_dir'] = '/tmp/oggm_working'` before extracting glacier data.",
+    "Use salem for glacier visualization - it is automatically installed when OGGM imports are detected.",
+    "Save the final thickness distribution plot to 'pred_results/glacier_thickness_pred.png'."
+  ],
+  "critical_imports": [
+    "import oggm",
+    "from oggm import cfg, workflow",
+    "from oggm.sandbox.distribute_2d import distribute_thickness_from_simulation",
+    "import matplotlib.pyplot as plt",
+    "import salem",
+    "import geopandas as gpd"
+  ],
+  "notes": "The evaluation Docker adds salem, tables, and geopandas when OGGM is detected. The key API location is oggm.sandbox.distribute_2d, not oggm.core.flowline. This is publicly documented but agents cannot discover it through testing due to sandbox restrictions."
+}

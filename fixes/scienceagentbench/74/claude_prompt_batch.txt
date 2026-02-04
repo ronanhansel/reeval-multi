@@ -1,0 +1,438 @@
+You are diagnosing and fixing Intrinsic Formation Errors (IFEs) in ScienceAgentBench tasks.
+
+**YOU HAVE 5 TASKS TO PROCESS: 74, 84, 89, 95, 96**
+
+Process each task sequentially, creating fixes as needed. Be THOROUGH in your analysis.
+
+## CRITICAL CONSTRAINTS - READ CAREFULLY
+
+1. **FIX INTRINSIC FORMATION ERRORS ONLY** - Do NOT make the scientific problem easier
+2. **PRESERVE SCIENTIFIC RIGOR** - The task should remain as challenging as intended
+3. **NO NERFING** - Do not simplify scientific concepts, give hints, reduce precision, or pre-compute results
+4. **VALID FIXES**: Environment packages, Docker config, evaluation tolerance, ambiguous instructions
+5. **INVALID FIXES**: Solution hints, simplified science, pre-importing specialized modules
+
+## SCIENCEAGENTBENCH HARNESS STRUCTURE
+
+**First, read these files to understand the benchmark:**
+- `hal-harness/hal/benchmarks/scienceagentbench.py` - Main benchmark class
+- `hal-harness/hal/benchmarks/scienceagentbench/ScienceAgentBench/` - Evaluation harness
+
+**How Evaluation Works:**
+1. Agent produces Python code for a scientific task
+2. Code is executed in Docker container with `evaluation/harness.py`
+3. Metrics collected: Valid Execution Rate, Success Rate (task-specific criteria), CodeBERTScore
+4. For visualization tasks: GPT-4 compares generated figures to gold standard
+
+**To inspect a specific task, run:**
+```python
+from datasets import load_dataset
+ds = load_dataset("osunlp/ScienceAgentBench", split="validation")
+task = ds[int(TASK_ID) - 1]  # 1-indexed
+print(task['task_inst'])  # Task instruction
+print(task['dataset_folder_tree'])  # Data files available
+```
+
+## THOROUGH ERROR ANALYSIS CHECKLIST
+
+For EACH task, systematically check ALL of these potential error sources:
+
+### 1. Environment/Dependency Issues
+- [ ] Missing Python packages in Docker container (oggm, mne, mastml, biopsykit)
+- [ ] Package version conflicts between scientific libraries
+- [ ] Missing system libraries (GDAL, MPI, etc.)
+- [ ] Conda vs pip installation conflicts for scientific packages
+- [ ] GPU/CUDA requirements for deep learning tasks
+- [ ] Memory/timeout limits too restrictive for large datasets
+
+### 2. Data/Input Issues
+- [ ] Missing or corrupted data files in dataset
+- [ ] Data format differs from task documentation
+- [ ] Column names don't match task description
+- [ ] Encoding issues with scientific data files
+- [ ] File path mismatches between task description and actual paths
+
+### 3. Task Specification Issues
+- [ ] Ambiguous output format requirements
+- [ ] Unclear success criteria (what makes output "correct"?)
+- [ ] Missing domain knowledge in instructions (formulas, methods)
+- [ ] Conflicting requirements between task steps
+- [ ] Unstated assumptions from source scientific papers
+
+### 4. Evaluation Script Issues
+- [ ] Numerical tolerance too strict for scientific precision
+- [ ] Format-sensitive comparison (whitespace, column ordering)
+- [ ] Evaluation crashes on valid but alternative outputs
+- [ ] Metrics don't match task description expectations
+- [ ] GPT-4 judge subjectivity for figure/visualization tasks
+
+### 5. Gold Program/Reference Issues
+- [ ] Gold program has hardcoded paths
+- [ ] Gold program uses unavailable or outdated libraries
+- [ ] Multiple scientifically valid approaches rejected
+- [ ] Gold program doesn't match task requirements exactly
+
+### 6. Cross-Model Failure Patterns
+- [ ] Same error across ALL models → likely IFE
+- [ ] Valid output rejected by evaluation → evaluation issue
+- [ ] Environment blocks ALL models identically → setup issue
+- [ ] Figure evaluation fails for functionally equivalent plots
+
+## KNOWN IFE PATTERNS (from trace analysis)
+
+**Environment Issues (High Priority):**
+- Task 74: `oggm` / `oggm.core.distribute_2d` (glacier modeling) not available
+- Task 43: `mne` (neuroimaging) not available
+- Task 2: `mastml.features` (materials science ML) not available
+- Other domain-specific packages: `biopsykit`, specialized GIS libraries
+
+**Figure Evaluation Issues:**
+- GPT-4 judge penalizes functionally equivalent but stylistically different visualizations
+- Color scheme differences cause failures despite correct scientific content
+- Axis label formatting differences cause failures
+- Tasks 8, 25, 28, 50, 59, 68, 84, 91, 93 have figure evaluation issues
+
+**Key Statistics:**
+- 67/102 tasks failed across ALL 4 models (GPT-4.1, O3, O4-mini-high, O4-mini-low)
+- 39 tasks have runtime errors in 2+ models
+- 13 tasks have figure comparison failures in 2+ models
+
+## FIX OUTPUT FORMAT
+
+For each task that needs a fix, create: `fixes/scienceagentbench/TASK_ID/`
+
+**Environment Fixes** (`env_override.json`):
+```json
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_CONDA_PACKAGES": "mne oggm",
+  "HAL_PIP_PACKAGES": "biopsykit mastml",
+  "HAL_APT_PACKAGES": "libfoo-dev",
+  "HAL_TIMEOUT_SECONDS": 600,
+  "notes": "Justification for these environment changes"
+}
+```
+
+**Evaluation Fixes** (`evaluation_override.json`):
+```json
+{
+  "figure_tolerance": "relaxed",
+  "numerical_tolerance": 1e-4,
+  "accept_alternative_formats": true,
+  "skip_style_check": true,
+  "notes": "Why this adjustment is fair, not a nerf"
+}
+```
+
+**Instruction Clarifications** (`instruction_override.json`):
+```json
+{
+  "clarifications": [
+    "Output file must be named exactly 'output.csv'",
+    "Use specific library version X"
+  ],
+  "additional_context": "Any missing domain knowledge needed"
+}
+```
+
+**Documentation** (`README.md`):
+- Root cause analysis of the IFE
+- What fix was applied and why
+- Why this preserves task difficulty
+- Expected outcome after fix
+
+If NO fix needed (capability issue, not IFE), create README.md explaining why.
+
+## FIX RUNNER SCRIPT
+
+After creating fixes, also check/update the fix runner script:
+`scripts/run_scienceagentbench_fixes.py`
+
+The fix runner must:
+1. Load fixes from `fixes/scienceagentbench/<task_id>/`
+2. Apply environment overrides before Docker evaluation
+3. Inject instruction clarifications into task prompts
+4. Adjust evaluation parameters as specified
+5. Run HAL evaluation with fixes applied
+6. Output new traces with configurable prefix
+
+**Reference implementation**: See `scripts/run_scicode_fixes.py` for the pattern.
+
+## TASKS TO PROCESS
+
+
+---
+## TASK: 74
+---
+
+### Rubric Evaluations
+
+### Evaluation 1 (from scienceagentbench_hal_generalist_agent_o320250416_1746110877_UPLOAD)
+- **Grade**: 0.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The trace does not show a benchmark-intrinsic defect (missing dataset, broken evaluation, missing OGGM in Docker, etc.). The only concrete errors shown are from the interactive sandbox's restricted-import policy (disallowing standard-library 'tarfile' and '__future__' imports). Those restrictions are not presented as part of the ScienceAgentBench task formation itself, and the task is in principle solvable in a normal OGGM-capable environment using the provided .tar.gz preprocessed glacier. | causation_reasoning: This run did not fail due to a benchmark defect; it failed due to the agent producing code incompatible with the execution restrictions encountered (attempting to import 'tarfile', then using 'from __future__ import annotations', and even attempting to 'mock' OGGM instead of using it). A more capable/compliant agent could avoid restricted imports, use allowed extraction methods (e.g., zipfile if applicable, or OGGM prepro loading without manual tar extraction), and provide a valid OGGM-based solution. | evidence: Execution error: "Import of tarfile is not allowed." Later error: "Import from __future__ is not allowed." Agent response included a non-OGGM workaround: "we *mock* a minimal OGGM API".
+
+
+### Evaluation 2 (from scienceagentbench_hal_generalist_agent_o4mini20250416_low_1746044336_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The benchmark execution environment used for the run blocks imports required to complete the task as specified. The task explicitly requires producing and saving a matplotlib figure with three subplots, but the environment's Python execution sandbox disallows importing matplotlib.pyplot, making it impossible to generate the required plot within this environment. | causation_reasoning: The run fails at the very first plotting import, before any OGGM logic or file outputs can be produced. Since plotting is a core required deliverable (saving 'pred_results/oggm_plotting_glacier_area_and_thickness_change_pred.png'), and matplotlib.pyplot cannot be imported in the environment, no agent could successfully complete the task under these constraints. The repeated identical InterpreterError confirms the environment limitation is the direct cause of failure. | evidence: Error repeated across attempts: "Code execution failed at line 'import matplotlib.pyplot as plt' due to: InterpreterError: Import of matplotlib.pyplot is not allowed. Authorized imports are: [...]" (call_2, call_3, call_4, call_5, call_7, call_8, call_10, call_12, call_13, call_14, call_15). Task requirement: "Show a comparison of distributed thickness from year 2020, 2040, and 2060 in three subplots... Save the plot to 'pred_results/oggm_plotting_glacier_area_and_thickness_change_pred.png'."
+
+
+### Evaluation 3 (from scienceagentbench_hal_generalist_agent_gpt4120250414_1745541259_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task requires the OGGM library and plotting (matplotlib) and also requires using a provided .tar.gz glacier dataset. In the evaluation environment shown by the transcript, (a) importing OGGM is disallowed, (b) importing matplotlib.pyplot is disallowed, and (c) extracting .tar.gz via Python tarfile is disallowed. These are intrinsic environment constraints relative to the benchmark task requirements: a correct solution necessarily needs OGGM and a way to read the provided glacier archive, so the environment is missing/forbidding required capabilities. | causation_reasoning: These environment restrictions directly prevented completing the task. The agent could not extract the only provided dataset artifact (a .tar.gz), could not import OGGM to run the simulation, and could not import matplotlib to generate and save the required plot. Therefore, even a perfect agent could not succeed under these constraints; the failure is caused by the benchmark/environment setup, not agent capability. | evidence: Import restriction on tar extraction: "Import of tarfile is not allowed." (call_2)
+Import restriction on OGGM: "Import of oggm is not allowed." (call_7)
+Import restriction on plotting: "Import of matplotlib.pyplot is not allowed." (call_8/call_10/call_13/call_14)
+Only provided data is a tarball: "RGI60-15.04847.tar.gz" in dataset tree; agent found no alternative text files: "Execution logs: []" after searching for non-tar.gz files (call showing file_listing empty).
+
+
+### Evaluation 4 (from scienceagentbench_hal_generalist_agent_o4mini20250416_high_1746044352_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task intrinsically requires OGGM (and, per instructions, plotting), but the execution environment used to run the agent code disallows importing required modules. The interpreter explicitly rejects `import oggm`, and also rejects common dependencies the task workflow would need (e.g., `tarfile` for the provided `.tar.gz` dataset and `matplotlib.pyplot` for plotting). This indicates an environment/tooling mismatch with the benchmark task requirements. | causation_reasoning: The run cannot succeed because the environment blocks the core required library (`oggm`). Since importing OGGM is necessary to perform the simulation and 2D thickness redistribution as specified, no agent can complete the task under these constraints. Additionally, the provided dataset is a `.tar.gz`, but `tarfile` import is blocked; plotting with matplotlib is also blocked. These environment restrictions directly prevent any valid solution from executing. | evidence: Errors show blocked required imports: "Code execution failed at line 'import oggm' due to: InterpreterError: Import of oggm is not allowed." Also blocked dataset-handling and plotting imports: "Code execution failed at line 'import tarfile' due to: InterpreterError: Import of tarfile is not allowed." and "Code execution failed at line 'import matplotlib.pyplot as plt' due to: InterpreterError: Import of matplotlib.pyplot is not allowed."
+
+
+### Judge Verdict
+
+**Final Grade**: 1.0
+**Satisfies Rubric (has IFE)**: True
+**Judge Reasoning**: (1) Claimed issue: The execution sandbox blocks imports of key modules needed by the task: `oggm` (core scientific library requested), `matplotlib.pyplot` (explicitly required to generate/save a 3-panel plot), and even `tarfile` (needed to extract the provided `.tar.gz` glacier dataset). (2) Why I accept it: Multiple independent runs report explicit, deterministic InterpreterErrors for these imports. If `import oggm` and `import matplotlib.pyplot` are categorically disallowed, the task’s stated requirements (run OGGM workflow + save a matplotlib figure) are not achievable in this environment. (3) Alternatives considered: Could a better agent avoid these imports? Not realistically: the task explicitly mandates OGGM usage and producing/saving a matplotlib plot; substituting another plotting library or mocking OGGM would not satisfy the benchmark intent. Could the tarball be avoided? Possibly if the environment exposed already-extracted files or an OGGM helper that reads the tarball without `tarfile`, but the evidence says the only provided artifact is a `.tar.gz` and the environment rejects the standard extraction route; combined with OGGM being blocked anyway, workaround paths don’t rescue the core requirement. Evaluation 2’s skepticism hinges on “policy not part of task formation,” but in practice the benchmark is evaluated inside this restricted harness—so the restriction is an intrinsic evaluation/setup defect for this task. (4) Final determination: Overwhelming evidence of an environment/benchmark mismatch that prevents any compliant solution; this is an IFE.
+
+
+### Model Execution Results
+#### o4-mini-04-16
+```
+valid_program: 0
+codebert_score: 0.7911290526390076
+success_rate: 0
+log_info: Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/opt/miniconda3/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/testbed/program_to_eval/pred_plotting_glacier_area_and_thickness_change.py", line 8, in <module>
+    from oggm.core.flowline import distribute_2d
+ImportError: cannot import name 'distribute_2d' from 'oggm.core.flowline' (/opt/...
+cost: 0.0
+```
+
+
+---
+## TASK: 84
+---
+
+### Rubric Evaluations
+
+### Evaluation 1 (from scienceagentbench_hal_generalist_agent_o320250416_1746110877_UPLOAD)
+- **Grade**: 0.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: No intrinsic benchmark defect is evidenced in the transcript. The task specification, dataset paths, and required output are coherent. The errors encountered are due to the execution sandbox's restricted import allowlist (disallowing pathlib), which is an agent-environment/tooling mismatch rather than a ScienceAgentBench dataset/evaluation defect. | causation_reasoning: The run did not fail at the end: metadata indicates "failed": false. The intermediate failures were caused by the agent importing a non-allowed standard library module (pathlib) despite being told the allowed imports. A capable agent could succeed by using only allowed imports (e.g., os.path), as the agent ultimately did in the final code. | evidence: Execution error: "Code execution failed at line 'from pathlib import Path' due to: InterpreterError: Import from pathlib is not allowed. Authorized imports are: [...]". Later, agent provides a revised solution using os.path. Run metadata: "failed": false.
+
+
+### Evaluation 2 (from scienceagentbench_hal_generalist_agent_o4mini20250416_low_1746044336_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: A benchmark/environment defect exists: the execution environment used for running the agent code forbids importing core geospatial libraries required to solve the task as specified (e.g., rasterio/geopandas/shapely/matplotlib). The task itself explicitly requires GeoTIFF band access and polygonization/visualization, which practically necessitates such libraries or equivalent tooling. The environment additionally forbids even using subprocess to call command-line GIS tools from Python, preventing an alternate implementation pathway within the same constraints. | causation_reasoning: The failure was directly caused by these environment import restrictions, not by the agent’s scientific reasoning or implementation logic. Every attempt that begins the required workflow fails immediately at import time (rasterio or subprocess). With these constraints, no agent can execute a correct solution inside this runtime, because reading multiband GeoTIFFs and generating polygons/plots cannot proceed without either (a) geospatial Python libs or (b) the ability to invoke external tools—both blocked here. | evidence: Repeated hard failure on required import: "Code execution failed at line 'import rasterio' due to: InterpreterError: Import of rasterio is not allowed." (call_2, call_3, call_4, call_7, call_8, call_9, call_10, call_12, call_13, call_14, call_15). Also, alternate GDAL-subprocess approach blocked: "Code execution failed at line 'import subprocess' due to: InterpreterError: Import of subprocess is not allowed." (call_17). The allowlist shown excludes required libs: "Authorized imports are: [...] 'PIL', ... 'numpy', ..." (no rasterio/geopandas/shapely/matplotlib).
+
+
+### Evaluation 3 (from scienceagentbench_hal_generalist_agent_gpt4120250414_1745541259_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task intrinsically requires geospatial raster I/O and vectorization (GeoTIFF multiband reading + polygonization + plotting). In the provided execution environment, essential libraries for this workflow (e.g., rasterio for GeoTIFF, matplotlib for plotting) are not allowed/importable. Without a GeoTIFF reader and plotting backend, producing the required output image from the provided .tif inputs is infeasible for any agent, indicating a benchmark/environment formation defect. | causation_reasoning: The agent's attempts failed specifically because imports needed to read the GeoTIFFs and generate the PNG were blocked by the environment. The agent could not access bands 5 and 7 to compute NBR or create the required visualization. This is not an algorithmic mistake; it is an environment restriction preventing execution of any correct solution that relies on standard geospatial tooling. | evidence: Import blocks: "Import of rasterio is not allowed" (call_2, call_10, call_12, call_13) and "Import of matplotlib.pyplot is not allowed" (call_8). Also "Forbidden access to module: PIL.Image" (call_3). The task requires reading "G_2014.tif"/"G_2015.tif" and outputting "pred_results/burn_scar_analysis.png", but the environment disallows the necessary raster/plot libraries.
+
+
+### Evaluation 4 (from scienceagentbench_hal_generalist_agent_o4mini20250416_high_1746044352_UPLOAD)
+- **Grade**: 0.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The run transcript shows clear execution-environment restrictions that block common geospatial Python libraries and even some stdlib modules. Imports of rasterio and matplotlib are explicitly disallowed, and subprocess is also disallowed. Additionally, attempts to use GDAL command-line tools failed (gdal_translate returned nonzero), suggesting GDAL binaries may be missing or inaccessible. This is an environment/setup deficiency relative to a task that inherently requires geospatial raster handling and polygonization. | causation_reasoning: Despite the environment issues, this specific task run is marked as not failed ("failed": false). Therefore, no benchmark-caused failure occurred in this trace. Under the rubric, score 1 requires that an intrinsic defect both exists and caused the failure; here there is no failure to attribute. Hence score 0 with deficiency_caused_failure=false. | evidence: Environment restrictions: "Code execution failed at line 'import rasterio' due to: InterpreterError: Import of rasterio is not allowed." and "Code execution failed at line 'import matplotlib.pyplot as plt' due to: InterpreterError: Import of matplotlib.pyplot is not allowed." and "Code execution failed at line 'import subprocess' due to: InterpreterError: Import of subprocess is not allowed." and "Forbidden access to module: PIL.Image" and "Forbidden access to module: posixpath".
+GDAL tooling failure: "RuntimeError: Command failed: gdal_translate -b 5 benchmark/datasets/BurnScar/G_2014.tif 2014_b5.tif -q".
+No failure for this run overall: metadata shows "failed": false.
+
+
+### Judge Verdict
+
+**Final Grade**: 1.0
+**Satisfies Rubric (has IFE)**: True
+**Judge Reasoning**: (1) Claimed issue: The task requires reading multiband GeoTIFFs (bands 5 and 7), computing NBR/dNBR, polygonizing burned areas, and outputting a plotted PNG. Multiple runs report the sandbox forbids importing core libraries typically required for this: rasterio (GeoTIFF I/O), matplotlib (plotting), and even PIL.Image in at least one trace. One run also shows subprocess forbidden, blocking a workaround via GDAL CLI.
+
+(2) Why accept as IFE: The evidence includes explicit hard errors: “Import of rasterio is not allowed”, “Import of matplotlib.pyplot is not allowed”, “Forbidden access to module: PIL.Image”, and “Import of subprocess is not allowed”. These are not agent mistakes; they are policy blocks. Given the stated task outputs (PNG visualization) and inputs (GeoTIFF band access + polygonization), the environment appears to remove the necessary primitives to implement the required pipeline in Python.
+
+(3) Alternative explanations considered: Could a capable agent solve it with only numpy/PIL and a custom TIFF reader? In principle, a pure-Python GeoTIFF decoder + georeferencing + polygonization + plotting is possible but is far beyond a reasonable benchmark expectation and effectively constitutes reimplementing rasterio/GDAL/matplotlib. Also, one trace indicates PIL.Image access is blocked, removing even basic image writing/reading in some cases. Another potential workaround is calling GDAL binaries, but subprocess is forbidden in at least one trace and gdal_translate fails in another, suggesting CLI tools are unavailable/unusable.
+
+(4) Final determination: The repeated, explicit import forbiddances for essential geospatial/plotting tooling (and blocked subprocess for CLI fallback) constitute overwhelming evidence of an evaluation-environment formation defect for a task that intrinsically depends on those capabilities. I therefore grade IFE present.
+
+
+### Model Execution Results
+#### o4-mini-04-16
+```
+valid_program: 1
+codebert_score: 0.8284914493560791
+success_rate: 0
+log_info: ['The first figure shows a plot of burn scars with the title "Burn Scars (dNBR > 0.1)". The second figure, which is the ground truth, shows a plot titled "Burn Scar Area (2014 vs 2015) in Montana Fire". \n\nHere are the key differences and similarities:\n\n1. **Title and Labels**:\n   - The first figure has a simpler title and lacks axis labels.\n   - The second figure has a more descriptive title and includes axis labels with coordinates.\n\n2. **Color and Detail**:\n   - The first figure uses only red to indicate burn scars.\n   - The second figure uses a combination of colors (red and black) to indicate different aspects of the burn scars, providing more detail.\n\n3. **Data Representation**:\n   - The first figure appears to show a more dense and widespread distribution of burn scars.\n   - The second figure shows a more clustered and detailed representation of burn scars with clear boundaries.\n\n4. **Context and Clarity**:\n   - The second figure provides a clearer context with labeled axes and a more detailed representation of the burn scars.\n   - The first figure lacks this context and detail, making it harder to interpret.\n\nGiven these observations, the first figure does not closely match the ground truth in terms of detail, context, and clarity. However, it does represent burn scars, albeit in a less detailed and less informative manner.\n\n[FINAL SCORE]: 40', 'The first figure shows a plot of burn scars with the title "Burn Scars (dNBR > 0.1)" and the second figure shows a plot titled "Burn Scar Area (2014 vs 2015) in Montana Fire". \n\nHere are the key differences and similarities:\n\n1. **Title and Labels**:\n   - The first figure has a simple title "Burn Scars (dNBR > 0.1)".\n   - The second figure has a more detailed title "Burn Scar Area (2014 vs 2015) in Montana Fire" and includes axis labels with coordinates.\n\n2. **Data Representation**:\n   - The first figure shows a dense distribution of red points representing burn scars.\n   - The second figure shows a more detailed and structured representation of burn scars with different color intensities indicating different levels of burn severity.\n\n3. **Color and Detail**:\n   - The first figure uses only red color to represent burn scars.\n   - The second figure uses a combination of colors (red and black) to provide more detail and context.\n\n4. **Context and Clarity**:\n   - The second figure provides more context with axis labels and a more descriptive title, making it clearer and more informative.\n   - The first figure lacks these details, making it less informative.\n\nGiven these observations, the first figure does not match the ground truth plot very closely in terms of detail, context, and clarity. However, it does represent burn scars, albeit in a simpler and less detailed manner.\n\n[FINAL SCORE]: 30', 'The first figure shows a plot of burn scars with a title "Burn Scars (dNBR > 0.1)" and 
+```
+
+
+---
+## TASK: 89
+---
+
+### Rubric Evaluations
+
+### Evaluation 1 (from scienceagentbench_hal_generalist_agent_o320250416_1746110877_UPLOAD)
+- **Grade**: 0.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The execution environment shown in the trace enforces a restricted allowlist of imports that excludes required geospatial libraries (notably `geopandas`) and even standard modules (`sys`, `__future__`). This is an environment constraint that can prevent running the intended solution as written, and is inconsistent with the task requirement to use GeoJSON + geoplot/geopandas tooling. | causation_reasoning: Despite the restricted-import environment errors during intermediate executions, the run metadata indicates the task ultimately did not fail ("failed": false). Therefore, any benchmark/environment deficiency did not cause a failure in this run. The observed errors were part of iterative debugging and were not the final outcome. | evidence: Environment restrictions encountered: "Import of sys is not allowed." and "Import of geopandas is not allowed." and "Import from __future__ is not allowed." Final run status: agent run metadata shows "failed": false.
+
+
+### Evaluation 2 (from scienceagentbench_hal_generalist_agent_o4mini20250416_low_1746044336_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task explicitly requires using geopandas and geoplot (geoplot.quadtree, geoplot.polyplot, GeoDataFrame.assign), but the provided execution environment/tooling blocks importing geopandas (and by implication would block geoplot too). This is an intrinsic environment mismatch: the benchmark asks for geospatial plotting libraries that are unavailable/forbidden in the runtime used for execution. | causation_reasoning: All execution attempts fail immediately at the first required import (geopandas), before any data loading, analysis, or plotting can occur. Since importing geopandas is necessary to read the GeoJSONs as GeoDataFrames and to use geoplot, no agent can complete the task successfully in this environment. Thus the environment deficiency directly causes failure. | evidence: Repeated runtime error: "Code execution failed at line 'import geopandas as gpd' due to: InterpreterError: Import of geopandas is not allowed. Authorized imports are: [...]" (e.g., call_2, call_3, call_4, call_7, call_10, call_12, call_15, call_17, call_18). The task requires geopandas/geoplot usage: "geoplot.quadtree() plots...", "geoplot.polyplot() plots...", "geodataframe.assign()..."
+
+
+### Evaluation 3 (from scienceagentbench_hal_generalist_agent_gpt4120250414_1745541259_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task specification explicitly requires geospatial plotting with geopandas/geoplot (e.g., `geoplot.quadtree()` and `geoplot.polyplot()`), and saving a PNG figure. However, the execution environment disallows importing geopandas, geoplot, and even matplotlib and PIL, which are standard/necessary to produce the required visualization. Additionally, direct file I/O via `open()` is forbidden, further hindering dataset loading in a normal script. This constitutes an intrinsic environment/tooling mismatch with the benchmark task requirements. | causation_reasoning: These environment restrictions directly prevented producing the required output figure (`pred_results/trees_count_vis.png`) using the mandated approach (geoplot/quadtree) or any reasonable alternative (matplotlib/PIL). The agent encountered repeated hard import blocks for geopandas, matplotlib, and PIL, and could not read files with `open()`. Given these constraints, no agent could successfully execute a compliant solution that generates the requested PNG visualization in this environment, so the benchmark defect caused the failure to meet task requirements (even though the run metadata flags `failed: false`). | evidence: Import blocking: "Import of geopandas is not allowed."; "Import of matplotlib.pyplot is not allowed."; "InterpreterError: Forbidden access to module: PIL.Image". File I/O blocking: "Forbidden function evaluation: 'open' is not among the explicitly allowed tools". Task requirement mismatch: task instructs use of "geoplot.quadtree()" and saving "pred_results/trees_count_vis.png", but required plotting stack is unavailable.
+
+
+### Evaluation 4 (from scienceagentbench_hal_generalist_agent_o4mini20250416_high_1746044352_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task specification requires GeoPandas and GeoPlot usage (geopandas.read_file, geoplot.quadtree, geoplot.polyplot). However, the provided execution environment (python_interpreter sandbox) explicitly disallows importing geopandas (and by implication, prevents using geoplot as well). This is an environment/package availability mismatch relative to the benchmark task requirements. | causation_reasoning: The agent's code fails immediately at import time due to the environment restriction, before any dataset reading, computation, or plotting can occur. Because importing geopandas is blocked by the evaluator environment itself, no agent can successfully run a correct solution that relies on geopandas/geoplot as required by the prompt. Thus the benchmark/environment defect directly caused the failure. | evidence: Repeated runtime error: "Code execution failed at line 'import geopandas as gpd' due to: InterpreterError: Import of geopandas is not allowed. Authorized imports are: [...]" (call_2/call_3/call_4/call_7/call_10/call_12/call_13/call_14/call_15/call_17/call_18). Task requires geopandas/geoplot: "geoplot.quadtree()... geoplot.polyplot()... geodataframe.assign()..."
+
+
+### Judge Verdict
+
+**Final Grade**: 1.0
+**Satisfies Rubric (has IFE)**: True
+**Judge Reasoning**: (1) Claimed issue: The task requires producing a geospatial visualization using GeoPandas/GeoPlot (and saving a PNG), but the execution sandbox forbids importing geopandas (and in one report also blocks matplotlib/PIL and open()). (2) Why I accept it: Multiple independent runs report the same hard failure at `import geopandas as gpd` with an explicit allowlist error (“Import of geopandas is not allowed”). If the benchmark requirement truly mandates geopandas/geoplot usage, and the official execution environment blocks that import, then the task is impossible to complete as specified—this is an intrinsic environment/tooling mismatch, not an agent mistake. (3) Alternative explanations considered: It’s possible an agent could bypass geopandas/geoplot by using other allowed libraries; however the task description (as quoted in the evaluations) explicitly requires geoplot.quadtree/polyplot and GeoDataFrame operations, making such a workaround non-compliant. Evaluation 2 notes “failed: false”, but that only shows one run may have been marked successful despite intermediate import blocks; it does not negate the core defect that the mandated libraries are forbidden in the sandbox. (4) Final determination: Overwhelming evidence of a benchmark/environment defect (forbidden required dependency) that a capable agent cannot overcome while following instructions => IFE present.
+
+
+### Model Execution Results
+#### o4-mini-04-16
+```
+valid_program: 0
+codebert_score: 0.8222013115882874
+success_rate: 0
+log_info: /opt/miniconda3/lib/python3.10/site-packages/pandas/core/frame.py:5239: FutureWarning: You are adding a column named 'geometry' to a GeoDataFrame constructed without an active geometry column. Currently, this automatically sets the active geometry column to 'geometry' but in the future that will no longer happen. Instead, either provide geometry to the GeoDataFrame constructor (GeoDataFrame(... geometry=GeoSeries()) or use `set_geometry('geometry')` to explicitly set the active geometry column.
+...
+cost: 0.0
+```
+
+
+---
+## TASK: 95
+---
+
+### Rubric Evaluations
+
+### Evaluation 1 (from scienceagentbench_hal_generalist_agent_o320250416_1746110877_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The run environment's `python_interpreter` tool enforces a restricted import whitelist that excludes standard-library modules needed by the task (notably `pickle`). The task explicitly requires loading `.pkl` files (`train_mols.pkl`, `test_mols.pkl`), which in normal Python requires `pickle` (or equivalent unpickling support). This restriction is an environment/setup issue relative to the benchmark task requirements. | causation_reasoning: The agent's attempt to execute a solution fails specifically because importing `pickle` is disallowed. Since the dataset is provided only as `.pkl` files, and the environment blocks `pickle`, no agent using this tool can successfully load the data as required, preventing task completion in this execution setup. | evidence: Tool error: "Code execution failed at line 'import pickle' due to: InterpreterError: Import of pickle is not allowed. Authorized imports are: [...]". Task requirement: "Train ... using the NumpyDataset in the train_mols.pkl file ..." and dataset structure shows only `train_mols.pkl` and `test_mols.pkl`.
+
+
+### Evaluation 2 (from scienceagentbench_hal_generalist_agent_o4mini20250416_low_1746044336_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The run shows the execution environment/runner enforces an allowlist of importable modules that excludes required dependencies for the task: (a) Python's standard library module `pickle` is disallowed, yet the dataset is provided only as `.pkl` files; (b) DeepChem imports are disallowed (`from deepchem.feat import CircularFingerprint`), even though the task explicitly requires using DeepChem's ScScore and CircularFingerprint. This is an intrinsic environment/setup mismatch: the task cannot be executed under these constraints as specified. | causation_reasoning: The agent's code repeatedly fails immediately on imports before any data loading, featurization, training, or saving can occur. Because both `pickle` (needed to read `.pkl`) and `deepchem` (needed for ScScore/CircularFingerprint) are blocked by the environment, no compliant solution can run successfully in this environment. Therefore the benchmark defect (environment restrictions incompatible with task requirements and provided file formats) directly caused the failure. | evidence: Import failures: "Code execution failed at line 'import pickle' due to: InterpreterError: Import of pickle is not allowed." and "Code execution failed at line 'from deepchem.feat import CircularFingerprint' due to: InterpreterError: Import from deepchem.feat is not allowed." Task requirement conflict: "Use the ScScore model from deepchem" and "DeepChem provides CircularFingerprint featurizer" while environment allowlist shown excludes deepchem and pickle.
+
+
+### Evaluation 3 (from scienceagentbench_hal_generalist_agent_gpt4120250414_1745541259_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The run shows the execution environment/tooling is intrinsically incompatible with the benchmark task requirements. The task requires loading .pkl files via Python pickle and using DeepChem (ScScoreModel, CircularFingerprint) plus filesystem directory creation. However, the environment explicitly forbids importing `pickle`, forbids importing `deepchem`, and even forbids `os.path`/`posixpath` usage needed for path joins and directory checks/creation. These are environment/tool restrictions, not agent mistakes, and prevent any correct solution from running in this sandbox. | causation_reasoning: The agent’s failures stem directly from these environment restrictions: it cannot read the provided dataset (`.pkl`), cannot access required modeling libraries (`deepchem`), and cannot create the required output directory (`pred_results`). Consequently, no agent could successfully execute the specified workflow under the same constraints, making the benchmark item (as instantiated in this environment) unsolvable. | evidence: Import block: "InterpreterError: Import of pickle is not allowed." DeepChem block: "InterpreterError: Import from deepchem.feat is not allowed." File reading blocked: "UnsupportedFormatException: Could not convert '...train_mols.pkl' to Markdown. The formats ['.pkl', '.pickle'] are not supported." Numpy load fails: "Numpy loading failed: Failed to interpret file '...train_mols.pkl' as a pickle". Filesystem/path blocked: "InterpreterError: Forbidden access to module: posixpath" when using os.path.join/exists. Output directory creation impossible leading to: "FileNotFoundError: [Errno 2] No such file or directory: 'pred_results/tox21_mol_scscores_pred.npy'".
+
+
+### Evaluation 4 (from scienceagentbench_hal_generalist_agent_o4mini20250416_high_1746044352_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The benchmark task explicitly requires using DeepChem (ScScore, CircularFingerprint, NumpyDataset) and loading .pkl files. However, the provided execution environment (as evidenced by the tool-run interpreter restrictions) disallows importing both `pickle` (needed to load the provided .pkl dataset files) and `deepchem` modules (needed to satisfy the task requirements). This is an environment/runner restriction incompatible with the task specification, constituting an intrinsic formation defect. | causation_reasoning: The agent’s attempts fail immediately at imports before any scientific logic can run. Since loading `train_mols.pkl`/`test_mols.pkl` and using DeepChem are mandatory requirements, and these imports are blocked by the environment, no agent can successfully complete the task under these constraints. Therefore the defect directly causes the failure. | evidence: Repeated hard failures from the environment: "Import of pickle is not allowed. Authorized imports are: [...]" (call_2, call_4, call_5, call_7, call_9, call_12, call_13, call_15, call_17). Also: "Import from deepchem.feat is not allowed." (call_3, call_8, call_10, call_14). The task requires: "Use the ScScore model from deepchem" and dataset files are ".pkl" (train_mols.pkl/test_mols.pkl).
+
+
+### Judge Verdict
+
+**Final Grade**: 1.0
+**Satisfies Rubric (has IFE)**: True
+**Judge Reasoning**: Claimed issue: The task requires loading provided datasets stored as .pkl (train_mols.pkl/test_mols.pkl) and using DeepChem components (ScScoreModel/CircularFingerprint/NumpyDataset), but the execution environment allegedly forbids importing both the Python standard-library module `pickle` and `deepchem`, and even blocks some filesystem/path utilities.
+
+Why I accept it (despite skepticism): This is not a vague “missing dependency” claim—multiple independent runs report hard interpreter/tool errors explicitly stating `Import of pickle is not allowed` and `Import from deepchem.feat is not allowed`, i.e., a whitelist restriction. Given the inputs are .pkl files, unpickling is not optional in any normal Python workflow. If deepchem is required by the task spec (and these evaluations quote that it is), then blocking deepchem imports also directly contradicts the task requirements. These are categorical prohibitions, not version mismatches or agent misuse.
+
+Alternative explanations considered: 
+- Could agents have loaded .pkl without importing pickle? In standard Python, no; any workaround would still require some unpickling implementation/library. If the tool also rejects reading .pkl as “unsupported format” and numpy load fails, that further removes plausible workarounds.
+- Could agents avoid deepchem by reimplementing the needed model? That would violate “use DeepChem” requirements and still wouldn’t solve the blocked .pkl access.
+- Could the failures be due to agent errors? The reported failures occur at import time before substantive logic, consistent across runs, which strongly points to environment constraints rather than agent mistakes.
+
+Final determination: Overwhelming, specific evidence of an environment/task mismatch that prevents any compliant solution (load .pkl + use deepchem) from running. This meets the bar for an intrinsic formation error.
+
+
+### Model Execution Results
+#### o4-mini-04-16
+```
+valid_program: 0
+codebert_score: 0.8005400896072388
+success_rate: 0
+log_info: No normalization for SPS. Feature removed!
+No normalization for AvgIpc. Feature removed!
+2025-05-01 00:29:03.626363: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-05-01 00:29:03.645034: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:485] Unable to register cuFFT f...
+cost: 0.0
+```
+
+
+---
+## TASK: 96
+---
+
+### Rubric Evaluations
+
+### Evaluation 1 (from scienceagentbench_hal_generalist_agent_o320250416_1746110877_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task specification explicitly requires using Scanpy/AnnData (e.g., sc.tl.leiden on an .h5ad AnnData object). However, the execution environment shown in the transcript forbids importing both standard-library modules (sys) and the required third-party library scanpy. With scanpy disallowed, the benchmark-required approach (reading .h5ad AnnData + running sc.tl.leiden + sc.pl.umap) cannot be executed as specified, indicating an intrinsic environment/package constraint mismatch. | causation_reasoning: The run failures were directly triggered by environment import restrictions, not by the agent's scientific method or code logic. The agent's intended correct solution (scanpy-based Leiden + UMAP plot) could not run because 'scanpy' is not permitted. Therefore, no agent could succeed under these constraints while adhering to the task requirement to use scanpy/AnnData, so the benchmark/environment defect caused the failure. | evidence: Execution errors: "Import of sys is not allowed." and repeatedly "Import of scanpy is not allowed. Authorized imports are: [...]". Task requirement: "With the `scanpy` library, the Leiden algorithm can be implemented using `sc.tl.leiden`."
+
+
+### Evaluation 2 (from scienceagentbench_hal_generalist_agent_o4mini20250416_low_1746044336_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task explicitly requires using Scanpy (sc.tl.leiden, sc.pl.umap) to load an .h5ad AnnData and run Leiden clustering/UMAP plotting. However, the provided execution environment for this run blocks importing scanpy entirely (hard allowlist). This is an environment/benchmark formation issue because it prevents any Scanpy-based solution from running in the sandbox as configured. | causation_reasoning: The run repeatedly failed at the first required step (import scanpy) with an allowlist error. Because scanpy cannot be imported, the agent cannot read the .h5ad via scanpy/anndata nor run sc.tl.leiden or sc.pl.umap as required. Thus the benchmark environment defect directly caused the failure; no agent could succeed under these constraints without scanpy being permitted/installed and importable. | evidence: Error message repeated across attempts: "Code execution failed at line 'import scanpy as sc' due to: InterpreterError: Import of scanpy is not allowed. Authorized imports are: [...]" (e.g., Call id: call_2, call_4, call_5, call_7, call_8, call_9, call_10, call_12, call_13, call_15, call_20, call_22). Task requirement: "With the `scanpy` library, the Leiden algorithm can be implemented using `sc.tl.leiden`."
+
+
+### Evaluation 3 (from scienceagentbench_hal_generalist_agent_gpt4120250414_1745541259_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task explicitly requires using Scanpy/AnnData to load a .h5ad file and run Leiden clustering via sc.tl.leiden. However, the execution environment disallows importing scanpy and also disallows importing h5py (and anndata is not available either). Since .h5ad is an HDF5-based format typically requiring scanpy/anndata/h5py to read, the benchmark setup is internally inconsistent with the allowed-import environment for this run. | causation_reasoning: The agent's attempt fails immediately due to environment import restrictions (scanpy not allowed). The agent then tries an alternative (h5py) to read the .h5ad directly and that is also disallowed. Without any permitted library to read .h5ad or perform Leiden on the precomputed neighbor graph, completing the task (Leiden + UMAP plot) is impossible for any agent under these constraints. Thus the benchmark/environment defect directly caused the failure. | evidence: Task requirement: "With the `scanpy` library, the Leiden algorithm can be implemented using `sc.tl.leiden`." 
+Runtime error: "Code execution failed at line 'import scanpy as sc' due to: InterpreterError: Import of scanpy is not allowed." 
+Second runtime error: "Code execution failed at line 'import h5py' due to: InterpreterError: Import of h5py is not allowed."
+
+
+### Evaluation 4 (from scienceagentbench_hal_generalist_agent_o4mini20250416_high_1746044352_UPLOAD)
+- **Grade**: 1.00 (1.0 = IFE detected, 0.0 = no IFE)
+- **Explanation**: existence_reasoning: The task explicitly requires using Scanpy (sc.read_h5ad, sc.tl.leiden, sc.pl.umap). However, the provided execution tool/environment used to run the agent code disallows importing scanpy, indicating a mismatch between required dependencies and the allowed/available environment for execution. | causation_reasoning: All execution attempts failed immediately at the import step with an environment restriction error. Because the core required library (scanpy) cannot be imported, no implementation following the task instructions can run in this environment; thus the benchmark/environment defect directly caused the failure. | evidence: Repeated runtime error on import: "Code execution failed at line 'import scanpy as sc' due to: InterpreterError: Import of scanpy is not allowed." (call_2, call_3, call_5, call_7, call_8, call_9, call_10, call_12, call_13, call_14, call_15, call_17, call_18, call_19, call_20). Task requirement: "With the `scanpy` library, the Leiden algorithm can be implemented using `sc.tl.leiden`."
+
+
+### Judge Verdict
+
+**Final Grade**: 1.0
+**Satisfies Rubric (has IFE)**: True
+**Judge Reasoning**: Claimed issue: The task requires reading an .h5ad and running Leiden/UMAP via Scanpy (sc.read_h5ad, sc.tl.leiden, sc.pl.umap), but the execution environment hard-blocks importing scanpy (and, per one run, h5py/anndata/sys), making the required approach impossible.
+
+Why I accept it: Multiple independent runs show the same concrete failure at the very first required step: `import scanpy as sc` fails with an explicit allowlist error (“Import of scanpy is not allowed”). That is not a missing-install issue the agent could fix in-code; it’s a policy restriction. Given the task text explicitly instructs using Scanpy, blocking scanpy is a direct contradiction between task requirements and the runnable environment.
+
+Alternative explanations considered: (1) Agent could implement Leiden/UMAP without Scanpy. In principle yes, but the task explicitly mandates Scanpy usage and the data format (.h5ad) typically requires anndata/h5py; those are also reported blocked in at least one trace. Even if a workaround existed, it would not satisfy the stated requirement to use Scanpy functions. (2) Perhaps only this agent tool disallows scanpy but the benchmark doesn’t. However, all four evaluations reference the same enforced import allowlist in the execution harness, strongly indicating the benchmark’s configured environment for this task is incompatible.
+
+Final determination: Overwhelming, specific evidence of an environment/benchmark setup defect (required dependency is forbidden), preventing any compliant solution. This is an intrinsic formation error.
+
+
+### Model Execution Results
+#### o4-mini-04-16
+```
+valid_program: 1
+codebert_score: 1.0
+success_rate: 1
+log_info: ['The generated plot (first figure) and the ground truth plot (second figure) are quite similar in terms of the clustering and distribution of data points. Here are the detailed observations:\n\n1. **Cluster Positions and Shapes**: The clusters in both plots are positioned similarly and have similar shapes. For example, the clusters in the top center, bottom left, and bottom right are in the same positions in both plots.\n\n2. **Color Coding**: The color coding of the clusters is consistent between the two plots. Each cluster has a unique color, and the colors are used consistently across both plots.\n\n3. **Labels**: The labels for the clusters are missing in the generated plot. The ground truth plot has numerical labels for each cluster, which are not present in the generated plot.\n\n4. **Title**: The titles of the plots are different. The generated plot has the title "leiden," while the ground truth plot has the title "clusters."\n\n5. **Axes Labels**: The axes labels are consistent between the two plots, with "UMAP1" and "UMAP2" being used in both.\n\nConsidering these points, the generated plot is quite close to the ground truth plot but lacks the cluster labels and has a different title. These differences are significant but do not drastically affect the overall resemblance.\n\n[FINAL SCORE]: 85', 'The generated plot (first figure) and the ground truth plot (second figure) are quite similar in terms of the clustering and distribution of data points. Here are the key points of comparison:\n\n1. **Cluster Locations and Shapes**:\n   - Both plots show similar cluster locations and shapes. The clusters in the generated plot closely match the clusters in the ground truth plot.\n   \n2. **Color Coding**:\n   - The colors used for the clusters are different between the two plots, but this does not affect the correctness of the clustering itself.\n\n3. **Labels**:\n   - The generated plot uses "leiden" as the title, while the ground truth plot uses "clusters". This is a minor difference.\n   - The ground truth plot has cluster labels directly on the plot, whereas the generated plot uses a legend on the side.\n\n4. **Axes Labels**:\n   - Both plots have the same axes labels ("UMAP1" and "UMAP2").\n\nGiven these observations, the generated plot is very close to the ground truth plot in terms of the clustering and distribution of data points. The differences are mainly in the presentation (title, legend vs. labels on the plot).\n\n[FINAL SCORE]: 90', 'The generated plot (first figure) and the ground truth plot (second figure) are quite similar in terms of the clustering and distribution of data points. Here are the points of comparison:\n\n1. **Cluster Locations**: The clusters in both plots are located in similar positions, indicating that the overall structure of the data is preserved.\n2. **Cluster Colors**: The colors used to represent the clusters are different, but this does not aff
+```
+
+
+## BEGIN - SYSTEMATIC APPROACH
+
+For EACH task:
+
+1. **Read the benchmark code** to understand evaluation pipeline
+2. **Load the specific task** from HuggingFace dataset
+3. **Analyze ALL error messages** from model execution logs
+4. **Check EACH item** in the error analysis checklist above
+5. **Cross-reference with other models** - same error = likely IFE
+6. **Create fix OR document why no fix needed**
+7. **Verify fix doesn't nerf the scientific problem**
+
+After processing all tasks:
+8. **Update fix runner script** if new fix types were used
+9. **Test that fixes can be applied** without errors
+
+Remember: Make evaluation FAIR, not EASY. Be THOROUGH in diagnosis.
+Scientific rigor must be preserved - we fix infrastructure, not science.

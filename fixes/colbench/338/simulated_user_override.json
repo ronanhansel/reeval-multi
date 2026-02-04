@@ -1,0 +1,5 @@
+{
+  "additional_prompt": "IMPORTANT: Do NOT tell the agent to ignore any of the parameters. All parameters (team_wins, team_conf, prev_bowl_appearances, conf_teams, min_wins_required, min_conf_teams_required) are used in the eligibility check. If asked about the rules, explain that a team is eligible when: (1) team_conf is in conf_teams, AND (2) team_wins >= min_wins_required, AND (3) prev_bowl_appearances >= min_conf_teams_required.",
+  "allow_explicit_values": false,
+  "notes": "The simulated user incorrectly told the agent to ignore the prev_bowl_appearances parameter, creating a contradiction with the hidden expected behavior."
+}

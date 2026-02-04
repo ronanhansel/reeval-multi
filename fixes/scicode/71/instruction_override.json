@@ -1,0 +1,17 @@
+{
+  "task_id": "71",
+  "description": "Fix function signature mismatches in ket() and tensor() function headers",
+  "overrides": {
+    "71.1": {
+      "original_header": "def ket(dim):",
+      "fixed_header": "def ket(dim, args):",
+      "reason": "Function header only has 'dim' parameter but test cases call ket(2, 0), ket(2, [1,1]), ket([2,3], [0,1]) with two arguments. The docstring also mentions 'args: int or list, the i-th basis vector' as a second parameter."
+    },
+    "71.2": {
+      "original_header": "def tensor():",
+      "fixed_header": "def tensor(*args):",
+      "reason": "Function header has no parameters but test cases call tensor([0,1],[0,1]), tensor(np.eye(3),np.ones((3,3))), etc. with multiple arguments. The docstring states 'args: any number of nd arrays of floats' indicating variable arguments."
+    }
+  },
+  "notes": "These are clear signature mismatches where the function headers do not match the test case invocations. The fixes add the missing parameters without changing the scientific content of the task."
+}

@@ -1,0 +1,4 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge defaults",
+  "HAL_CONDA_PACKAGES": "r-base=4.2 r-rmarkdown r-dplyr r-tidyverse r-tidyr r-ggplot2 r-ggdist r-rcolorbrewer r-countrycode r-forcats r-glue r-ids r-maps r-patchwork r-psych r-rio r-stringi r-knitr r-papaja pandoc"
+}

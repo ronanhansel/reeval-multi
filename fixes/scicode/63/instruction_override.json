@@ -1,0 +1,6 @@
+{
+  "63.4": {
+    "clarification": "NOTE: The matrix D shape in the docstring is incorrectly stated as (N_t-2) x (N_t-2). The correct shape is (N_p-2) x (N_p-2), matching the output from construct_matrix. D operates on the price dimension (interior points), not the time dimension.",
+    "corrected_docstring_line": "D: The tri-diagonal matrix constructed for the finite difference method. Shape: (N_p-2) x (N_p-2) (float)"
+  }
+}

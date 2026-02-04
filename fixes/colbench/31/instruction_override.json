@@ -1,0 +1,7 @@
+{
+  "clarifications": [
+    "Note: Ask the user to clarify the exact format of objects (e.g., tuples of coordinates) and how axes should be represented (e.g., as integer indices into the coordinate tuple).",
+    "Note: Ask for clarification on the exact symmetry test - whether to negate specific coordinates based on axis index."
+  ],
+  "notes": "The symmetry definition in this task is non-standard. Agent must extract specific implementation details through dialogue."
+}

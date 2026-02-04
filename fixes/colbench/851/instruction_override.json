@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The function takes parameters: fat_amount, water_amount, and soil_alkalinity.",
+    "If water_amount > 0 AND soil_alkalinity > 6: return fat_amount * 0.8",
+    "Else if water_amount > 0 AND soil_alkalinity > 0: return fat_amount * 0.5",
+    "Otherwise (water_amount <= 0 or soil_alkalinity <= 0): return 0",
+    "The function should use simple threshold-based piecewise logic, not continuous linear models."
+  ],
+  "notes": "The original task does not specify the exact thresholds (6, 0) or multipliers (0.8, 0.5). The simulated user engaged in choosing alternative modeling approaches (linear water factors, different pH ranges) that are not present in the hidden information. This fix makes the expected piecewise logic explicit."
+}

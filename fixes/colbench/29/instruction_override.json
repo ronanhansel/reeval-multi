@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "Note: Clarify with the user what units the song durations are stored in (seconds, minutes, etc.) and whether conversion is needed."
+  ],
+  "notes": "The task asks for 'minutes' but hidden code doesn't convert. Agent should confirm units via dialogue."
+}

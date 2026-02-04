@@ -1,0 +1,5 @@
+{
+  "additional_prompt": "IMPORTANT: Only provide information that is directly derived from the hidden implementation. Do NOT add extra requirements like duplicate handling, type coercion, None handling, or error handling that are not explicitly present in the hidden code. If asked about edge cases not covered in the hidden code, say 'I don't know' rather than making up behavior.",
+  "allow_explicit_values": false,
+  "notes": "The simulated user was providing extra requirements (duplicate handling, type coercion) that are NOT in the hidden implementation, causing agents to implement features that tests don't expect."
+}

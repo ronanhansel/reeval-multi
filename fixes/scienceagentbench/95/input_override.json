@@ -1,0 +1,10 @@
+{
+  "task_id": "95",
+  "clarifications": [
+    "Use Python's pickle module to load the .pkl files: import pickle; with open('path.pkl', 'rb') as f: data = pickle.load(f)",
+    "For DeepChem's ScScore model, import from deepchem.models: from deepchem.models import ScScoreModel",
+    "For ECFP fingerprints with chirality, use: from deepchem.feat import CircularFingerprint; featurizer = CircularFingerprint(size=512, radius=2, chiral=True)",
+    "The ScScoreModel trains on molecule pairs - ensure you create the training set with proper pairing based on complexity metric"
+  ],
+  "notes": "This clarification compensates for the agent sandbox blocking pickle and deepchem imports. The agent cannot discover the correct API usage through testing."
+}

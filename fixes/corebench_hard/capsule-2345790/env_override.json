@@ -1,0 +1,4 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge defaults",
+  "HAL_CONDA_PACKAGES": "r-base=4.2 r-rmarkdown r-knitr r-dplyr r-tidyr r-purrr r-readr r-ggplot2 r-ggpubr r-gridextra r-kableextra r-lme4 r-lmertest r-emmeans r-ez r-bayesfactor r-rmisc r-afex r-car r-cowplot r-effects r-smoother r-nloptr r-stringr r-zoo pandoc"
+}

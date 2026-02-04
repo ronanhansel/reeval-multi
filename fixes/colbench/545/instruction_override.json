@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "Despite the parameter name, `facial_hair` is actually a collection of player names to filter by (not facial hair styles). The function should return players from team_roster whose names appear in the facial_hair collection.",
+    "The output format should be a dictionary: {'players': [{'name': <player_name>, 'games_played': <games_played>}, ...]}",
+    "Each player dict in team_roster contains at least 'name' and 'games_played' keys."
+  ],
+  "notes": "The hidden implementation treats 'facial_hair' as a name filter (if player['name'] in facial_hair), which contradicts the prompt's mention of 'mustache or beard style'. This is a fundamental spec-implementation mismatch that makes the task unsolvable without clarification."
+}

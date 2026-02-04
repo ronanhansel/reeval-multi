@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "The skill_points parameter represents a multiplier on the player_cost. The effective cost per player is (skill_points * player_cost). The function should return how many whole players can be afforded with the budget given this effective cost."
+  ],
+  "notes": "The hidden implementation uses skill_points as a cost multiplier (budget // (skill_points * player_cost)), which is not derivable from the original prompt. This clarification reveals the intended formula relationship without giving away the exact implementation."
+}

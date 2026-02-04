@@ -1,0 +1,178 @@
+# USACO Intrinsic Formation Error Detection Rubric
+
+## Purpose
+This rubric evaluates whether a task failure on the USACO (USA Computing Olympiad) benchmark stems from an **Intrinsic Formation Error (IFE)** in the benchmark itself, rather than agent capability limitations.
+
+## Scoring
+- **Score 1**: An intrinsic benchmark defect exists AND caused the failure (no agent could succeed)
+- **Score 0**: The failure is due to agent capability issues (a better agent could have succeeded)
+
+## Two-Question Framework
+
+### Question 1: Does an Intrinsic Formation Defect Exist?
+Analyze whether the benchmark item contains any of the deficiency categories below.
+
+### Question 2: Did the Defect Cause This Failure?
+Even if a defect exists, determine whether it actually prevented success, or whether the agent failed for other reasons.
+
+---
+
+## Deficiency Categories for USACO
+
+### 1. Problem Statement Defects
+The problem description has intrinsic issues:
+- Ambiguous or contradictory constraints
+- Missing edge case specifications
+- Incorrect input/output format description
+- Mathematical notation errors or inconsistencies
+- Sample input/output does not match problem description
+
+### 2. Test Case Errors
+The test cases used for evaluation are flawed:
+- Test cases violate stated constraints
+- Expected outputs are incorrect
+- Test cases have precision/rounding inconsistencies
+- Hidden test cases test unstated requirements
+- Test case format differs from specification
+
+### 3. Judge System Defects
+The evaluation system has problems:
+- Time limits are unreasonably strict for optimal solutions
+- Memory limits prevent valid solutions
+- Judge has floating-point comparison issues
+- Special judge (checker) has bugs
+- Output format requirements are stricter than documented
+
+### 4. Resource and Retrieval Issues
+The benchmark's retrieval/context system has problems:
+- Retrieved similar problems are misleading
+- Textbook excerpts are irrelevant or incorrect
+- Corpus contains outdated algorithm descriptions
+- Retrieval system returns wrong difficulty level examples
+
+### 5. Execution Environment Issues
+The Docker/sandbox environment has limitations:
+- Required libraries not available
+- Python version incompatibility
+- Memory or CPU limits incorrectly configured
+- I/O handling differs from standard USACO judge
+
+### 6. Problem Classification Errors
+The task metadata is incorrect:
+- Difficulty level is misclassified
+- Algorithm tags are wrong or missing
+- Problem category leads to wrong approach
+- Time complexity requirements are unstated
+
+---
+
+## CRITICAL EXCLUSIONS: Agent Capability Issues (Score 0)
+
+Do NOT classify the following as benchmark deficiencies:
+
+### 1. Algorithm Selection Errors
+- Agent chooses suboptimal algorithm
+- Agent fails to recognize problem pattern
+- Agent uses brute force when optimization needed
+- Agent misidentifies the problem type
+- These are agent reasoning issues, not benchmark defects
+
+### 2. Implementation Bugs
+- Agent writes code with logic errors
+- Agent has off-by-one errors
+- Agent fails to handle edge cases
+- Agent has integer overflow issues
+- Agent produces runtime errors
+
+### 3. Time/Space Complexity Issues
+- Agent's solution exceeds time limit due to inefficiency
+- Agent's solution uses too much memory due to poor design
+- Agent fails to optimize when optimization is possible
+- These are capability issues if optimal solutions exist
+
+### 4. I/O Handling Errors
+- Agent reads input incorrectly
+- Agent outputs in wrong format
+- Agent fails to flush output
+- Agent misparses multi-line input
+
+### 5. Incomplete Problem Understanding
+- Agent misreads constraints
+- Agent misunderstands problem requirements
+- Agent fails to consider all cases
+- Agent makes incorrect assumptions
+
+### 6. Retrieval Misuse
+- Agent ignores helpful retrieved examples
+- Agent applies retrieved solution to wrong problem type
+- Agent copies retrieved code without adaptation
+- Agent fails to learn from similar problems
+
+---
+
+## Evidence Requirements
+
+For Score 1, you MUST provide:
+1. **Specific defect identification**: Quote the exact problem/test case issue
+2. **Impossibility proof**: Show that NO correct algorithm exists given the defect
+3. **Judge verification**: Confirm the judge rejects valid solutions
+
+For Score 0, explain:
+1. What algorithm the agent should have used
+2. What implementation errors the agent made
+3. Why a correct solution is achievable
+
+---
+
+## Response Format
+
+Respond with a JSON object:
+
+```json
+{
+  "score": 0 or 1,
+  "deficiency_exists": true/false,
+  "deficiency_caused_failure": true/false,
+  "deficiency_type": "category name or 'none'",
+  "existence_reasoning": "analysis of whether a benchmark defect exists",
+  "causation_reasoning": "analysis of whether the defect caused failure",
+  "evidence": "specific quotes from transcript supporting conclusion"
+}
+```
+
+---
+
+## Common USACO Failure Patterns
+
+### Likely Agent Issues (Score 0):
+- Time Limit Exceeded with O(n²) when O(n log n) needed
+- Wrong Answer due to incorrect algorithm logic
+- Runtime Error from array index out of bounds
+- Agent implemented greedy when DP was required
+- Agent failed to handle large numbers (overflow)
+
+### Potential Benchmark Issues (Score 1):
+- Sample output in problem contradicts constraints
+- Test case input violates stated N ≤ 10^5 constraint
+- Judge expects specific output order not mentioned in problem
+- Problem requires library not available in sandbox
+- Time limit is 0.1s making optimal solution impossible
+
+---
+
+## USACO-Specific Considerations
+
+### Competitive Programming Context
+USACO problems are designed by expert problem setters with extensive testing. True benchmark defects are rare. Most failures are agent capability issues.
+
+### Reflexion Mechanism
+If the agent uses reflexion (iterative improvement with test feedback):
+- Failure to improve after feedback is an agent issue
+- Incorrect test feedback from judge could be a benchmark issue
+- Agent ignoring correct feedback is an agent issue
+
+### Retrieval Context
+The benchmark provides similar problems and textbook excerpts:
+- If retrieved content is helpful but ignored → agent issue
+- If retrieved content is misleading or wrong → potential benchmark issue
+- If retrieval returns nothing useful → check if agent queried correctly

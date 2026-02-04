@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "Return the PERCENTAGE improvement, calculated as: (after_grade - before_grade) / before_grade * 100",
+    "For edge case handling: if before_grade is 0, return 0 if after_grade is also 0, otherwise return 1.",
+    "Note: The function returns a numeric value (percentage), not a boolean."
+  ],
+  "notes": "The task description implies boolean ('tell me if improved') and constrains grades to 1-10, but the hidden implementation returns a percentage and handles before_grade==0. This is a direct spec-implementation contradiction."
+}

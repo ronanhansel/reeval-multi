@@ -1,0 +1,24 @@
+{
+  "issue_type": "hidden_solution_undiscoverable_constants",
+  "severity": "critical",
+  "description": "Hidden solution uses hardcoded baseline year (2023) not mentioned in task description",
+  "evidence": {
+    "task_description": "determine emission cuts by a certain year, aiming to halve emissions by 2050",
+    "hidden_solution_formula": "(current_emissions * reduction_percentage) / 100 * (year_target - 2023)",
+    "undiscoverable_value": "2023 baseline year and linear scaling formula",
+    "simulated_user_response": "I don't know the unit... I'm not sure... and I don't have information on the other points."
+  },
+  "frontend_issues": {
+    "parser_error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found",
+    "spec_gt_mismatch": {
+      "spec_requires": ["sticky navigation", "two-column layout", "gradient colors"],
+      "ground_truth_has": ["plain white background", "no navigation bar", "minimalist centered sections"]
+    }
+  },
+  "required_fix": {
+    "backend_option_a": "Add baseline year (2023) and scaling formula to task description",
+    "backend_option_b": "Change hidden solution to not require undiscoverable constants",
+    "frontend": "Fix parser and align spec with ground truth"
+  },
+  "notes": "The arbitrary baseline year cannot be discovered through dialogue because it's an implementation detail hidden in code that the simulated user cannot naturally communicate."
+}

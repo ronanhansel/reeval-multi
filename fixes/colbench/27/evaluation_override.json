@@ -1,0 +1,5 @@
+{
+  "accept_alternatives": true,
+  "accept_descending_sort": true,
+  "notes": "Task description asks for 'highest rated to lowest' (descending) but hidden implementation uses ascending sort. Both should be accepted since the task description is ambiguous/contradictory to the hidden code."
+}

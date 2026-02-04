@@ -1,0 +1,5 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge bioconda",
+  "HAL_CONDA_PACKAGES": "r-base=4.2 r-essentials r-devtools r-rmarkdown r-knitr r-dplyr r-ggplot2 r-tidyr r-data.table r-tibble r-survival r-survminer r-reshape r-reshape2 r-stringi r-stringr r-gridExtra r-rstatix r-assertthat r-ggrepel r-ggfortify r-nloptr bioconductor-summarizedexperiment bioconductor-s4vectors bioconductor-complexheatmap bioconductor-biocmanager",
+  "HAL_APT_PACKAGES": "pandoc pandoc-citeproc texlive-latex-base texlive-fonts-recommended texlive-latex-recommended texlive-latex-extra lmodern libnlopt-dev cmake"
+}

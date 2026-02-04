@@ -1,0 +1,10 @@
+{
+  "task_id": "95",
+  "ife_detected": true,
+  "ife_type": "sandbox_import_restriction",
+  "fix_applied": true,
+  "fix_types": ["instruction_override", "env_override"],
+  "root_cause": "Agent sandbox blocks deepchem/pickle imports during development, causing pipreqs to not detect these packages, which means DGL is not installed in evaluation container",
+  "fix_description": "instruction_override tells agent to include proper import statements for ScScoreModel and CircularFingerprint; this triggers pipreqs detection and DGL post-install hook",
+  "notes": "Docker base image has Python 3.10, TensorFlow 2.17 pre-installed. The issue was pipreqs detection, not TensorFlow availability."
+}

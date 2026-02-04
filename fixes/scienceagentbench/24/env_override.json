@@ -1,0 +1,4 @@
+{
+  "HAL_PIP_PACKAGES": "biopsykit neurokit2",
+  "notes": "Task 24 requires biopsykit.signals.ecg for ECG R-peak detection. biopsykit is a specialized psychology/physiological signal processing library not included in the base Docker image. neurokit2 is a related package that biopsykit may depend on for ECG analysis."
+}

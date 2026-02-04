@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The function takes two parameters: students_grades (a dictionary mapping student names to grades) and passing_grade (the minimum grade to pass).",
+    "Return a single flat list containing only the names of students who passed (grade >= passing_grade).",
+    "Do NOT return a tuple, dictionary, or include 'wicked'/failing students.",
+    "Do NOT include grades in the output - only return the list of student names.",
+    "The return type should be List[str], not Dict or Tuple."
+  ],
+  "notes": "The simulated user explicitly requested a different return format (tuple/dict with both groups and grades) which directly contradicts the hidden expected behavior (simple list of passing names only). This fix clarifies the actual expected return format."
+}

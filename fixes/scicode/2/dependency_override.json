@@ -1,0 +1,6 @@
+{
+  "task_id": "2",
+  "original_dependencies": "import numpy as np\nfrom scipy.integrate import simps",
+  "fixed_dependencies": "import numpy as np\nfrom scipy.integrate import simpson as simps",
+  "reason": "scipy.integrate.simps was deprecated in scipy 1.10 and removed in scipy 1.14. We import simpson aliased as simps for compatibility with existing code patterns."
+}

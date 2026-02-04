@@ -1,0 +1,4 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge",
+  "HAL_CONDA_PACKAGES": "r-base=4.0.3 r-essentials r-tidyverse r-urltools r-lubridate r-stargazer r-lmtest r-sandwich r-haven r-tidytext r-matrixStats r-xtable r-bayestestR r-lfe r-estimatr r-ggpubr r-bsts r-rjson r-rvest r-reldist r-remotes"
+}

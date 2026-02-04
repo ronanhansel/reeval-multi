@@ -1,0 +1,8 @@
+{
+  "task_id": "56",
+  "ife_detected": true,
+  "ife_type": "ambiguous_instruction",
+  "fix_applied": true,
+  "fix_types": ["instruction_override"],
+  "notes": "Task instruction was ambiguous about whether to produce temporal or spatial visualization. Clarified that output should be a geographical heatmap."
+}

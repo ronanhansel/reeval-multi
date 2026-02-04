@@ -1,0 +1,5 @@
+{
+  "additional_prompt": "When asked about implementation details for symmetry checking, you should explain: 1) Objects are represented as flat tuples of numeric coordinates. 2) Axes are represented as integer indices (0, 1, 2, etc.) corresponding to coordinate positions. 3) An object is symmetric across axis i if negating only the coordinate at position i produces the same tuple.",
+  "allow_explicit_values": true,
+  "notes": "The hidden code uses a non-standard, arbitrary interpretation of 'symmetric across axis'. The simulated user must be able to convey these implementation details since they cannot be reasonably inferred."
+}
