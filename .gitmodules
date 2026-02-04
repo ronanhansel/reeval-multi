@@ -1,3 +1,0 @@
-[submodule "agent-debug"]
-	path = agent-debug
-	url = https://github.com/ronanhansel/agent-debug.git
