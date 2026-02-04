@@ -723,6 +723,11 @@ def main():
         type=str,
         help="Regex prefix to group CSV files by (e.g., 'sky[0-9]+_'). If provided, overrides --pattern.",
     )
+    parser.add_argument(
+        "--original",
+        action="store_true",
+        help="Treat as original (pre-revision) data. Forces output filename to be {benchmark}_verdict.csv without prefix suffix.",
+    )
 
     args = parser.parse_args()
 
@@ -847,7 +852,12 @@ def main():
             first_pattern = patterns[0] if not args.prefix else args.prefix
             pfx = re.sub(r'[^a-zA-Z0-9_]', '', first_pattern.split('*')[0].split('?')[0]).rstrip('_')
 
-        if pfx:
+        if args.original:
+            # For original data, we do NOT want the prefix suffix if it's just the benchmark name
+            # or if we want a clean "original" filename.
+            # Usually original data is stored as {benchmark}_verdict.csv
+            output_path = full_verdict_dir / f"{display_benchmark}_verdict.csv"
+        elif pfx:
             output_path = full_verdict_dir / f"{display_benchmark}_verdict_{pfx}.csv"
         else:
             output_path = full_verdict_dir / f"{display_benchmark}_verdict.csv"

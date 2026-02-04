@@ -426,6 +426,11 @@ def main():
              "Comma-separated for fallback on errors "
              "(e.g., 'http://localhost:4000/v1,http://localhost:4001/v1')",
     )
+    parser.add_argument(
+        "--original",
+        action="store_true",
+        help="Treat as original (pre-revision) data. Currently mainly for consistency with other scripts.",
+    )
 
     args = parser.parse_args()
 

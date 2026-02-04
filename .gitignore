@@ -23,3 +23,5 @@ embeddings_cache/
 .claude/
 data-reeval-multi/
 traces/
+eval_response_matrix/
+eval_traces/

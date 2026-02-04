@@ -982,6 +982,7 @@ def main() -> None:
     parser.add_argument("--log-dir", help="Path to benchmark_run_* directory")
     parser.add_argument("--run-root", help="Override run root path")
     parser.add_argument("--output", help="CSV output path")
+    parser.add_argument("--original", action="store_true", help="Treat as original (pre-revision) data")
     parser.add_argument("--reeval", action="store_true", help="Re-evaluate tasks from raw submissions")
     parser.add_argument("--extract-subscores", action="store_true", help="Extract and save detailed subtask scores")
     parser.add_argument("--traces-dir", help="Directory containing aggregated traces (e.g., eval_traces)")
@@ -1458,15 +1459,35 @@ def main() -> None:
         else:
             subfolder = ""
 
+        # Remove prefix from filename if --original is set or if it matches the benchmark
+        if args.original:
+            # For original data, we typically want resmat_{benchmark}.csv or just resmat.csv inside the benchmark folder
+            # If pfx_for_file equals the benchmark name, it's redundant to repeat it if the folder is already the benchmark
+            # But standard practice is resmat_{benchmark}.csv
+            pass
+
         if args.output:
             output_dir = Path(args.output)
             if subfolder:
                 output_dir = output_dir / subfolder
             # Use 'resmat' subfolder for main matrices 
             output_dir = output_dir / "resmat"
-            output_path = output_dir / f"resmat_{pfx_for_file}.csv"
+            
+            if args.original:
+                 # If original, ensure we don't have double prefixes if pfx matches benchmark
+                 if pfx_for_file == subfolder:
+                     output_path = output_dir / f"resmat_{pfx_for_file}.csv"
+                 else:
+                     output_path = output_dir / f"resmat_{pfx_for_file}.csv"
+            else:
+                output_path = output_dir / f"resmat_{pfx_for_file}.csv"
         else:
-            output_dir = repo_root / "output"
+            if args.original:
+                # Default for original: eval_response_matrix/pre-revision
+                output_dir = REPO_ROOT / "eval_response_matrix" / "pre-revision"
+            else:
+                output_dir = repo_root / "output"
+            
             if subfolder:
                 output_dir = output_dir / subfolder
             output_dir = output_dir / "resmat"

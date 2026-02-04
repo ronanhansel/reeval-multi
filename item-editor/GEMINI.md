@@ -1,0 +1,11 @@
+
+## Gemini Added Memories
+- Fixed run_all_benchmarks.sh hanging/idling by parallelizing Docker container pool creation in hal-harness/hal/utils/docker_runner.py using asyncio.gather and offloading blocking calls to a thread pool.
+- Fixed CoreBench/Hal-Harness failures by unblocking 'posixpath' and 'subprocess' in 'local_python_executor.py' and adding 'PyPDF2', 'xgboost', 'ddgs', 'r-rmarkdown' to the base Dockerfile. Validated upload script works.
+- Fixed 'InterpreterError' in CoreBench agents by monkey-patching 'smolagents.local_python_executor.DANGEROUS_MODULES' in 'core_agent/main.py' and 'hal_generalist_agent/main.py' to allow 'posixpath' and 'subprocess', bypassing the GitHub-installed package limitations.
+- Verified 'InterpreterError' is resolved in latest CoreBench run (20260130_095652). Agents now fail due to missing data/files in 'environment/' (e.g., embeddings, datasets), leading GPT-4 to output text explanations which are filtered out by the response matrix script, causing empty rows. O3-mini likely outputs empty dicts, appearing as 0s.
+- Added 'scripts/ensure_corebench_data.py' and integrated it into 'bin/run_all_benchmarks.sh' to explicitly verify/download CoreBench datasets before execution, addressing missing data issues.
+- Verified CoreBench infrastructure is fully functional: 'InterpreterError' (sandbox) and 'ModuleNotFoundError' (deps) are resolved. Remaining failures (FileNotFound, 'os' not defined) are due to Agent limitations (e.g., failing to import modules, not creating output dirs in Hard mode) and result in text-based outputs that appear as empty rows in the CSV.
+- Improved 'build_response_matrix.py' robustness by adding a regex-based JSON extractor to 'load_raw_ok_tasks'. This allows correctly capturing result dictionaries even when agents embed them within explanation text or return them as string-encoded objects. Verified this correctly populates the response matrix for gpt_4_1 and others.
+- Further expanded CoreBench 'AUTHORIZED_IMPORTS' to include 'pathlib', 'textwrap', and 'glob'. This addresses 'InterpreterError' found in advanced model logs (GPT-5, o4-mini) that were still causing early task termination.
+- ScienceAgentBench task 11 (sab.eval.x86_64.11) fails to build its Docker image due to pip install errors in instance_requirements.txt. This is a task-specific failure, not an infrastructure one.
