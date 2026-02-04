@@ -1228,29 +1228,11 @@ def main() -> None:
 
         row_labels: List[str] = []
 
-        # 3. Load Judge Verdicts for this prefix
-        # We treat judge verdicts as a special 'agent' row
+        # Load Judge Verdicts for this prefix (to export separately later)
         judge_dir = REPO_ROOT / "eval_traces" / "judge_output"
         benchmark_to_verdicts: Dict[str, Dict[str, int]] = {}
         for benchmark in active_benchmarks:
             benchmark_to_verdicts[benchmark] = load_judge_verdicts(judge_dir, benchmark, actual_prefix)
-
-        # Check if we have ANY judge verdicts for this prefix
-        has_any_verdicts = any(v for v in benchmark_to_verdicts.values())
-        if has_any_verdicts:
-            judge_row = []
-            for b in active_benchmarks:
-                v_map = benchmark_to_verdicts.get(b, {})
-                for task_id in benchmark_task_ids.get(b, []):
-                    val = v_map.get(task_id)
-                    judge_row.append(str(val) if val is not None else "")
-            rows.append(judge_row)
-            row_labels.append("judge_verdict")
-
-            # Add empty rows for subscores for judge_verdict
-            if args.extract_subscores:
-                for name in ALL_SUBSCORE_NAMES:
-                    subscore_type_to_rows[name].append([""] * len(columns))
 
         for benchmark in active_benchmarks:
             # Use actual runs for this benchmark and prefix
@@ -1495,18 +1477,26 @@ def main() -> None:
         print(f"Wrote CSV: {output_path}")
 
         # Export Judge Verdicts to a separate file if present
-        verdict_rows = [row for row in rows_with_labels if row[0] == "judge_verdict"]
-        if verdict_rows:
+        has_any_verdicts = any(v for v in benchmark_to_verdicts.values())
+        if has_any_verdicts:
             verdicts_dir = output_path.parent.parent / "verdicts"
             verdicts_dir.mkdir(parents=True, exist_ok=True)
             verdicts_path = verdicts_dir / f"verdict_{pfx_for_file}.csv"
-            write_csv(verdicts_path, header, verdict_rows)
+            
+            # Build the judge_verdict row matches 'columns' structure
+            judge_row = ["judge_verdict"]
+            for b in active_benchmarks:
+                v_map = benchmark_to_verdicts.get(b, {})
+                for task_id in benchmark_task_ids.get(b, []):
+                    val = v_map.get(task_id)
+                    judge_row.append(str(val) if val is not None else "")
+            
+            write_csv(verdicts_path, header, [judge_row])
             print(f"Wrote Verdict CSV: {verdicts_path}")
 
         if args.extract_subscores:
-            # Filter out 'judge_verdict' from subscore row labels and data
-            agent_indices = [i for i, label in enumerate(row_labels) if label != "judge_verdict"]
-            agent_labels = [row_labels[i] for i in agent_indices]
+            # All labels in row_labels are now agents (no judge_verdict)
+            agent_labels = row_labels
 
             for s_name, s_rows in subscore_type_to_rows.items():
                 # Only write files that actually have data
@@ -1523,8 +1513,7 @@ def main() -> None:
                 sub_output_path = sub_output_dir / f"{s_name}_{pfx_for_file}.csv"
                 
                 # Use filtered labels/rows (agent-only)
-                filtered_s_rows = [s_rows[i] for i in agent_indices]
-                s_rows_with_labels = [[agent_labels[idx]] + filtered_s_rows[idx] for idx in range(len(agent_labels))]
+                s_rows_with_labels = [[agent_labels[idx]] + s_rows[idx] for idx in range(len(agent_labels))]
                 write_csv(sub_output_path, header, s_rows_with_labels)
                 print(f"Wrote Subscore CSV: {sub_output_path}")
 
