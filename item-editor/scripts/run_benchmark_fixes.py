@@ -151,7 +151,10 @@ if os.environ.get('USE_DIRECT_AZURE', '').lower() == 'true':
         print("[ERROR] Azure preflight failed after retries. Aborting to avoid long-running failure.")
         raise SystemExit(2)
 
-    _require_azure_ready()
+    if os.environ.get('HAL_SKIP_MSAL_PREFLIGHT', '').lower() != 'true':
+        _require_azure_ready()
+    else:
+        print("[INFO] Azure preflight skipped (HAL_SKIP_MSAL_PREFLIGHT=true)")
 
 # =============================================================================
 # Path Configuration
