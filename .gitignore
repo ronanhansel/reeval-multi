@@ -13,6 +13,7 @@ output-*/
 helm_jsons/
 *.pkl
 *.json
+!item-editor/model_configs/
 *.parquet
 data/
 .cache/
