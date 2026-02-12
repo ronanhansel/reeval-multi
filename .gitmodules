@@ -1,6 +1,6 @@
 [submodule "item-editor/hal-harness"]
 	path = item-editor/hal-harness
-	url = https://github.com/ronanhansel/hal-harness.git
+	url = https://github.com/princeton-pli/hal-harness.git
 [submodule "item-editor/docent"]
 	path = item-editor/docent
-	url = https://github.com/ronanhansel/docent.git
+	url = https://github.com/TransluceAI/docent.git
