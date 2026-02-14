@@ -1,3 +1,74 @@
+# Migration Guide - Project Reorganization
+
+The project structure has been reorganized into a more streamlined hierarchy under the `item-editor/` root.
+
+## New Structure
+
+```
+item-editor/
+├── docent/                     # Docent library
+├── hal-harness/                # HAL evaluation harness
+├── eval_traces/                # Evaluation traces (input/aggregated)
+├── eval_response_matrix/       # Response matrices (input/aggregated)
+├── patch/                      # Patch diff files
+├── result/                     # Results and outputs
+│   ├── fixes/                  # Generated fixes for IFEs
+│   └── .hal_data/              # Internal data (logs, traces, results, cache)
+├── config/                     # Configuration files
+│   ├── model_config/           # Model-specific benchmark configs
+│   └── rubric/                 # Rubric templates (.txt files only)
+└── script/                     # Python scripts and utilities
+    └── rubric_evaluator/       # Rubric evaluation logic (docent bridge)
+```
+
+## Key Changes
+
+1.  **Centralized Data**: All outputs (logs, traces, results, LLM cache) are now written to `item-editor/result/.hal_data/`.
+2.  **Streamlined Rubrics**: Rubric templates are located in `item-editor/config/rubric/` and contain only `.txt` files to minimize redundancy.
+3.  **Consolidated Scripts**: All scripts were moved to `item-editor/script/`, and `rubric_evaluator` was moved inside as a package.
+4.  **Path Resolution**: `hal_common.py` and other scripts have been updated to resolve paths relative to the new `item-editor/` root.
+
+## How to Run
+
+Most commands should be run from the `item-editor/` directory.
+
+### Rubric Evaluation
+```bash
+python script/eval_rubric.py \
+    --trace-file result/.hal_data/traces/some_trace_UPLOAD.json \
+    --rubric config/rubric/colbench.txt \
+    --rubric-model azure_openai:gpt-5.2 \
+    --failed-only -y
+```
+
+### Build Response Matrix
+```bash
+python script/build_response_matrix.py --prefix "moon18_" --benchmark colbench
+```
+
+### Judge IFEs
+```bash
+python script/judge.py \
+    --pattern "*.csv" \
+    --rubric-dir result/.hal_data/rubrics_output/scicode \
+    --model azure_openai:gpt-5.2 \
+    -y
+```
+
+### Fix IFEs with Claude
+```bash
+python script/claude_fixer.py --benchmark scicode --ife-only
+```
+
+## Internal Path Updates
+
+The following environment variables and defaults were updated:
+- `HAL_RESULTS_DIR` defaults to `result/.hal_data/results`
+- `HAL_TRACES_DIR` defaults to `result/.hal_data/traces`
+- `HAL_TMP_DIR` defaults to `result/.hal_data/tmp`
+- `HAL_LOGS_DIR` defaults to `result/.hal_data/logs`
+- `LLM_CACHE_PATH` defaults to `result/.hal_data/.llm_cache`
+
 # HAL Reproducibility & Migration Guide
 
 This document provides detailed usage instructions for the consolidated HAL evaluation scripts. It follows the end-to-end sequential workflow required for full reproducibility.
