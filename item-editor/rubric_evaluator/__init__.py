@@ -1,1 +1,0 @@
-"""Rubric evaluator CLI package."""
