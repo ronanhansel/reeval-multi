@@ -62,7 +62,7 @@ def colorize_line(line, prefix):
     display_prefix = f"[{timestamp}] "
     
     line_lower = line.lower()
-    if any(m in line_lower for m in ["results:", ""accuracy"", ""score"", "evaluation completed"]):
+    if any(m in line_lower for m in ["results:", "accuracy", "score", "evaluation completed"]):
         return f"{Colors.BOLD}{Colors.GREEN}{display_prefix}{line}{Colors.NC}"
     elif any(m in line_lower for m in ["error", "exception", "failed", "traceback"]):
         return f"{Colors.RED}{display_prefix}{line}{Colors.NC}"
@@ -110,15 +110,20 @@ def main():
             
             # Check for output from all processes
             for f, proc in list(processes.items()):
-                # Non-blocking read
-                import selectors
-                sel = selectors.DefaultSelector()
-                sel.register(proc.stdout, selectors.EVENT_READ)
-                events = sel.select(timeout=0.1)
-                for key, mask in events:
+                # Non-blocking read of all available lines
+                while True:
+                    import selectors
+                    sel = selectors.DefaultSelector()
+                    sel.register(proc.stdout, selectors.EVENT_READ)
+                    events = sel.select(timeout=0.01) # Very short timeout
+                    if not events:
+                        break
+                    
                     line = proc.stdout.readline()
                     if line:
                         print(colorize_line(line.strip(), args.prefix))
+                    else:
+                        break
                 
                 # Check if process is still alive
                 if proc.poll() is not None:
@@ -132,8 +137,7 @@ def main():
                 time.sleep(0.5)
                 
     except KeyboardInterrupt:
-        print(f"
-{Colors.CYAN}Stopping...{Colors.NC}")
+        print(f"\n{Colors.CYAN}Stopping...{Colors.NC}")
         for proc in processes.values():
             proc.terminate()
 
