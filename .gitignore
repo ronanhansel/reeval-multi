@@ -57,3 +57,6 @@ results
 output
 eval_traces/
 eval_response_matrix/
+
+!config/
+!config/**
