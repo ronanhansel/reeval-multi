@@ -16,6 +16,7 @@ import tempfile
 import json
 import hashlib
 import re
+from typing import List, Set, Dict, Any, Optional
 from pathlib import Path
 REPO_ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT_DIR / "script" / "utils"))

@@ -70,7 +70,7 @@ python script/utils/cleanup.py --aggressive --images
 #### Unified Benchmark Runner
 The main engine for executing agent evaluations.
 ```bash
-python script/fix/runtime_fixes.py --benchmark scicode --prefix myrun_ --parallel-models 5 --docker
+python script/fix/runtime_fixes.py --benchmark scicode --prefix myrun_ --docker
 ```
 *   **`--benchmark, -b`**:
     *   **Accepted**: Single benchmark name (e.g., `scicode`).
@@ -82,9 +82,6 @@ python script/fix/runtime_fixes.py --benchmark scicode --prefix myrun_ --paralle
 *   **`--prefix`**:
     *   **Accepted**: String (e.g., `sun30_`).
     *   **Default**: `moon1_`. Used for tagging Run IDs and traces.
-*   **`--parallel-models`**:
-    *   **Accepted**: Integer.
-    *   **Default**: `10`. Concurrent model configurations running at once.
 *   **`--parallel-tasks`**:
     *   **Accepted**: Integer.
     *   **Default**: `10`. Concurrent tasks running per model config.
@@ -155,8 +152,8 @@ python script/eval/eval_rubric.py --trace-file [PATH] --rubric config/rubric/sci
 *   **`--rubric`**:
     *   **Accepted**: Path to `.txt` template.
 *   **`--rubric-model`**:
-    *   **Accepted**: `provider:model` (e.g., `azure_openai:gpt-5.2`).
-    *   **Default**: `gpt-5.2_2025-12-11` (from config).
+    *   **Accepted**: `provider:model` (e.g., `openai:gpt-5.2`).
+    *   **Default**: `gpt-5.2` (from config).
 *   **`--failed-only`**:
     *   **Type**: Flag. Only processes items marked as failures in the trace.
 *   **`--max-batch-messages`**:
@@ -168,7 +165,7 @@ python script/eval/eval_rubric.py --trace-file [PATH] --rubric config/rubric/sci
 #### Judge Aggregator
 Produces binary IFE verdicts by aggregating multiple model evaluations.
 ```bash
-python script/eval/judge.py --pattern "sun30_*" --rubric-dir result/.hal_data/rubrics_output/scicode --model azure_openai:gpt-5.2 -y
+python script/eval/judge.py --pattern "sun30_*" --rubric-dir result/.hal_data/rubrics_output/scicode --model openai:gpt-5.2 -y
 ```
 *   **`--pattern`**:
     *   **Accepted**: Glob pattern for rubric CSVs.
@@ -228,14 +225,107 @@ python script/utils/build_response_matrix.py --prefix sun30_ --traces-dir eval_t
 
 ---
 
+## 4. Latest Updates & Patch Summary
+
+The system has been updated with several critical improvements to stability, performance, and agent reliability. These changes are delivered via sub-module patches.
+
+### A. Functional Changes Summary
+
+#### 1. Infrastructure & Reliability
+*   **Parallel Docker Execution**: Optimized the `DockerRunner` by implementing concurrent container pool management using `asyncio.gather`. This drastically improves startup times and prevents deadlocks during high-concurrency evaluation runs.
+*   **Enhanced Docker Environment**: Updated the base `Dockerfile` with missing scientific and utility packages (`PyPDF2`, `xgboost`, `ddgs`, `r-rmarkdown`, `pathlib`) to ensure baseline compatibility for all benchmarks.
+*   **Sequential Execution**: Refactored the unified benchmark runner to process model configurations sequentially while maintaining parallel task execution, ensuring better stability and easier debugging.
+
+#### 2. Agent Runtime & Security
+*   **Smolagents Security Policy**: Patched the `smolagents` executor to authorize safe file system operations (`posixpath`, `glob`) and process management (`subprocess`), which are required for complex engineering tasks.
+*   **Scientific Operator Support**: Added support for the `@` matrix multiplication operator in the agent's Python interpreter, resolving failures in numerical tasks.
+*   **Standardized API Access**: Migrated all agent implementations to use standard, unified client libraries for interacting with LLM providers.
+
+#### 3. Evaluation & Metrics
+*   **Structured Output Support**: Added `response_format` support to the `docent` evaluation library, enabling reliable JSON extraction across all supported LLM providers.
+*   **Robust Rubric Grading**: Improved the rubric evaluation pipeline with enhanced JSON parsing and malformed output recovery.
+
+### B. Patch File Contents
+The updated system logic is maintained via two comprehensive patch files which **must be applied** after initializing submodules:
+*   `patch/docent/docent.patch`: Contains Docent library enhancements.
+*   `patch/hal-harness/hal-harness.patch`: Contains core harness, agent runner, and environment updates.
+
+**Note**: A minor fix was also applied directly to `script/utils/prebuild_all_images.py` in the root repository to resolve a missing import (`NameError: name 'List' is not defined`).
+
+---
+
+## 5. Step-by-Step Execution Guide (Fresh Install)
+
+Follow these steps to set up and run the evaluation pipeline from a newly cloned repository.
+
+### Step 1: Clone and Initialize
+```bash
+# Clone the repository
+git clone <repo_url> item-editor
+cd item-editor
+
+# Initialize submodules (docent and hal-harness)
+git submodule update --init --recursive
+```
+
+### Step 2: Apply Patches
+**CRITICAL**: You must apply the patches to inject the latest fixes and ensure the system is in a consistent state.
+```bash
+# Run the provided patch script
+bash patch/apply_patches.sh
+```
+*Verify output*: Ensure you see "Successfully applied hal-harness patch" and "Successfully applied docent patch".
+
+### Step 3: Environment Setup
+1.  **Create Virtual Environment**:
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+2.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Configure Environment Variables**:
+    Copy the template and fill in your API keys.
+    ```bash
+    cp .env.template .env
+    # Edit .env and add your OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
+    ```
+
+### Step 4: Prebuild Docker Images
+Build the agent execution environments.
+```bash
+python script/utils/prebuild_all_images.py --force
+```
+
+### Step 5: Run Evaluation
+Execute a benchmark run. This example runs `scicode` with Docker isolation.
+```bash
+python script/fix/runtime_fixes.py \
+  --benchmark scicode \
+  --prefix test_run_ \
+  --docker
+```
+
+### Step 6: Monitor and Analyze
+*   **Watch Logs**:
+    ```bash
+    python script/utils/watch_all.py --prefix test_run_
+    ```
+*   **Check Results**:
+    Results will be generated in `result/.hal_data/results`.
+
+---
+
 ## License & Citation
 
 [Add license info]
 
 If you use this pipeline in your research:
 ```bibtex
-@misc{hal-agent-debug,
-  title = {HAL Agent Debug Pipeline},
+@misc{agent-eval,
+  title = {Agent Eval},
   year = {2026},
   howpublished = {\url{https://github.com/aims-foundation/agent-eval}}
 }

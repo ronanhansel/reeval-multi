@@ -6,9 +6,9 @@ Consolidates run_benchmark_fixes.py and run_all_benchmarks.py into one tool.
 Supports single-config runs, bulk benchmark runs, and automated loops.
 
 Features:
-- Parallel model execution
+- Sequential model execution
 - Parallel task execution
-- Parallel benchmark execution (in bulk mode)
+- Sequential benchmark execution (in bulk mode)
 - Fix application (prompt/env patching)
 - Real-time colorized log tailing
 - Automated prefix loops
@@ -315,15 +315,11 @@ def run_suite(benchmark: str, prefix: str, args: argparse.Namespace, log_file: O
         with open(log_file, "a") as f:
             f.write(f"Benchmark: {benchmark}\nTasks: {len(final_ds)}\nConfigs: {len(selected)}\n\n")
 
-    log(f"Queuing {len(selected)} model configurations...", benchmark, Colors.CYAN)
+    log(f"Running {len(selected)} model configurations sequentially...", benchmark, Colors.CYAN)
     
     results = []
-    if args.parallel_models > 1:
-        with ThreadPoolExecutor(max_workers=args.parallel_models) as ex:
-            futures = {ex.submit(run_hal_job, benchmark, k, v, prefix, ds_path, args, log_file): k for k, v in selected.items()}
-            for f in as_completed(futures): results.append(f.result())
-    else:
-        for k, v in selected.items(): results.append(run_hal_job(benchmark, k, v, prefix, ds_path, args, log_file))
+    for k, v in selected.items():
+        results.append(run_hal_job(benchmark, k, v, prefix, ds_path, args, log_file))
             
     ds_path.unlink(missing_ok=True)
     return all(results)
@@ -347,7 +343,6 @@ def main():
     parser.add_argument("--config", "-c", dest="configs", action="append", help="Specific config key(s).")
     parser.add_argument("--model-filter", "-m", help="Filter configs by pattern.")
     # Parallelism
-    parser.add_argument("--parallel-models", type=int, default=10, help="Concurrent configs (default: 10).")
     parser.add_argument("--parallel-tasks", type=int, default=10, help="Concurrent tasks per model (default: 10).")
     # Execution
     parser.add_argument("--prefix", default="moon1_", help="Output prefix (default: moon1_).")
@@ -384,29 +379,22 @@ def main():
         log(f"Logs: {log_dir}", "suite", Colors.BLUE)
 
         with open(log_dir / "config.json", "w") as f:
-            json.dump({"prefix": prefix, "parallel_models": args.parallel_models, "parallel_tasks": args.parallel_tasks, "benchmarks": active_benchmarks}, f, indent=4)
+            json.dump({"prefix": prefix, "parallel_tasks": args.parallel_tasks, "benchmarks": active_benchmarks}, f, indent=4)
 
         colors = [Colors.BLUE, Colors.GREEN, Colors.YELLOW, Colors.CYAN, Colors.MAGENTA]
-        threads = []
         
         for i, bench in enumerate(active_benchmarks):
             log_path = log_dir / f"{bench}.log"
             color = colors[i % len(colors)]
             
-            # Start suite thread
-            t = threading.Thread(target=run_suite, args=(bench, prefix, args, log_path), daemon=True)
-            t.start()
-            threads.append(t)
-            
             # Start tailing thread
             tail_t = threading.Thread(target=tail_log_to_stdout, args=(bench, log_path, color), daemon=True)
             tail_t.start()
             
-            time.sleep(2) 
-
-        # Wait for all benchmark suites to finish
-        for t in threads:
-            t.join()
+            # Run benchmark suite sequentially
+            run_suite(bench, prefix, args, log_path)
+            
+            time.sleep(1) 
 
         # Check loop
         should_loop = False
