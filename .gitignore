@@ -2,7 +2,6 @@ data
 __pycache__
 .ipynb_aml_checkpoints
 .DS_store
-result
 *.amlignore
 *.amlignore.amltmp
 .ipynb_aml_checkpoints/
