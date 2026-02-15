@@ -221,8 +221,8 @@ except Exception as e:
     print(f"Warning: Could not load models/model_rubrics.json: {e}")
     _rubric_config = {}
 
-# Determine model to use (default to gpt-5.2_2025-12-11 if not specified)
-_target_model_key = "gpt-5.2_2025-12-11"
+# Determine model to use (default to gpt-5.2 if not specified)
+_target_model_key = "gpt-5.2"
 if _pre_args.rubric_model:
     # If user specified a model, try to find it in config, otherwise use as-is
     if _pre_args.rubric_model in _rubric_config:
@@ -1639,7 +1639,7 @@ def main():
     parser.add_argument(
         "--rubric-model",
         type=str,
-        help="Model as provider:model. Defaults to gpt-5.2_2025-12-11 from models/model_rubrics.json if available.",
+        help="Model as provider:model. Defaults to gpt-5.2 from models/model_rubrics.json if available.",
     )
     parser.add_argument(
         "--reasoning-effort",
