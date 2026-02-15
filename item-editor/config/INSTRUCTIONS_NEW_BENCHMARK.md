@@ -7,13 +7,13 @@ This document provides comprehensive step-by-step instructions for Claude Code t
 ## Overview
 
 When adding a new benchmark, you need to create:
-1. **Rubric template** - For LLM-based IFE detection (`rubric_templates/<benchmark>.txt`)
-2. **Claude fixer script** - For automated fix generation (`scripts/claude_fixer_<benchmark>.py`)
-3. **Model configuration** - Maps models to baseline traces (`model_configs/model_to_baseline_<benchmark>.json`)
-4. **Fixes directory** - `fixes/<benchmark>/` to store generated fixes
+1. **Rubric template** - For LLM-based IFE detection (`config/rubric/<benchmark>.txt`)
+2. **Claude fixer logic** - Integrated into the unified fixer or as a support script (`script/fix/claude_fixer.py`)
+3. **Model configuration** - Maps models to baseline traces (`config/model/model_to_baseline_<benchmark>.json`)
+4. **Fixes directory** - `result/fixes/<benchmark>/` to store generated fixes
 5. **Documentation updates** - README.md entries
 
-**Note**: The unified `run_benchmark_fixes.py` handles all benchmarks - no separate runner script needed.
+**Note**: The unified `script/fix/runtime_fixes.py` handles all benchmarks - no separate runner script needed.
 
 ---
 
@@ -101,10 +101,12 @@ grep -A10 "_requirements_hash" hal-harness/hal/utils/docker_runner.py
 
 ```bash
 # Extract imports from gold programs
-grep -rh "^import\|^from" hal-harness/hal/benchmarks/<benchmark>/<submodule>/benchmark/gold_programs/*.py \
-    | sed 's/import /\nimport /g; s/from /\nfrom /g' \
-    | grep -E "^import|^from" \
-    | sed 's/import \([a-zA-Z0-9_]*\).*/\1/; s/from \([a-zA-Z0-9_]*\).*/\1/' \
+grep -rh "^import\|^from" hal-harness/hal/benchmarks/<benchmark>/<submodule>/benchmark/gold_programs/*.py 
+    | sed 's/import /
+import /g; s/from /
+from /g' 
+    | grep -E "^import|^from" 
+    | sed 's/import \([a-zA-Z0-9_]*\).*/\1/; s/from \([a-zA-Z0-9_]*\).*/\1/' 
     | sort | uniq -c | sort -rn | head -40
 ```
 
@@ -139,7 +141,7 @@ Use WebSearch to find:
 
 ```bash
 # List available traces
-ls -la traces/<benchmark>*.json
+ls -la result/.hal_data/traces/<benchmark>*.json
 
 # Extract failure patterns
 python -c "
@@ -148,7 +150,7 @@ from pathlib import Path
 from collections import Counter
 
 errors = Counter()
-for f in Path('traces').glob('<benchmark>*.json'):
+for f in Path('result/.hal_data/traces').glob('<benchmark>*.json'):
     data = json.loads(f.read_text())
     for result in data.get('raw_logging_results', []):
         if 'error' in str(result).lower():
@@ -171,7 +173,7 @@ print(errors.most_common(20))
 
 ## PHASE 3: Create the Rubric Template
 
-Create `rubric_templates/<benchmark_name>.txt` with this comprehensive structure:
+Create `config/rubric/<benchmark_name>.txt` with this comprehensive structure:
 
 ```markdown
 # <Benchmark Name> Intrinsic Formation Error Detection Rubric
@@ -362,95 +364,50 @@ Example for ScienceAgentBench:
 
 ---
 
-## PHASE 4: Create the Claude Fixer Script
+## PHASE 4: Update the Claude Fixer
 
-Create `scripts/claude_fixer_<benchmark_name>.py` based on existing templates.
+Modify `script/fix/claude_fixer.py` to support the new benchmark.
 
 **Key components to customize:**
 
 ### 4.1: Update Constants
 
+Ensure `BENCHMARK_MAP` includes your benchmark:
 ```python
-REPO_ROOT = Path(__file__).resolve().parents[1]
-TRACES_DIR = REPO_ROOT / "traces"
-FIXES_DIR = REPO_ROOT / "fixes"
-BENCHMARK = "<benchmark_name>"
+BENCHMARK_MAP = {
+    "scienceagentbench": "scienceagentbench",
+    "scicode": "scicode",
+    "corebench": "corebench_hard",
+    "colbench": "colbench",
+    "<new_benchmark>": "<new_benchmark>",
+}
 ```
 
 ### 4.2: Adapt Trace Loading
 
-Different benchmarks store task data differently:
-
-```python
-def load_task_conversations(trace_files: List[str], task_ids: Set[str]) -> Dict[str, str]:
-    """Extract agent conversations from trace files.
-
-    CUSTOMIZE THIS for your benchmark's trace structure.
-    """
-    conversations = {}
-
-    for trace_file in trace_files:
-        data = json.loads(Path(trace_file).read_text())
-
-        # ScienceAgentBench format:
-        for result in data.get("raw_logging_results", []):
-            task_id = str(result.get("inputs", {}).get("task_id", ""))
-            # Extract conversation...
-
-        # SciCode format:
-        for result in data.get("raw_logging_results", []):
-            task_id = result.get("inputs", {}).get("task_id", "")
-            # Extract conversation...
-
-        # Other benchmarks may have different structures
-
-    return conversations
-```
+If your benchmark trace format is unique, update `load_task_conversations` in `script/fix/claude_fixer.py`.
 
 ### 4.3: Customize the Claude Prompt
 
-The prompt should include:
-1. Benchmark-specific harness files to read
-2. Evaluation flow description
-3. Known IFE patterns from trace analysis
-4. Thorough error analysis checklist
-5. Fix format appropriate for the benchmark
-
-**See template in existing INSTRUCTIONS_NEW_BENCHMARK.md Step 5**
+Update the `build_claude_prompt_batch` function with benchmark-specific context (harness files to read, evaluation flow, etc.).
 
 ---
 
 ## PHASE 5: Create Model Configuration
 
-Create `model_configs/model_to_baseline_<benchmark_name>.json`:
+Create `config/model/model_to_baseline_<benchmark_name>.json`:
 
 ```json
 {
   "openai/gpt-4.1-2025-04-14": {
     "model_id": "openai/gpt-4.1-2025-04-14",
     "short_name": "gpt-4.1",
-    "baseline_trace": "<benchmark>_gpt41_UPLOAD.json",
     "max_steps": 5
   },
   "openai/o3-2025-04-16": {
     "model_id": "openai/o3-2025-04-16",
     "short_name": "o3",
-    "baseline_trace": "<benchmark>_o3_UPLOAD.json",
     "reasoning_effort": "medium",
-    "max_steps": 5
-  },
-  "openai/o4-mini-2025-04-16-low": {
-    "model_id": "openai/o4-mini-2025-04-16",
-    "short_name": "o4-mini-low",
-    "baseline_trace": "<benchmark>_o4mini_low_UPLOAD.json",
-    "reasoning_effort": "low",
-    "max_steps": 5
-  },
-  "openai/o4-mini-2025-04-16-high": {
-    "model_id": "openai/o4-mini-2025-04-16",
-    "short_name": "o4-mini-high",
-    "baseline_trace": "<benchmark>_o4mini_high_UPLOAD.json",
-    "reasoning_effort": "high",
     "max_steps": 5
   }
 }
@@ -459,7 +416,6 @@ Create `model_configs/model_to_baseline_<benchmark_name>.json`:
 **Fields explained:**
 - `model_id`: Full model identifier for LiteLLM/API
 - `short_name`: Human-readable name for logs/output
-- `baseline_trace`: Original trace file for comparison
 - `reasoning_effort`: For o-series models (low/medium/high)
 - `max_steps`: Agent max iterations
 
@@ -467,36 +423,22 @@ Create `model_configs/model_to_baseline_<benchmark_name>.json`:
 
 ## PHASE 6: Configure the Unified Fix Runner
 
-The unified `run_benchmark_fixes.py` handles all benchmarks. You need to:
+The unified `script/fix/runtime_fixes.py` handles all benchmarks. You need to:
 
 ### 6.1: Create Fixes Directory
 
 ```bash
-mkdir -p fixes/<benchmark_name>
+mkdir -p result/fixes/<benchmark_name>
 ```
 
-### 6.2: Add Benchmark to Unified Runner (if needed)
-
-The unified runner auto-detects benchmarks by scanning `fixes/` and `model_configs/model_configs/model_to_baseline_*.json`.
-If your benchmark needs special handling, you may need to update `run_benchmark_fixes.py`:
-
-```python
-# In run_benchmark_fixes.py, add to BENCHMARK_CONFIG if needed:
-"<benchmark_name>": {
-    "hal_benchmark": "<hal_benchmark_name>",  # Name used by hal-eval
-    "fixes_dir": "fixes/<benchmark_name>",
-    "task_id_field": "task_id",  # Field name in dataset
-}
-```
-
-### 6.3: Verify Configuration
+### 6.2: Verify Configuration
 
 ```bash
 # List available benchmarks with fixes
-python scripts/run_benchmark_fixes.py --list-benchmarks
+python script/fix/runtime_fixes.py --list-benchmarks
 
 # List configs for your benchmark
-python scripts/run_benchmark_fixes.py --benchmark <benchmark_name> --list-configs
+python script/fix/runtime_fixes.py --benchmark <benchmark_name> --list-configs
 ```
 
 ---
@@ -506,19 +448,16 @@ python scripts/run_benchmark_fixes.py --benchmark <benchmark_name> --list-config
 ### 7.1: Test Docker Image Build
 
 ```bash
-# Delete old cached images to force rebuild
-docker images | grep agent-env | awk '{print $3}' | xargs -r docker rmi -f
+# Build all images
+python script/utils/prebuild_all_images.py <benchmark_name> --force
 
-# Clear Docker build cache
-docker builder prune -af
-
-# Run hal-eval to trigger fresh build
-hal-eval --benchmark <benchmark_name> \
-    --agent_dir agents/<agent_dir>/ \
-    --agent_function main.run \
-    --agent_name "test" \
-    --docker \
-    --max_tasks 1 \
+# Or run a single task to trigger build
+hal-eval --benchmark <benchmark_name> 
+    --agent_dir agents/<agent_dir>/ 
+    --agent_function main.run 
+    --agent_name "test" 
+    --docker 
+    --max_tasks 1 
     -A model_name=gpt-4o
 ```
 
@@ -526,30 +465,26 @@ hal-eval --benchmark <benchmark_name> \
 
 ```bash
 # Check a running container to verify file locations
-docker exec <container_id> bash -c "pwd && ls -la && ls -la benchmark/datasets/ 2>/dev/null || echo 'not found'"
+docker exec <container_id> bash -c "pwd && ls -la && ls -la environment/ 2>/dev/null || echo 'not found'"
 ```
 
 ### 7.3: Test Rubric Evaluation
 
 ```bash
-python scripts/eval_rubric.py \
-    --trace-file traces/<benchmark>_*.json \
-    --rubric rubric_templates/<benchmark>.txt \
-    --rubric-model openai:gpt-4o \
+python script/eval/eval_rubric.py 
+    --trace-file result/.hal_data/traces/<benchmark>_*.json 
+    --rubric config/rubric/<benchmark>.txt 
     --failed-only -y
 ```
 
 ### 7.4: Test Fix Runner
 
 ```bash
-# List fixes for your benchmark
-python scripts/run_benchmark_fixes.py --benchmark <benchmark> --list-fixes
-
 # Dry run
-python scripts/run_benchmark_fixes.py --benchmark <benchmark> --dry-run
+python script/fix/runtime_fixes.py --benchmark <benchmark> --dry-run
 
 # Actual run with a single config
-python scripts/run_benchmark_fixes.py --benchmark <benchmark> --config <config_key> --prefix test_ --docker
+python script/fix/runtime_fixes.py --benchmark <benchmark> --config <config_key> --prefix test_ --docker
 ```
 
 ---
@@ -558,13 +493,10 @@ python scripts/run_benchmark_fixes.py --benchmark <benchmark> --config <config_k
 
 ### Issue: Docker Cache Not Invalidating
 
-**Symptoms:** Same hash appears after changing requirements.txt
-
 **Solution:**
 ```bash
 # 1. Stop all running containers
-docker ps -q | xargs -r docker stop
-docker ps -aq | xargs -r docker rm -f
+python script/utils/cleanup.py --aggressive
 
 # 2. Delete prepared images
 docker images | grep agent-env | awk '{print $3}' | xargs -r docker rmi -f
@@ -582,19 +514,9 @@ docker builder prune -af
 **Solution:** Check that file destination matches working directory:
 ```python
 # In benchmark.py, ensure files go to correct location
-# If run_agent.py does: os.chdir("/workspace/environment")
+# If agent runs in: /workspace/environment
 # Then files must be copied to: "environment/benchmark/datasets/"
 # NOT: "benchmark/datasets/"
-```
-
-### Issue: API Timeouts / Rate Limiting
-
-**Symptoms:** `openai.APITimeoutError: Request timed out`
-
-**Solution:** Reduce parallelism:
-```bash
-# Instead of --parallel-tasks 20, use --parallel-tasks 5
-python scripts/run_benchmark_fixes.py --benchmark <benchmark> --parallel-tasks 5
 ```
 
 ### Issue: Sandbox "Forbidden Function" Errors
@@ -603,20 +525,7 @@ python scripts/run_benchmark_fixes.py --benchmark <benchmark> --parallel-tasks 5
 
 **First, check if it matters:**
 - If evaluation EXTRACTS code via regex → sandbox errors are IRRELEVANT
-- If evaluation RUNS code in sandbox → need to fix AUTHORIZED_IMPORTS
-
-**For extraction-based evaluation:** Ignore these errors in rubric evaluation.
-
-**For sandbox-based evaluation:** Add to AUTHORIZED_IMPORTS in main.py.
-
-### Issue: Missing Packages
-
-**Symptoms:** `ModuleNotFoundError: No module named 'xxx'`
-
-**Solution:**
-1. Add to `agents/<agent_dir>/requirements.txt`
-2. Add to `AUTHORIZED_IMPORTS` in `main.py` (for smolagents)
-3. Delete Docker cache and rebuild
+- If evaluation RUNS code in sandbox → need to fix AUTHORIZED_IMPORTS in agent's `main.py`.
 
 ---
 
@@ -636,51 +545,26 @@ python scripts/run_benchmark_fixes.py --benchmark <benchmark> --parallel-tasks 5
 - [ ] Identify cross-model failure patterns
 
 ### Phase 3: Rubric
-- [ ] Create `rubric_templates/<benchmark>.txt`
+- [ ] Create `config/rubric/<benchmark>.txt`
 - [ ] Include benchmark-specific deficiency categories
 - [ ] Include proper exclusions (sandbox errors if extraction-based)
 - [ ] Add cross-run analysis guidelines
-- [ ] Add known problematic task patterns
 
-### Phase 4: Fixer Script
-- [ ] Create `scripts/claude_fixer_<benchmark>.py`
-- [ ] Adapt trace loading for benchmark structure
-- [ ] Customize prompt with benchmark specifics
-- [ ] Include thorough error analysis checklist
+### Phase 4: Fixer
+- [ ] Update `script/fix/claude_fixer.py` with benchmark specifics
+- [ ] Customize batch prompt for the benchmark
 
 ### Phase 5: Model Config
-- [ ] Create `model_configs/model_to_baseline_<benchmark>.json`
-- [ ] Include all tested models
-- [ ] Include reasoning_effort for o-series
-- [ ] Reference correct baseline trace files
+- [ ] Create `config/model/model_to_baseline_<benchmark>.json`
+- [ ] Include all tested models and configurations
 
 ### Phase 6: Fix Runner
-- [ ] Create `fixes/<benchmark>/` directory
-- [ ] Verify benchmark is detected by unified runner
-- [ ] Test with `--list-fixes` and `--dry-run`
+- [ ] Create `result/fixes/<benchmark>/` directory
+- [ ] Verify benchmark detection
 
 ### Phase 7: Documentation
-- [ ] Update CLAUDE.md: Supported Benchmarks table
-- [ ] Update CLAUDE.md: Benchmark-Specific Details section
-- [ ] Update CLAUDE.md: Fixer Scripts section
-- [ ] Create output directories
-
-### Directories
-- [ ] Create `rubrics_output/<benchmark>/`
-- [ ] Create `fixes/<benchmark>/`
-
----
-
-## Reference: Existing Implementations
-
-| Benchmark | Rubric | Fixer | Model Config | Key Notes |
-|-----------|--------|-------|--------------|-----------|
-| SciCode | `scicode.txt` | `claude_fixer_scicode.py` | `model_configs/model_to_baseline_scicode.json` | Sandbox execution, import restrictions |
-| ScienceAgentBench | `scienceagentbench.txt` | `claude_fixer_scienceagentbench.py` | `model_configs/model_to_baseline_scienceagentbench.json` | Code extraction via regex |
-| CoreBench | `corebench.txt` | `claude_fixer_corebench.py` | `model_configs/model_to_baseline_corebench.json` | Docker container issues |
-| ColBench | `colbench.txt` | `claude_fixer_colbench.py` | `model_configs/model_to_baseline_colbench.json` | Backend programming |
-
-**Note**: All benchmarks use the unified `run_benchmark_fixes.py` runner.
+- [ ] Update README.md: Structure & Roadmap sections
+- [ ] Ensure all output directories exist
 
 ---
 
