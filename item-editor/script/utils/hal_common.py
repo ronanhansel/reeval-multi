@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Root of the repository
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Colors for CLI output
 class Colors:

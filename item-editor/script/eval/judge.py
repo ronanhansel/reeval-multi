@@ -50,8 +50,9 @@ from pathlib import Path
 from typing import Any
 
 # Add repo root to path
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "script" / "utils"))
 
 try:
     import dotenv
@@ -205,10 +206,10 @@ _resolved_model = None
 
 # Load model rubrics config
 try:
-    with open(REPO_ROOT / "model_configs" / "model_rubrics.json") as f:
+    with open(REPO_ROOT / "models" / "model_rubrics.json") as f:
         _rubric_config = json.load(f)
 except Exception as e:
-    print(f"Warning: Could not load model_configs/model_rubrics.json: {e}")
+    print(f"Warning: Could not load models/model_rubrics.json: {e}")
     _rubric_config = {}
 
 # Determine model to use (default to gpt-5.2_2025-12-11 if not specified)

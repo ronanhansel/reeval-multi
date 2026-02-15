@@ -21,7 +21,7 @@ import csv
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 HAL_HARNESS_PATH = REPO_ROOT / "hal-harness"
 if str(HAL_HARNESS_PATH) not in sys.path:
     sys.path.insert(0, str(HAL_HARNESS_PATH))

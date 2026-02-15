@@ -41,7 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Configuration & Constants
 # =============================================================================
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXES_DIR = REPO_ROOT / "result" / "fixes"
 TRACES_DIR = REPO_ROOT / "result" / ".hal_data"
 

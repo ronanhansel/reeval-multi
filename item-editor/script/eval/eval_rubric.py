@@ -197,9 +197,10 @@ def setup_azure_environment(rubric_model: str | None = None) -> bool:
 
 
 # Define REPO_ROOT before using it for config loading
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "script"))
+sys.path.insert(0, str(REPO_ROOT / "script" / "utils"))
 
 # Pre-parse --openai-base-url BEFORE rubric evaluation setup
 # (some modules may read OPENAI_BASE_URL at import time)
@@ -214,10 +215,10 @@ _resolved_model = None
 
 # Load model rubrics config
 try:
-    with open(REPO_ROOT / "model_configs" / "model_rubrics.json") as f:
+    with open(REPO_ROOT / "models" / "model_rubrics.json") as f:
         _rubric_config = json.load(f)
 except Exception as e:
-    print(f"Warning: Could not load model_configs/model_rubrics.json: {e}")
+    print(f"Warning: Could not load models/model_rubrics.json: {e}")
     _rubric_config = {}
 
 # Determine model to use (default to gpt-5.2_2025-12-11 if not specified)
@@ -1638,7 +1639,7 @@ def main():
     parser.add_argument(
         "--rubric-model",
         type=str,
-        help="Model as provider:model. Defaults to gpt-5.2_2025-12-11 from model_configs/model_rubrics.json if available.",
+        help="Model as provider:model. Defaults to gpt-5.2_2025-12-11 from models/model_rubrics.json if available.",
     )
     parser.add_argument(
         "--reasoning-effort",

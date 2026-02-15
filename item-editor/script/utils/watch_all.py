@@ -7,10 +7,12 @@ import subprocess
 import json
 import re
 from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "script" / "utils"))
 from hal_common import Colors, detect_data_root, get_run_root
 
 def list_logs_roots():
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = REPO_ROOT
     run_root = get_run_root()
     roots = set()
     roots.add(repo_root / "result" / ".hal_data" / "logs")
@@ -19,7 +21,7 @@ def list_logs_roots():
     return [r for r in roots if r.exists()]
 
 def list_results_roots():
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = REPO_ROOT
     run_root = get_run_root()
     roots = set()
     roots.add(repo_root / "result" / ".hal_data" / "results")

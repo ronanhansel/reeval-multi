@@ -17,6 +17,8 @@ import json
 import hashlib
 import re
 from pathlib import Path
+REPO_ROOT_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT_DIR / "script" / "utils"))
 import docker
 try:
     import toml
@@ -119,7 +121,7 @@ def get_agents_from_configs(benchmarks: List[str]) -> set:
     """Extract agent names from benchmark configs."""
     agents = set()
     for bench in benchmarks:
-        config_path = REPO_ROOT / "config" / "model_config" / f"model_to_baseline_{bench}.json"
+        config_path = REPO_ROOT / "config" / "model" / f"model_to_baseline_{bench}.json"
         if not config_path.exists(): continue
         try:
             data = json.loads(config_path.read_text())
@@ -140,7 +142,7 @@ def build_agent_envs(benchmarks=None, force=False):
     if not benchmarks:
         # Default to all known benchmarks
         benchmarks = [f.stem.replace("model_to_baseline_", "") 
-                     for f in (REPO_ROOT / "config" / "model_config").glob("model_to_baseline_*.json")]
+                     for f in (REPO_ROOT / "config" / "model").glob("model_to_baseline_*.json")]
     
     agents = get_agents_from_configs(benchmarks)
     log(f"Agents to process: {', '.join(sorted(agents))}", Colors.BLUE)

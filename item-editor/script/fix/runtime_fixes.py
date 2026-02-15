@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Configuration & Paths
 # =============================================================================
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 HAL_HARNESS = REPO_ROOT / "hal-harness"
 
 class Colors:
@@ -298,7 +298,7 @@ def run_suite(benchmark: str, prefix: str, args: argparse.Namespace, log_file: O
             for t in final_ds: f.write(json.dumps(t) + "\n")
     else: ds_path.write_text(json.dumps(final_ds, indent=2))
 
-    cfg_path = REPO_ROOT / "config" / "model_config" / f"model_to_baseline_{benchmark}.json"
+    cfg_path = REPO_ROOT / "config" / "model" / f"model_to_baseline_{benchmark}.json"
     if not cfg_path.exists():
         log(f"Config not found: {cfg_path}", benchmark, Colors.RED)
         return False
