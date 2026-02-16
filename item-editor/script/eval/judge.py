@@ -47,10 +47,10 @@ _pre_args, _ = _pre_parser.parse_known_args()
 
 # Load model rubrics config
 try:
-    with open(REPO_ROOT / "models" / "model_rubrics.json") as f:
+    with open(REPO_ROOT / "config" / "model" / "model_rubrics.json") as f:
         _rubric_config = json.load(f)
 except Exception as e:
-    print(f"Warning: Could not load models/model_rubrics.json: {e}")
+    print(f"Warning: Could not load config/model/model_rubrics.json: {e}")
     _rubric_config = {}
 
 # Determine model to use (default to gpt-5.2 if not specified)
@@ -493,7 +493,7 @@ def main():
         "--model",
         type=str,
         required=True,
-        help="Model as provider:model (e.g., openai:gpt-5.2, openai:o3-mini)",
+        help="Model as provider:model (e.g., openai:gpt-5.2, openai:o3-mini). Defaults to config/model/model_rubrics.json.",
     )
     parser.add_argument(
         "--reasoning-effort",

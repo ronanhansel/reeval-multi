@@ -240,9 +240,7 @@ def load_task_conversations(benchmark: str, trace_files: List[Path], task_id: st
         if lines:
             # Join lines, respect per-benchmark limits
             limit = 80 if benchmark == "colbench" else 50
-            conversations[model_name] = "
-
-".join(lines[-limit:])
+            conversations[model_name] = "\n\n".join(lines[-limit:])
 
     return conversations
 
@@ -266,8 +264,7 @@ def build_claude_prompt_single(
 - **Grade**: {ev.get('grade', 'N/A')} (1.0 = IFE detected, 0.0 = no IFE)
 - **Explanation**: {ev.get('explanation', 'N/A')[:3000]}
 """)
-    evaluations_text = "
-".join(eval_sections) if eval_sections else "No evaluations available."
+    evaluations_text = "\n".join(eval_sections) if eval_sections else "No evaluations available."
 
     # Format judge verdict
     judge_text = "No judge verdict available."
@@ -283,12 +280,8 @@ def build_claude_prompt_single(
     max_convs = 4 if "frontend" in str(conversations.keys()) else 3
     for model, conv in list(conversations.items())[:max_convs]:
         limit = 8000 if "colbench" in str(model) else 5000
-        conv_sections.append(f"#### {model}
-```
-{conv[:limit]}
-```")
-    conversations_text = "
-".join(conv_sections) if conv_sections else "No logs."
+        conv_sections.append(f"#### {model}\n```\n{conv[:limit]}\n```")
+    conversations_text = "\n".join(conv_sections) if conv_sections else "No logs."
 
     return f"""
 ---
@@ -323,8 +316,7 @@ def build_claude_prompt_batch(
         )
         task_sections.append(section)
 
-    tasks_text = "
-".join(task_sections)
+    tasks_text = "\n".join(task_sections)
 
     # Base prompt common to all benchmarks
     prompt_header = f'''You are diagnosing and fixing Intrinsic Formation Errors (IFEs) in {benchmark} benchmark tasks.
@@ -466,15 +458,13 @@ def format_stream_json(line: str, task_id: str) -> None:
                         tool_id = block.get("tool_use_id", "")[:8]
                         result_content = block.get("content", "")
                         if isinstance(result_content, str):
-                            preview = result_content[:300].replace("
-", " ")
+                            preview = result_content[:300].replace("\n", " ")
                             print(f"{DIM}[{ts}]{RESET} {GREEN}[RESULT {tool_id}]{RESET} {preview}...")
 
         elif msg_type == "result":
             cost = data.get("cost_usd", 0)
             duration = data.get("duration_ms", 0) / 1000
-            print(f"
-{BOLD}{GREEN}[COMPLETED]{RESET} Task: {task_id}")
+            print(f"\n{BOLD}{GREEN}[COMPLETED]{RESET} Task: {task_id}")
             print(f"  Cost: ${cost:.4f} | Duration: {duration:.1f}s")
 
         elif msg_type == "error":
@@ -516,12 +506,9 @@ def run_claude_code(
     if not quiet:
         log(f"Running Claude Code CLI for {task_id}...")
         log(f"Working directory: {working_dir}")
-        print(f"
-{'='*60}")
+        print(f"\n{"="*60}")
         print(f"CLAUDE CODE SESSION: {task_id}")
-        print(f"{'='*60}
-")
-
+        print(f"{"="*60}\n")
         process = subprocess.Popen(
             base_cmd,
             cwd=working_dir,
@@ -532,7 +519,6 @@ def run_claude_code(
             text=True,
             bufsize=1,
         )
-
         try:
             # Write prompt to stdin
             process.stdin.write(prompt)
@@ -551,8 +537,6 @@ def run_claude_code(
         process.wait()
         log(f"Session log saved to: {log_path}")
         return process.returncode
-
-    else:
         # Quiet mode
         result = subprocess.run(
             base_cmd,
@@ -565,9 +549,7 @@ def run_claude_code(
         with log_path.open("w") as log_file:
             log_file.write(result.stdout)
             if result.stderr:
-                log_file.write(f"
---- STDERR ---
-{result.stderr}")
+                log_file.write(f"\n--- STDERR ---\n{result.stderr}")
         return result.returncode
 
 
@@ -733,12 +715,9 @@ def main():
     RESET = "\033[0m"
     BOLD = "\033[1m"
 
-    print(f"
-{BOLD}{CYAN}{'='*60}{RESET}")
+    print(f"\n{BOLD}{CYAN}{"="*60}{RESET}")
     print(f"{BOLD}{CYAN}Unified IFE Fixer - {benchmark}{RESET}")
-    print(f"{BOLD}{CYAN}{'='*60}{RESET}
-")
-
+    print(f"{BOLD}{CYAN}{"="*60}{RESET}\n")
     log(f"Rubric directory: {rubric_dir}")
     
     trace_files = [Path(f) if Path(f).is_absolute() else REPO_ROOT / f for f in args.trace_files]
@@ -780,8 +759,7 @@ def main():
     log(f"Found {len(task_ids_from_rubric)} potential IFEs in rubrics")
 
     if args.list_ife_tasks:
-        print(f"
-{BOLD}IFE Tasks (grade >= {args.min_grade}):{RESET}")
+        print(f"\n{BOLD}IFE Tasks (grade >= {args.min_grade}):{RESET}")
         for tid in task_ids_from_rubric:
             has_fix = has_existing_fix(benchmark, tid)
             verdict = judge_verdicts.get(tid, {}).get("final_grade", "?")
@@ -835,13 +813,7 @@ def main():
                 'conversations': load_task_conversations(benchmark, trace_files, tid),
             })
         prompt = build_claude_prompt_batch(tasks_data, benchmark)
-        print(f"
-{BOLD}PROMPT PREVIEW (Batch 1):{RESET}
-{'-'*40}
-{prompt[:2000]}...
-{'-'*40}
-")
-        return
+        print(f"\n{BOLD}PROMPT PREVIEW (Batch 1):{RESET}\n{"-"*40}\n{prompt[:2000]}...\n{"-"*40}\n")
 
     # Process batches
     all_results = []
@@ -862,21 +834,15 @@ def main():
     successful = [r for r in all_results if r[1]]
     failed = [r for r in all_results if not r[1]]
 
-    print(f"
-{BOLD}{GREEN}{'='*60}{RESET}")
+    print(f"\n{BOLD}{GREEN}{"="*60}{RESET}")
     print(f"{BOLD}FINAL SUMMARY{RESET}")
-    print(f"{'='*60}")
-    print(f"
-{GREEN}Succeeded: {len(successful)}/{len(all_results)}{RESET}")
+    print(f"{"="*60}")
+    print(f"\n{GREEN}Succeeded: {len(successful)}/{len(all_results)}{RESET}")
     if failed:
         print(f"{RED}Failed: {len(failed)}/{len(all_results)}{RESET}")
         for tid, _, msg in failed:
             print(f"  {RED}✗{RESET} {tid}: {msg}")
-    print(f"
-{BOLD}Fixes saved to:{RESET} fixes/{BENCHMARK_MAP.get(benchmark, benchmark)}/")
-    print(f"{'='*60}
-")
-
-
+    print(f"\n{BOLD}Fixes saved to:{RESET} fixes/{BENCHMARK_MAP.get(benchmark, benchmark)}/")
+    print(f"{"="*60}\n")
 if __name__ == "__main__":
     main()

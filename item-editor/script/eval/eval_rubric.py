@@ -66,6 +66,25 @@ if _pre_args.openai_base_url:
 if dotenv:
     dotenv.load_dotenv()
 
+# Load model rubrics config
+try:
+    with open(REPO_ROOT / "config" / "model" / "model_rubrics.json") as f:
+        _rubric_config = json.load(f)
+except Exception as e:
+    print(f"Warning: Could not load config/model/model_rubrics.json: {e}")
+    _rubric_config = {}
+
+# Determine model to use (default to gpt-5.2 if not specified)
+_target_model_key = "gpt-5.2"
+if _pre_args.rubric_model:
+    # If user specified a model, try to find it in config, otherwise use as-is
+    if _pre_args.rubric_model in _rubric_config:
+        _target_model_key = _pre_args.rubric_model
+    elif _pre_args.rubric_model.startswith("openai:"):
+        model_name = _pre_args.rubric_model.split(":", 1)[1]
+        if model_name in _rubric_config:
+            _target_model_key = model_name
+
 SCAFFOLD_TAGS = {
     "<start_code>",
     "<end_code>",
@@ -1342,7 +1361,7 @@ def main():
     parser.add_argument(
         "--rubric-model",
         type=str,
-        help="Model as provider:model. Defaults to gpt-5.2 from models/model_rubrics.json if available.",
+        help="Model as provider:model. Defaults to gpt-5.2 from config/model/model_rubrics.json if available.",
     )
     parser.add_argument(
         "--reasoning-effort",
