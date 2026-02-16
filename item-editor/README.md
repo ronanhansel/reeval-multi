@@ -80,7 +80,7 @@ python script/fix/runtime_fixes.py --benchmark scicode --prefix myrun_ --docker
     *   **Accepted**: Config keys from `config/model/` (can repeat).
     *   **Default**: Runs all configurations in the benchmark's JSON file.
 *   **`--prefix`**:
-    *   **Accepted**: String (e.g., `sun30_`).
+    *   **Accepted**: String (e.g., `run1_`).
     *   **Default**: `moon1_`. Used for tagging Run IDs and traces.
 *   **`--parallel-tasks`**:
     *   **Accepted**: Integer.
@@ -101,7 +101,7 @@ python script/fix/runtime_fixes.py --benchmark scicode --prefix myrun_ --docker
 #### Real-time Watcher
 Tails logs for an active prefix run with color-coding.
 ```bash
-python script/utils/watch_all.py --prefix sun30_
+python script/utils/watch_all.py --prefix run1_
 ```
 *   **`--prefix`**:
     *   **Accepted**: String. (Required). Automatically locates logs in `result/.hal_data/logs`.
@@ -113,7 +113,7 @@ python script/utils/watch_all.py --prefix sun30_
 #### Trace Collector
 Gathers distributed evaluation artifacts into a central working directory.
 ```bash
-python script/trace/collect_upload_traces.py --prefix sun30_ --output eval_traces --benchmark scicode
+python script/trace/collect_upload_traces.py --prefix run1_ --output eval_traces --benchmark scicode
 ```
 *   **`--prefix`**:
     *   **Accepted**: Regex or String. (Required).
@@ -127,7 +127,7 @@ python script/trace/collect_upload_traces.py --prefix sun30_ --output eval_trace
 #### Merge Traces
 Consolidates task-level traces into a single agent-level trace file.
 ```bash
-python script/trace/merge_traces.py --input 'eval_traces/traces/*sun30_*' --output result/.hal_data/traces/merged_sun30.json --force
+python script/trace/merge_traces.py --input 'eval_traces/traces/*run1_*' --output result/.hal_data/traces/merged_run1.json --force
 ```
 *   **`--input`**:
     *   **Accepted**: Glob pattern (can repeat). (Required).
@@ -152,8 +152,8 @@ python script/eval/eval_rubric.py --trace-file [PATH] --rubric config/rubric/sci
 *   **`--rubric`**:
     *   **Accepted**: Path to `.txt` template.
 *   **`--rubric-model`**:
-    *   **Accepted**: `provider:model` (e.g., `openai:gpt-5.2`).
-    *   **Default**: `gpt-5.2` (from config).
+    *   **Accepted**: `provider:model` (e.g., `openai:gpt-4o`).
+    *   **Default**: `gpt-4o` (from config).
 *   **`--failed-only`**:
     *   **Type**: Flag. Only processes items marked as failures in the trace.
 *   **`--max-batch-messages`**:
@@ -165,7 +165,7 @@ python script/eval/eval_rubric.py --trace-file [PATH] --rubric config/rubric/sci
 #### Judge Aggregator
 Produces binary IFE verdicts by aggregating multiple model evaluations.
 ```bash
-python script/eval/judge.py --pattern "sun30_*" --rubric-dir result/.hal_data/rubrics_output/scicode --model openai:gpt-5.2 -y
+python script/eval/judge.py --pattern "run1_*" --rubric-dir result/.hal_data/rubrics_output/scicode --model openai:gpt-4o -y
 ```
 *   **`--pattern`**:
     *   **Accepted**: Glob pattern for rubric CSVs.
@@ -202,7 +202,7 @@ python script/fix/claude_fixer.py --benchmark scicode --ife-only --judge-csv res
 #### Response Matrix Generator
 Generates the final binary result matrix and detailed metrics.
 ```bash
-python script/utils/build_response_matrix.py --prefix sun30_ --traces-dir eval_traces --extract-subscores
+python script/utils/build_response_matrix.py --prefix run1_ --traces-dir eval_traces --extract-subscores
 ```
 *   **`--prefix`**:
     *   **Accepted**: String/Regex. (Required).
@@ -231,15 +231,14 @@ The system has been updated with several critical improvements to stability, per
 
 ### A. Functional Changes Summary
 
-#### 1. Infrastructure & Reliability
-*   **Parallel Docker Execution**: Optimized the `DockerRunner` by implementing concurrent container pool management using `asyncio.gather`. This drastically improves startup times and prevents deadlocks during high-concurrency evaluation runs.
+#### 1. Infrastructure & Execution
+*   **Sequential Configuration Runner**: Refactored the unified benchmark runner to process model configurations sequentially while maintaining parallel task execution, ensuring better stability and easier debugging.
 *   **Enhanced Docker Environment**: Updated the base `Dockerfile` with missing scientific and utility packages (`PyPDF2`, `xgboost`, `ddgs`, `r-rmarkdown`, `pathlib`) to ensure baseline compatibility for all benchmarks.
-*   **Sequential Execution**: Refactored the unified benchmark runner to process model configurations sequentially while maintaining parallel task execution, ensuring better stability and easier debugging.
+*   **Native Fix Application Support**: Patched the HAL harness to support loading external fix-enriched datasets, enabling the automated application of `env`, `instruction`, and `evaluation` overrides.
 
 #### 2. Agent Runtime & Security
 *   **Smolagents Security Policy**: Patched the `smolagents` executor to authorize safe file system operations (`posixpath`, `glob`) and process management (`subprocess`), which are required for complex engineering tasks.
 *   **Scientific Operator Support**: Added support for the `@` matrix multiplication operator in the agent's Python interpreter, resolving failures in numerical tasks.
-*   **Standardized API Access**: Migrated all agent implementations to use standard, unified client libraries for interacting with LLM providers.
 
 #### 3. Evaluation & Metrics
 *   **Structured Output Support**: Added `response_format` support to the `docent` evaluation library, enabling reliable JSON extraction across all supported LLM providers.

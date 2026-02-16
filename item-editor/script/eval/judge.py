@@ -3,32 +3,12 @@
 Judge script for aggregating rubric evaluations across multiple model runs.
 
 Uses docent for LLM calls with caching and retry/backoff.
-Defaults to direct Azure/TRAPI access (no proxy needed).
 
 Usage:
-    # Default: Uses Azure/TRAPI directly (recommended)
     python scripts/judge.py \
         --pattern "scicode_*" \
         --rubric-dir rubrics_output/scicode \
-        --model openai:gpt-5.2 \
-        --parallel 5 \
-        -y
-
-    # With proxy/custom endpoint (overrides Azure default)
-    python scripts/judge.py \
-        --pattern "*.csv" \
-        --rubric-dir rubrics_output/scicode \
-        --model openai:o3-mini \
-        --openai-base-url "http://localhost:4000/v1" \
-        --parallel 5 \
-        -y
-
-    # With reasoning model
-    python scripts/judge.py \
-        --pattern "*.csv" \
-        --rubric-dir rubrics_output/scicode \
-        --model openai:o3-mini \
-        --reasoning-effort medium \
+        --model openai:gpt-4o \
         --parallel 5 \
         -y
 """
@@ -60,149 +40,10 @@ try:
 except ImportError:
     pass
 
-# ============================================================================
-# TRAPI/Azure Direct Access Configuration
-# ============================================================================
-
-# TRAPI deployment name mapping (from litellm.trapi.yaml)
-TRAPI_DEPLOYMENT_MAP = {
-    # GPT-5 series (NOTE: gpt-5 uses max_completion_tokens like o-series)
-    'gpt-5': 'gpt-5_2025-08-07',
-    'gpt-5-mini': 'gpt-5-mini_2025-08-07',
-    'gpt-5-nano': 'gpt-5-nano_2025-08-07',
-    'gpt-5-pro': 'gpt-5-pro_2025-10-06',
-    'gpt-5.2': 'gpt-5.2_2025-12-11',
-    'gpt-5.2-chat': 'gpt-5.2-chat_2025-12-11',
-
-    # GPT-4 series
-    'gpt-4o': 'gpt-4o_2024-11-20',
-    'gpt-4o-mini': 'gpt-4o-mini_2024-07-18',
-    'gpt-4.1': 'gpt-4.1_2025-04-14',
-    'gpt-4.1-mini': 'gpt-4.1-mini_2025-04-14',
-    'gpt-4.1-nano': 'gpt-4.1-nano_2025-04-14',
-    'gpt-4-turbo': 'gpt-4_turbo-2024-04-09',
-    'gpt-4-32k': 'gpt-4-32k_0613',
-    'gpt-4': 'gpt-4_turbo-2024-04-09',
-
-    # O-series (reasoning models)
-    'o1': 'o1_2024-12-17',
-    'o1-mini': 'o1-mini_2024-09-12',
-    'o3': 'o3_2025-04-16',
-    'o3-mini': 'o3-mini_2025-01-31',
-    'o4-mini': 'o4-mini_2025-04-16',
-
-    # GPT-5.1 series
-    'gpt-5.1': 'gpt-5.1_2025-11-13',
-    'gpt-5.1-chat': 'gpt-5.1-chat_2025-11-13',
-    'gpt-5.1-codex': 'gpt-5.1-codex_2025-11-13',
-    'gpt-5.1-codex-mini': 'gpt-5.1-codex-mini_2025-11-13',
-
-    # Other models
-    'grok-3.1': 'grok-3_1',
-    'llama-3.3': 'gcr-llama-33-70b-shared',
-    'llama-3.1-70b': 'gcr-llama-31-70b-shared',
-    'llama-3.1-8b': 'gcr-llama-31-8b-instruct',
-    'qwen3-8b': 'gcr-qwen3-8b',
-    'phi4': 'gcr-phi-4-shared',
-    'mistral': 'gcr-mistralai-8x7b-shared',
-    'deepseek-r1': 'deepseek-r1_1',
-    'deepseek': 'deepseek-r1_1',
-}
-
-# Azure CLI's public client ID (used for MSAL token refresh)
-AZURE_CLI_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
-MICROSOFT_TENANT_ID = '72f988bf-86f1-41af-91ab-2d7cd011db47'
-
-
-def resolve_trapi_deployment(model: str) -> str:
-    """Resolve friendly model name to TRAPI deployment name."""
-    model = model.replace('azure/', '').replace('openai/', '').replace('openai:', '')
-    if model in TRAPI_DEPLOYMENT_MAP:
-        return TRAPI_DEPLOYMENT_MAP[model]
-    model_lower = model.lower()
-    if model_lower in TRAPI_DEPLOYMENT_MAP:
-        return TRAPI_DEPLOYMENT_MAP[model_lower]
-    for key, value in TRAPI_DEPLOYMENT_MAP.items():
-        if key in model_lower or model_lower in key:
-            return value
-    return model  # Return as-is if no mapping found
-
-
-def get_azure_token(scope: str = 'api://trapi/.default') -> str | None:
-    """Get Azure AD token using MSAL or azure-identity."""
-    # Try MSAL first (works without az CLI installed)
-    try:
-        import msal
-        cache_path = os.path.expanduser('~/.azure/msal_token_cache.json')
-        if os.path.exists(cache_path):
-            cache = msal.SerializableTokenCache()
-            with open(cache_path, 'r') as f:
-                cache.deserialize(f.read())
-            app = msal.PublicClientApplication(
-                AZURE_CLI_CLIENT_ID,
-                authority=f'https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}',
-                token_cache=cache
-            )
-            accounts = app.get_accounts()
-            if accounts:
-                result = app.acquire_token_silent([scope], account=accounts[0])
-                if result and 'access_token' in result:
-                    print("[Azure] Using MSAL token (dynamic refresh)")
-                    return result['access_token']
-    except ImportError:
-        pass
-    except Exception as e:
-        print(f"[Azure] MSAL token refresh failed: {e}")
-
-    # Try azure-identity as fallback
-    try:
-        from azure.identity import AzureCliCredential, get_bearer_token_provider
-        credential = AzureCliCredential()
-        token_provider = get_bearer_token_provider(credential, scope)
-        token = token_provider()
-        print("[Azure] Using azure-identity token")
-        return token
-    except ImportError:
-        pass
-    except Exception as e:
-        print(f"[Azure] azure-identity failed: {e}")
-
-    return None
-
-
-def setup_azure_environment(model: str | None = None) -> bool:
-    """Set up environment for direct Azure/TRAPI access. Returns True if successful."""
-    endpoint = os.environ.get('TRAPI_ENDPOINT', 'https://trapi.research.microsoft.com/gcr/shared')
-    # Use 2025-03-01-preview for gpt-5.2 and newer models compatibility
-    api_version = os.environ.get('TRAPI_API_VERSION', '2025-03-01-preview')
-    scope = os.environ.get('TRAPI_SCOPE', 'api://trapi/.default')
-
-    token = get_azure_token(scope)
-    if not token:
-        print("[Azure] Could not obtain Azure AD token. Falling back to proxy.")
-        return False
-
-    # Set OpenAI environment variables for direct Azure access
-    os.environ["OPENAI_BASE_URL"] = f"{endpoint}/openai"
-    os.environ["OPENAI_API_KEY"] = token
-    os.environ["OPENAI_API_VERSION"] = api_version
-
-    # Also set Azure-specific vars for azure_openai provider compatibility
-    os.environ["AZURE_OPENAI_ENDPOINT"] = endpoint
-    os.environ["AZURE_OPENAI_API_KEY"] = token
-    os.environ["AZURE_OPENAI_API_VERSION"] = api_version
-
-    print(f"[Azure] Direct TRAPI access configured: {endpoint}")
-    return True
-
-
 _pre_parser = argparse.ArgumentParser(add_help=False)
 _pre_parser.add_argument("--openai-base-url", type=str, default=None)
 _pre_parser.add_argument("--model", type=str, default=None)
 _pre_args, _ = _pre_parser.parse_known_args()
-
-_using_azure_direct = False
-_resolved_model = None
 
 # Load model rubrics config
 try:
@@ -223,59 +64,7 @@ if _pre_args.model:
         if model_name in _rubric_config:
             _target_model_key = model_name
 
-if _pre_args.openai_base_url is None:
-    # No proxy URL provided - use Azure/TRAPI directly via config if available
-    _model_info = _rubric_config.get(_target_model_key)
-    
-    if _model_info:
-        # Use config-based setup
-        _using_azure_direct = setup_azure_environment(_target_model_key)
-        if _using_azure_direct:
-            base_urls = _model_info.get("available_base_urls", [])
-            if base_urls:
-                # Set primary URL
-                os.environ["OPENAI_BASE_URL"] = f"{base_urls[0]}/openai"
-                os.environ["AZURE_OPENAI_ENDPOINT"] = base_urls[0]
-                
-                # Set fallback URLs for rotation/retry
-                if len(base_urls) > 1:
-                    fallback_formatted = [f"{url}/openai" for url in base_urls]
-                    os.environ["OPENAI_FALLBACK_URLS"] = ",".join(fallback_formatted)
-                    print(f"[Azure] Configured {len(base_urls)} URLs for rotation/fallback")
-            
-            # Resolve model ID from config (e.g. "openai/gpt-5.2..." -> "azure_openai:gpt-5.2...")
-            raw_id = _model_info.get("model_id", _target_model_key)
-            if ":" in raw_id:
-                _resolved_model = raw_id
-            else:
-                # Map standard ID to azure_openai provider
-                # e.g. openai/gpt-5.2_2025-12-11 -> azure_openai:gpt-5.2_2025-12-11
-                clean_id = raw_id.replace("openai/", "").replace("azure/", "")
-                _resolved_model = f"azure_openai:{clean_id}"
-            
-            print(f"[Azure] Model configured from json: {_target_model_key} -> {_resolved_model}")
-            
-    # Fallback to old logic if config not found or setup failed
-    if not _resolved_model:
-        _using_azure_direct = setup_azure_environment(_pre_args.model)
-        if _using_azure_direct and _pre_args.model:
-            # Resolve model name to TRAPI deployment name AND switch to azure_openai provider
-            if ':' in _pre_args.model:
-                provider, model_name = _pre_args.model.split(':', 1)
-                deployment_name = resolve_trapi_deployment(model_name)
-                # CRITICAL: Use azure_openai provider instead of openai
-                _resolved_model = f"azure_openai:{deployment_name}"
-                print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
-            else:
-                deployment_name = resolve_trapi_deployment(_pre_args.model)
-                _resolved_model = f"azure_openai:{deployment_name}"
-                print(f"[Azure] Model resolved: {_pre_args.model} -> {_resolved_model}")
-    
-    if not _using_azure_direct:
-        # Fallback to localhost proxy
-        os.environ["OPENAI_BASE_URL"] = "http://localhost:4000/v1"
-        os.environ["OPENAI_FALLBACK_URLS"] = "http://localhost:4000/v1"
-else:
+if _pre_args.openai_base_url:
     # Proxy URL provided - use it
     _all_urls = [u.strip() for u in _pre_args.openai_base_url.split(",")]
     os.environ["OPENAI_BASE_URL"] = _all_urls[0]
@@ -560,7 +349,6 @@ async def judge_tasks_with_docent(
         temperature=0.0,  # Deterministic
         max_concurrency=parallel,
         timeout=300.0,  # 5 minute timeout per request
-        response_format={"type": "json_object"},
     )
 
     # Process results
@@ -752,7 +540,7 @@ def main():
     parser.add_argument(
         "--openai-base-url",
         type=str,
-        help="Custom OpenAI API base URL (overrides Azure/TRAPI default)",
+        help="Custom OpenAI API base URL",
     )
     parser.add_argument(
         "--priority-override",
@@ -912,13 +700,8 @@ def main():
             print(f"No tasks to judge for prefix {actual_prefix}. Skipping.")
             continue
 
-        # Parse model - use resolved model if Azure direct access is active
-        if _using_azure_direct and _resolved_model:
-            provider, model_name = parse_model_string(_resolved_model)
-            print(f"\nUsing model (Azure): {_resolved_model}")
-        else:
-            provider, model_name = parse_model_string(args.model)
-            print(f"\nUsing model: {provider}:{model_name}")
+        provider, model_name = parse_model_string(args.model)
+        print(f"\nUsing model: {provider}:{model_name}")
         print(f"Temperature: 0 (deterministic)")
         if args.reasoning_effort:
             print(f"Reasoning effort: {args.reasoning_effort}")
@@ -981,52 +764,11 @@ def main():
         cache_status = "caching enabled" if use_cache else "caching disabled"
         print(f"\nUsing docent ({cache_status}, parallel={args.parallel})...")
 
-        model_options = []
-        if _using_azure_direct and _target_model_key in _rubric_config:
-            model_info = _rubric_config[_target_model_key]
-            base_urls = model_info.get("available_base_urls", [])
-            
-            if base_urls:
-                from docent_core._llm_util.providers.registry import PROVIDERS, ProviderConfig
-                from docent_core._llm_util.providers import openai as openai_provider
-                from openai import AsyncAzureOpenAI
-
-                # Create a unique provider for each base URL to enable rotation
-                for i, url in enumerate(base_urls):
-                    p_name = f"azure_openai_{i}"
-                    
-                    # Define a custom client getter that uses this specific URL
-                    def make_client_getter(target_url):
-                        def get_client(api_key=None):
-                            # Ensure env vars are set but then override with specific URL
-                            token = api_key or os.environ.get("AZURE_OPENAI_API_KEY")
-                            return AsyncAzureOpenAI(
-                                azure_endpoint=target_url,
-                                api_key=token,
-                                api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2025-03-01-preview")
-                            )
-                        return get_client
-
-                    # Register the new provider
-                    PROVIDERS[p_name] = ProviderConfig(
-                        async_client_getter=make_client_getter(url),
-                        single_output_getter=openai_provider.get_openai_chat_completion_async,
-                        single_streaming_output_getter=openai_provider.get_openai_chat_completion_streaming_async,
-                    )
-                    
-                    model_options.append(ModelOption(
-                        provider=p_name,
-                        model_name=model_name,
-                        reasoning_effort=args.reasoning_effort,
-                    ))
-                print(f"[Azure] Registered {len(model_options)} unique providers for rotation: {[m.provider for m in model_options]}")
-        
-        if not model_options:
-            model_options = [ModelOption(
-                provider=provider,
-                model_name=model_name,
-                reasoning_effort=args.reasoning_effort,
-            )]
+        model_options = [ModelOption(
+            provider=provider,
+            model_name=model_name,
+            reasoning_effort=args.reasoning_effort,
+        )]
 
         verdicts = asyncio.run(judge_tasks_with_docent(
             task_ids=task_ids,

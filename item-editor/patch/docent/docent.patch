@@ -1,200 +1,5 @@
-diff --git a/docent_core/_llm_util/prod_llms.py b/docent_core/_llm_util/prod_llms.py
-index 7471976..d6de3f9 100644
---- a/docent_core/_llm_util/prod_llms.py
-+++ b/docent_core/_llm_util/prod_llms.py
-@@ -91,6 +91,7 @@ async def _parallelize_calls(
-     semaphore: AsyncContextManager[anyio.Semaphore] | None,
-     # use_tqdm: bool,
-     cache: LLMCache | None = None,
-+    response_format: dict[str, Any] | None = None,
- ):
-     base_func = partial(
-         single_output_getter,
-@@ -104,6 +105,7 @@ async def _parallelize_calls(
-         logprobs=logprobs,
-         top_logprobs=top_logprobs,
-         timeout=timeout,
-+        response_format=response_format,
-     )
- 
-     responses: list[LLMOutput | None] = [None for _ in inputs]
-@@ -280,6 +282,7 @@ class LLMManager:
-         timeout: float = 5.0,
-         streaming_callback: AsyncLLMOutputStreamingCallback | None = None,
-         completion_callback: AsyncLLMOutputStreamingCallback | None = None,
-+        response_format: dict[str, Any] | None = None,
-     ) -> list[LLMOutput]:
-         while True:
-             # Parse the current model option
-@@ -320,6 +323,7 @@ class LLMManager:
-                     anyio.Semaphore(max_concurrency) if max_concurrency is not None else None
-                 ),
-                 cache=self.cache,
-+                response_format=response_format,
-             )
-             assert len(outputs) == len(inputs), "Number of outputs must match number of messages"
- 
-@@ -370,6 +374,7 @@ async def get_llm_completions_async(
-     completion_callback: AsyncLLMOutputStreamingCallback | None = None,
-     use_cache: bool = False,
-     api_key_overrides: dict[str, str] | None = None,
-+    response_format: dict[str, Any] | None = None,
- ) -> list[LLMOutput]:
-     # We don't support logprobs for Anthropic yet
-     if logprobs:
-@@ -398,4 +403,5 @@ async def get_llm_completions_async(
-         timeout=timeout,
-         streaming_callback=streaming_callback,
-         completion_callback=completion_callback,
-+        response_format=response_format,
-     )
-diff --git a/docent_core/_llm_util/providers/anthropic.py b/docent_core/_llm_util/providers/anthropic.py
-index 688c1e0..e11cf43 100644
---- a/docent_core/_llm_util/providers/anthropic.py
-+++ b/docent_core/_llm_util/providers/anthropic.py
-@@ -206,6 +206,7 @@ async def get_anthropic_chat_completion_streaming_async(
-     logprobs: bool = False,
-     top_logprobs: int | None = None,
-     timeout: float = 5.0,
-+    response_format: dict[str, Any] | None = None,
- ):
-     if logprobs or top_logprobs is not None:
-         raise NotImplementedError(
-@@ -382,6 +383,7 @@ async def get_anthropic_chat_completion_async(
-     logprobs: bool = False,
-     top_logprobs: int | None = None,
-     timeout: float = 5.0,
-+    response_format: dict[str, Any] | None = None,
- ) -> LLMOutput:
-     """
-     Note from kevin 1/29/2025:
-diff --git a/docent_core/_llm_util/providers/google.py b/docent_core/_llm_util/providers/google.py
-index 96b3ac7..2b79cfd 100644
---- a/docent_core/_llm_util/providers/google.py
-+++ b/docent_core/_llm_util/providers/google.py
-@@ -84,6 +84,7 @@ async def get_google_chat_completion_async(
-     logprobs: bool = False,
-     top_logprobs: int | None = None,
-     timeout: float = 5.0,
-+    response_format: dict[str, Any] | None = None,
- ) -> LLMOutput:
-     if logprobs or top_logprobs is not None:
-         raise NotImplementedError(
-@@ -147,6 +148,7 @@ async def get_google_chat_completion_streaming_async(
-     logprobs: bool = False,
-     top_logprobs: int | None = None,
-     timeout: float = 5.0,
-+    response_format: dict[str, Any] | None = None,
- ) -> LLMOutput:
-     if logprobs or top_logprobs is not None:
-         raise NotImplementedError(
-diff --git a/docent_core/_llm_util/providers/openai.py b/docent_core/_llm_util/providers/openai.py
-index 532c168..10611be 100644
---- a/docent_core/_llm_util/providers/openai.py
-+++ b/docent_core/_llm_util/providers/openai.py
-@@ -18,8 +18,13 @@ from openai import (
-     PermissionDeniedError,
-     RateLimitError,
-     UnprocessableEntityError,
--    omit,
-+    NOT_GIVEN,
- )
-+
-+try:  # maintain compatibility with both legacy and latest openai clients
-+    from openai import omit  # type: ignore
-+except ImportError:
-+    omit = NOT_GIVEN
- from openai.types.chat import (
-     ChatCompletion,
-     ChatCompletionAssistantMessageParam,
-@@ -192,18 +197,22 @@ async def get_openai_chat_completion_streaming_async(
-     model_name: str,
-     tools: list[ToolInfo] | None = None,
-     tool_choice: Literal["auto", "required"] | None = None,
--    max_new_tokens: int = 32,
-+    max_new_tokens: int = 16384,
-     temperature: float = 1.0,
-     reasoning_effort: Literal["low", "medium", "high"] | None = None,
-     logprobs: bool = False,
-     top_logprobs: int | None = None,
--    timeout: float = 30.0,
-+    timeout: float = 120.0,
-+    response_format: dict[str, Any] | None = None,
- ):
-     input_messages = _parse_chat_messages(messages)
-     input_tools = _parse_tools(tools) if tools else omit
- 
-     try:
-         async with async_timeout_ctx(timeout):
-+            kwargs: dict[str, Any] = {}
-+            if response_format is not None:
-+                kwargs["response_format"] = response_format
-             stream = await client.chat.completions.create(
-                 model=model_name,
-                 messages=input_messages,
-@@ -216,6 +225,7 @@ async def get_openai_chat_completion_streaming_async(
-                 top_logprobs=top_logprobs,
-                 stream_options={"include_usage": True},
-                 stream=True,
-+                **kwargs,
-             )
- 
-             llm_output_partial = None
-@@ -375,18 +385,22 @@ async def get_openai_chat_completion_async(
-     model_name: str,
-     tools: list[ToolInfo] | None = None,
-     tool_choice: Literal["auto", "none", "required"] | None = None,
--    max_new_tokens: int = 32,
-+    max_new_tokens: int = 16384,
-     temperature: float = 1.0,
-     reasoning_effort: Literal["low", "medium", "high"] | None = None,
-     logprobs: bool = False,
-     top_logprobs: int | None = None,
--    timeout: float = 5.0,
-+    timeout: float = 120.0,
-+    response_format: dict[str, Any] | None = None,
- ) -> LLMOutput:
-     input_messages = _parse_chat_messages(messages)
-     input_tools = _parse_tools(tools) if tools else omit
- 
-     try:
-         async with async_timeout_ctx(timeout):  # type: ignore
-+            kwargs: dict[str, Any] = {}
-+            if response_format is not None:
-+                kwargs["response_format"] = response_format
-             raw_output = await client.chat.completions.create(
-                 model=model_name,
-                 messages=input_messages,
-@@ -397,6 +411,7 @@ async def get_openai_chat_completion_async(
-                 reasoning_effort=reasoning_effort or omit,
-                 logprobs=logprobs,
-                 top_logprobs=top_logprobs,
-+                **kwargs,
-             )
- 
-             # If the completion is empty and was truncated (likely due to too much reasoning), raise an exception
-diff --git a/docent_core/_llm_util/providers/registry.py b/docent_core/_llm_util/providers/registry.py
-index 48ea953..17ba39f 100644
---- a/docent_core/_llm_util/providers/registry.py
-+++ b/docent_core/_llm_util/providers/registry.py
-@@ -45,6 +45,7 @@ class SingleOutputGetter(Protocol):
-         logprobs: bool,
-         top_logprobs: int | None,
-         timeout: float,
-+        response_format: dict[str, Any] | None = None,
-     ) -> LLMOutput:
-         """Get a single completion from an LLM.
- 
-@@ -89,6 +90,7 @@ class SingleStreamingOutputGetter(Protocol):
-         logprobs: bool,
-         top_logprobs: int | None,
-         timeout: float,
-+        response_format: dict[str, Any] | None = None,
-     ) -> LLMOutput:
-         """Get a streaming completion from an LLM.
- 
 diff --git a/docent_core/docent/ai_tools/rubric/rubric.py b/docent_core/docent/ai_tools/rubric/rubric.py
-index 7330ea7..3303711 100644
+index 7330ea7..b2fcad1 100644
 --- a/docent_core/docent/ai_tools/rubric/rubric.py
 +++ b/docent_core/docent/ai_tools/rubric/rubric.py
 @@ -1,5 +1,6 @@
@@ -204,7 +9,7 @@ index 7330ea7..3303711 100644
  from typing import Any, Protocol, cast
  from uuid import uuid4
  
-@@ -247,12 +248,27 @@ def _get_prompt_resolver(rubric: Rubric, ar: AgentRun, prompt_template: str):
+@@ -247,12 +248,26 @@ def _get_prompt_resolver(rubric: Rubric, ar: AgentRun, prompt_template: str):
      return _prompt_resolver
  
  
@@ -226,13 +31,12 @@ index 7330ea7..3303711 100644
      api_key_overrides: dict[str, str] | None = None,
      callback: JudgeResultStreamingCallback | None = None,
      max_recall: bool = False,
-+    response_format: dict[str, Any] | None = None,
 +    max_concurrency: int = 100,
 +    use_cache: bool = True,
  ):
      rubric_prompt = RUBRIC_MAX_RECALL_PROMPT if max_recall else RUBRIC_PROMPT
      result_type = ResultType.NEAR_MISS if max_recall else ResultType.DIRECT_RESULT
-@@ -264,9 +280,10 @@ async def evaluate_rubric(
+@@ -264,9 +279,10 @@ async def evaluate_rubric(
      outputs = await get_llm_completions_async(
          prompt_resolvers,
          [rubric.judge_model],
@@ -246,12 +50,7 @@ index 7330ea7..3303711 100644
          api_key_overrides=api_key_overrides,
          completion_callback=(
              _get_llm_callback(
-@@ -279,11 +296,20 @@ async def evaluate_rubric(
-             if callback is not None
-             else None
-         ),
-+        response_format=response_format,
-     )
+@@ -283,7 +299,15 @@ async def evaluate_rubric(
  
      ans: list[dict[str, Any] | None] = [None] * len(prompt_resolvers)
      for i, output in enumerate(outputs):

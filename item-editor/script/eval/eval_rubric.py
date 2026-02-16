@@ -7,31 +7,13 @@ Evaluates agent traces using benchmark-specific rubrics with:
 - Dynamic batch processing (by message count)
 - Turn-by-turn conversation deduplication
 - Support for multiple benchmarks via rubric templates
-- Direct Azure/TRAPI access by default (no proxy needed)
 
 Usage:
-    # Default: Uses Azure/TRAPI directly (recommended)
     python scripts/eval_rubric.py \
         --trace-file traces/colbench_*_binary_UPLOAD.json \
         --rubric rubric_templates/colbench.txt \
-        --rubric-model openai:gpt-5.2 \
-        --failed-only -y
-
-    # With proxy/custom endpoint (overrides Azure default)
-    python scripts/eval_rubric.py \
-        --trace-file traces/*.json \
-        --rubric rubric_templates/scicode.txt \
         --rubric-model openai:gpt-4o \
-        --openai-base-url "http://localhost:4000/v1,http://localhost:4001/v1" \
         --failed-only -y
-
-    # Preview mode (stdout, limited tasks)
-    python scripts/eval_rubric.py \
-        --trace-file traces/scicode_*.json \
-        --rubric rubric_templates/scicode.txt \
-        --rubric-model openai:gpt-4o \
-        --output-mode stdout \
-        --max-tasks 3 -y
 
 Output:
     CSV files go to rubrics_output/<rubric_name>/<trace_name>.csv
@@ -63,139 +45,6 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     dotenv = None
 
-# TRAPI deployment name mapping (from litellm.trapi.yaml)
-TRAPI_DEPLOYMENT_MAP = {
-    # GPT-5 series (NOTE: gpt-5 uses max_completion_tokens like o-series)
-    'gpt-5': 'gpt-5_2025-08-07',
-    'gpt-5-mini': 'gpt-5-mini_2025-08-07',
-    'gpt-5-nano': 'gpt-5-nano_2025-08-07',
-    'gpt-5-pro': 'gpt-5-pro_2025-10-06',
-    'gpt-5.2': 'gpt-5.2_2025-12-11',
-    'gpt-5.2-chat': 'gpt-5.2-chat_2025-12-11',
-
-    # GPT-4 series
-    'gpt-4o': 'gpt-4o_2024-11-20',
-    'gpt-4o-mini': 'gpt-4o-mini_2024-07-18',
-    'gpt-4.1': 'gpt-4.1_2025-04-14',
-    'gpt-4.1-mini': 'gpt-4.1-mini_2025-04-14',
-    'gpt-4.1-nano': 'gpt-4.1-nano_2025-04-14',
-    'gpt-4-turbo': 'gpt-4_turbo-2024-04-09',
-    'gpt-4-32k': 'gpt-4-32k_0613',
-    'gpt-4': 'gpt-4_turbo-2024-04-09',
-
-    # O-series (reasoning models)
-    'o1': 'o1_2024-12-17',
-    'o1-mini': 'o1-mini_2024-09-12',
-    'o3': 'o3_2025-04-16',
-    'o3-mini': 'o3-mini_2025-01-31',
-    'o4-mini': 'o4-mini_2025-04-16',
-
-    # GPT-5.1 series
-    'gpt-5.1': 'gpt-5.1_2025-11-13',
-    'gpt-5.1-chat': 'gpt-5.1-chat_2025-11-13',
-    'gpt-5.1-codex': 'gpt-5.1-codex_2025-11-13',
-    'gpt-5.1-codex-mini': 'gpt-5.1-codex-mini_2025-11-13',
-
-    # Other models
-    'grok-3.1': 'grok-3_1',
-    'llama-3.3': 'gcr-llama-33-70b-shared',
-    'llama-3.1-70b': 'gcr-llama-31-70b-shared',
-    'llama-3.1-8b': 'gcr-llama-31-8b-instruct',
-    'qwen3-8b': 'gcr-qwen3-8b',
-    'phi4': 'gcr-phi-4-shared',
-    'mistral': 'gcr-mistralai-8x7b-shared',
-    'deepseek-r1': 'deepseek-r1_1',
-    'deepseek': 'deepseek-r1_1',
-}
-
-# Azure CLI's public client ID (used for MSAL token refresh)
-AZURE_CLI_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
-MICROSOFT_TENANT_ID = '72f988bf-86f1-41af-91ab-2d7cd011db47'
-
-
-def resolve_trapi_deployment(model: str) -> str:
-    """Resolve friendly model name to TRAPI deployment name."""
-    model = model.replace('azure/', '').replace('openai/', '').replace('openai:', '')
-    if model in TRAPI_DEPLOYMENT_MAP:
-        return TRAPI_DEPLOYMENT_MAP[model]
-    model_lower = model.lower()
-    if model_lower in TRAPI_DEPLOYMENT_MAP:
-        return TRAPI_DEPLOYMENT_MAP[model_lower]
-    for key, value in TRAPI_DEPLOYMENT_MAP.items():
-        if key in model_lower or model_lower in key:
-            return value
-    return model  # Return as-is if no mapping found
-
-
-def get_azure_token(scope: str = 'api://trapi/.default') -> str | None:
-    """Get Azure AD token using MSAL or azure-identity."""
-    # Try MSAL first (works without az CLI installed)
-    try:
-        import msal
-        cache_path = os.path.expanduser('~/.azure/msal_token_cache.json')
-        if os.path.exists(cache_path):
-            cache = msal.SerializableTokenCache()
-            with open(cache_path, 'r') as f:
-                cache.deserialize(f.read())
-            app = msal.PublicClientApplication(
-                AZURE_CLI_CLIENT_ID,
-                authority=f'https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}',
-                token_cache=cache
-            )
-            accounts = app.get_accounts()
-            if accounts:
-                result = app.acquire_token_silent([scope], account=accounts[0])
-                if result and 'access_token' in result:
-                    print("[Azure] Using MSAL token (dynamic refresh)")
-                    return result['access_token']
-    except ImportError:
-        pass
-    except Exception as e:
-        print(f"[Azure] MSAL token refresh failed: {e}")
-
-    # Try azure-identity as fallback
-    try:
-        from azure.identity import AzureCliCredential, get_bearer_token_provider
-        credential = AzureCliCredential()
-        token_provider = get_bearer_token_provider(credential, scope)
-        token = token_provider()
-        print("[Azure] Using azure-identity token")
-        return token
-    except ImportError:
-        pass
-    except Exception as e:
-        print(f"[Azure] azure-identity failed: {e}")
-
-    return None
-
-
-def setup_azure_environment(rubric_model: str | None = None) -> bool:
-    """Set up environment for direct Azure/TRAPI access. Returns True if successful."""
-    endpoint = os.environ.get('TRAPI_ENDPOINT', 'https://trapi.research.microsoft.com/gcr/shared')
-    # Use 2025-03-01-preview for gpt-5.2 and newer models compatibility
-    api_version = os.environ.get('TRAPI_API_VERSION', '2025-03-01-preview')
-    scope = os.environ.get('TRAPI_SCOPE', 'api://trapi/.default')
-
-    token = get_azure_token(scope)
-    if not token:
-        print("[Azure] Could not obtain Azure AD token. Falling back to proxy.")
-        return False
-
-    # Set OpenAI environment variables for direct Azure access
-    # The base URL format for Azure OpenAI compatible endpoint
-    os.environ["OPENAI_BASE_URL"] = f"{endpoint}/openai"
-    os.environ["OPENAI_API_KEY"] = token
-    os.environ["OPENAI_API_VERSION"] = api_version
-
-    # Also set Azure-specific vars for azure_openai provider compatibility
-    os.environ["AZURE_OPENAI_ENDPOINT"] = endpoint
-    os.environ["AZURE_OPENAI_API_KEY"] = token
-    os.environ["AZURE_OPENAI_API_VERSION"] = api_version
-
-    print(f"[Azure] Direct TRAPI access configured: {endpoint}")
-    return True
-
-
 # Define REPO_ROOT before using it for config loading
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -203,87 +52,12 @@ sys.path.insert(0, str(REPO_ROOT / "script"))
 sys.path.insert(0, str(REPO_ROOT / "script" / "utils"))
 
 # Pre-parse --openai-base-url BEFORE rubric evaluation setup
-# (some modules may read OPENAI_BASE_URL at import time)
-# If not provided, use Azure/TRAPI directly
 _pre_parser = argparse.ArgumentParser(add_help=False)
 _pre_parser.add_argument("--openai-base-url", type=str, default=None)
 _pre_parser.add_argument("--rubric-model", type=str, default=None)
 _pre_args, _ = _pre_parser.parse_known_args()
 
-_using_azure_direct = False
-_resolved_model = None
-
-# Load model rubrics config
-try:
-    with open(REPO_ROOT / "models" / "model_rubrics.json") as f:
-        _rubric_config = json.load(f)
-except Exception as e:
-    print(f"Warning: Could not load models/model_rubrics.json: {e}")
-    _rubric_config = {}
-
-# Determine model to use (default to gpt-5.2 if not specified)
-_target_model_key = "gpt-5.2"
-if _pre_args.rubric_model:
-    # If user specified a model, try to find it in config, otherwise use as-is
-    if _pre_args.rubric_model in _rubric_config:
-        _target_model_key = _pre_args.rubric_model
-
-if _pre_args.openai_base_url is None:
-    # No proxy URL provided - use Azure/TRAPI directly via config if available
-    _model_info = _rubric_config.get(_target_model_key)
-    
-    if _model_info:
-        # Use config-based setup
-        _using_azure_direct = setup_azure_environment(_target_model_key)
-        if _using_azure_direct:
-            base_urls = _model_info.get("available_base_urls", [])
-            if base_urls:
-                # Set primary URL
-                os.environ["OPENAI_BASE_URL"] = f"{base_urls[0]}/openai"
-                os.environ["AZURE_OPENAI_ENDPOINT"] = base_urls[0]
-                
-                # Set fallback URLs for rotation/retry
-                if len(base_urls) > 1:
-                    fallback_formatted = [f"{url}/openai" for url in base_urls]
-                    os.environ["OPENAI_FALLBACK_URLS"] = ",".join(fallback_formatted)
-                    print(f"[Azure] Configured {len(base_urls)} URLs for rotation/fallback")
-            
-            # Resolve model ID from config (e.g. "openai/gpt-5.2..." -> "azure_openai:gpt-5.2...")
-            raw_id = _model_info.get("model_id", _target_model_key)
-            if ":" in raw_id:
-                _resolved_model = raw_id
-            else:
-                # Map standard ID to azure_openai provider
-                # e.g. openai/gpt-5.2_2025-12-11 -> azure_openai:gpt-5.2_2025-12-11
-                clean_id = raw_id.replace("openai/", "").replace("azure/", "")
-                _resolved_model = f"azure_openai:{clean_id}"
-            
-            print(f"[Azure] Model configured from json: {_target_model_key} -> {_resolved_model}")
-            
-    # Fallback to old logic if config not found or setup failed
-    if not _resolved_model:
-        _using_azure_direct = setup_azure_environment(_pre_args.rubric_model)
-        if _using_azure_direct and _pre_args.rubric_model:
-            # Resolve model name to TRAPI deployment name AND switch to azure_openai provider
-            # The azure_openai provider uses AsyncAzureOpenAI which formats URLs correctly
-            if ':' in _pre_args.rubric_model:
-                provider, model_name = _pre_args.rubric_model.split(':', 1)
-                deployment_name = resolve_trapi_deployment(model_name)
-                # CRITICAL: Use azure_openai provider instead of openai
-                # openai provider uses wrong URL format for TRAPI
-                _resolved_model = f"azure_openai:{deployment_name}"
-                print(f"[Azure] Model resolved: {_pre_args.rubric_model} -> {_resolved_model}")
-            else:
-                deployment_name = resolve_trapi_deployment(_pre_args.rubric_model)
-                _resolved_model = f"azure_openai:{deployment_name}"
-                print(f"[Azure] Model resolved: {_pre_args.rubric_model} -> {_resolved_model}")
-    
-    if not _using_azure_direct:
-        # Fallback to localhost proxy
-        os.environ["OPENAI_BASE_URL"] = "http://localhost:4000/v1"
-        os.environ["OPENAI_FALLBACK_URLS"] = "http://localhost:4000/v1"
-else:
-    # Proxy URL provided - use it (keep original provider)
+if _pre_args.openai_base_url:
     _all_urls = [u.strip() for u in _pre_args.openai_base_url.split(",")]
     os.environ["OPENAI_BASE_URL"] = _all_urls[0]
     os.environ["OPENAI_FALLBACK_URLS"] = ",".join(_all_urls)
@@ -407,7 +181,7 @@ DEFAULT_RUBRIC_TEXT = dedent(
     """
 ).strip()
 
-DEFAULT_RUBRIC_PROVIDER = os.getenv("DOCENT_RUBRIC_PROVIDER", "azure_openai")
+DEFAULT_RUBRIC_PROVIDER = os.getenv("DOCENT_RUBRIC_PROVIDER", "openai")
 DEFAULT_RUBRIC_BATCH_SIZE = int(os.getenv("DOCENT_RUBRIC_BATCH_SIZE", "4"))
 
 
@@ -854,23 +628,10 @@ def resolve_rubric_model_option(
     if not model_name:
         model_name = os.getenv("DOCENT_RUBRIC_MODEL_NAME")
 
-    if not model_name and provider == "azure_openai":
-        for candidate in (
-            "AZURE_OPENAI_RUBRIC_MODEL",
-            "AZURE_OPENAI_DEPLOYMENT_NAME",
-            "AZURE_OPENAI_DEPLOYMENT",
-            "AZURE_OPENAI_CHAT_DEPLOYMENT",
-        ):
-            value = os.getenv(candidate)
-            if value:
-                model_name = value
-                break
-
     if not model_name:
         raise ValueError(
-            "Unable to determine an Azure OpenAI deployment for rubric evaluation. "
-            "Set DOCENT_RUBRIC_MODEL (provider:model) or DOCENT_RUBRIC_MODEL_NAME / "
-            "AZURE_OPENAI_DEPLOYMENT_NAME in your environment."
+            "Unable to determine a model for rubric evaluation. "
+            "Set DOCENT_RUBRIC_MODEL (provider:model) or DOCENT_RUBRIC_MODEL_NAME in your environment."
         )
 
     reasoning_effort = os.getenv("DOCENT_RUBRIC_REASONING_EFFORT")
@@ -906,37 +667,7 @@ def build_rubric_from_definition(
 
 def validate_provider_environment(model_option: "ModelOption") -> None:
     """Ensure required environment variables exist for the selected provider."""
-    if model_option.provider != "azure_openai":
-        return
-
-    missing: list[str] = []
-    if not os.getenv("AZURE_OPENAI_ENDPOINT"):
-        missing.append("AZURE_OPENAI_ENDPOINT")
-
-    # If API key is missing, check if we have a token provider as fallback
-    if not os.getenv("AZURE_OPENAI_API_KEY"):
-        has_token_refresh = False
-        # Check for MSAL cache
-        if os.path.exists(os.path.expanduser('~/.azure/msal_token_cache.json')):
-            has_token_refresh = True
-        # Check for azure-identity (requires az CLI login)
-        elif os.environ.get("USE_AZURE_IDENTITY") == "true":
-            has_token_refresh = True
-            
-        if not has_token_refresh:
-            missing.append("AZURE_OPENAI_API_KEY (or MSAL cache for auto-refresh)")
-
-    api_version = os.getenv("OPENAI_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION")
-    if not api_version:
-        missing.append("OPENAI_API_VERSION (or AZURE_OPENAI_API_VERSION)")
-    else:
-        os.environ.setdefault("OPENAI_API_VERSION", api_version)
-
-    if missing:
-        raise EnvironmentError(
-            "Azure OpenAI environment configuration is incomplete. Missing: "
-            + ", ".join(missing)
-        )
+    pass
 
 
 def build_docent_agent_runs(
@@ -1043,11 +774,9 @@ def _get_fallback_urls() -> list[str]:
 def _switch_to_url(url: str, token: str | None = None) -> None:
     """Switch OPENAI_BASE_URL to a new URL and reinitialize client if needed."""
     os.environ["OPENAI_BASE_URL"] = url
-    os.environ["AZURE_OPENAI_ENDPOINT"] = url.replace("/openai", "")
     
     if token:
         os.environ["OPENAI_API_KEY"] = token
-        os.environ["AZURE_OPENAI_API_KEY"] = token
         
     # Try to reinitialize the OpenAI client in docent if possible
     try:
@@ -1057,10 +786,6 @@ def _switch_to_url(url: str, token: str | None = None) -> None:
             openai_provider._client = None
         if hasattr(openai_provider, 'get_client'):
             openai_provider._cached_client = None
-            
-        from docent_core._llm_util.providers import azure_openai as azure_provider
-        if hasattr(azure_provider, '_client'):
-            azure_provider._client = None
     except Exception:
         pass  # Best effort - env var change should be picked up on next client init
 
@@ -1106,7 +831,6 @@ async def evaluate_environmental_barrier(
     max_batch_messages: int = 0,
     inter_batch_delay: float = 0,
     retries: int = 3,
-    json_mode: bool = False,
     use_cache: bool = True,
     rate_limit_delay: int = 65,
     max_concurrency: int = 10,
@@ -1138,7 +862,6 @@ async def evaluate_environmental_barrier(
     for batch_idx, batch in enumerate(batches):
         batch_msg_count = sum(r.metadata.get("message_count", 0) for r in batch)
         print(f"  Processing batch {batch_idx + 1}/{len(batches)}: {len(batch)} tasks ({batch_msg_count} messages)...")
-        response_format = {"type": "json_object"} if json_mode else None
 
         # Retry logic with exponential backoff, rate limit detection, and URL fallback
         outputs = None
@@ -1147,7 +870,7 @@ async def evaluate_environmental_barrier(
 
         for attempt in range(retries):
             try:
-                outputs = await evaluate_rubric(batch, rubric, response_format=response_format, use_cache=use_cache, max_concurrency=max_concurrency)
+                outputs = await evaluate_rubric(batch, rubric, use_cache=use_cache, max_concurrency=max_concurrency)
                 break
             except Exception as e:
                 last_error = e
@@ -1169,15 +892,8 @@ async def evaluate_environmental_barrier(
 
                 if is_auth_error:
                     print(f"    ⚠️  Auth error: {e}")
-                    print(f"    🔄 Refreshing Azure token...")
-                    new_token = get_azure_token()
-                    if new_token:
-                        # Update env vars with new token (keeping current URL)
-                        _switch_to_url(os.environ["OPENAI_BASE_URL"], new_token)
-                        # Retry immediately
-                        continue
-                    else:
-                        print("    ❌ Failed to refresh token.")
+                    # Authentication failure
+                    print("    ❌ Authentication failed. Please check your credentials.")
 
                 if is_connection and len(fallback_urls) > 1 and urls_tried < len(fallback_urls):
                     # Try next fallback URL
@@ -1186,9 +902,7 @@ async def evaluate_environmental_barrier(
                     urls_tried += 1
                     print(f"    ⚠️  Connection error: {e}")
                     print(f"    🔄 Switching to fallback URL: {next_url}")
-                    # Refresh token too while we're at it, to be safe
-                    new_token = get_azure_token()
-                    _switch_to_url(next_url, new_token)
+                    _switch_to_url(next_url)
                     # Retry immediately with new URL (no wait)
                     continue
 
@@ -1494,16 +1208,6 @@ def run_rubric_evaluation(args: argparse.Namespace) -> None:
         print("   Set the missing environment variables (see docs.transluce.org self-hosting env vars).")
         return
 
-    # Auto-enable JSON mode for supported providers (OpenAI/Azure)
-    use_json_mode = args.json_mode
-    if model_option.provider in {"openai", "azure_openai"}:
-        if not use_json_mode:
-            print("📋 Auto-enabling JSON mode for structured output (OpenAI/Azure).")
-        use_json_mode = True
-    elif args.json_mode:
-        print("⚠️  JSON mode requested but not supported for this provider. Using prompt-based JSON.")
-        use_json_mode = False
-
     # Load rubric(s) - either single file or directory
     rubrics_dir = Path(args.rubrics_dir).expanduser()
     if hasattr(args, 'rubric') and args.rubric:
@@ -1568,7 +1272,6 @@ def run_rubric_evaluation(args: argparse.Namespace) -> None:
                     max_batch_messages=max_batch_messages,
                     inter_batch_delay=inter_batch_delay,
                     retries=retries,
-                    json_mode=use_json_mode,
                     use_cache=use_cache,
                     rate_limit_delay=rate_limit_delay,
                     max_concurrency=max_concurrency,
@@ -1680,11 +1383,6 @@ def main():
 
     # Other options
     parser.add_argument(
-        "--json-mode",
-        action="store_true",
-        help="Force JSON-mode (auto-enabled for OpenAI/Azure)",
-    )
-    parser.add_argument(
         "--yes", "-y",
         action="store_true",
         help="Skip confirmation prompt",
@@ -1736,7 +1434,7 @@ def main():
         "--openai-base-url",
         type=str,
         default=None,
-        help="OpenAI API base URL(s). If not provided, uses Azure/TRAPI directly. "
+        help="OpenAI API base URL(s). "
              "Comma-separated for fallback on errors "
              "(e.g., 'http://localhost:4000/v1,http://localhost:4001/v1')",
     )
@@ -1747,12 +1445,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # FORCE override rubric model with resolved Azure model if applicable
-    # This ensures we use 'azure_openai:...' provider with correct headers/client
-    if _resolved_model:
-        print(f"[Override] Replacing user model '{args.rubric_model}' with resolved '{_resolved_model}'")
-        args.rubric_model = _resolved_model
 
     # Set defaults for underlying CLI (removed from this script for simplicity)
     args.parallel = 1000  # Not used when max_batch_messages > 0
