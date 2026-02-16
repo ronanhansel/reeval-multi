@@ -74,9 +74,17 @@ index 00bab53..5eb4f22 100644
              raise ValueError(f"Unknown benchmark: {benchmark_name}")
          
 diff --git a/hal/benchmarks/colbench.py b/hal/benchmarks/colbench.py
-index 1baac4f..ce528e9 100644
+index 1baac4f..ed6a041 100644
 --- a/hal/benchmarks/colbench.py
 +++ b/hal/benchmarks/colbench.py
+@@ -1,6 +1,6 @@
+ import os
+ import json
+-from typing import Dict, Any, TypedDict, List
++from typing import Dict, Any, TypedDict, List, Optional
+ from typing_extensions import NotRequired
+ from .base_benchmark import BaseBenchmark
+ import docker
 @@ -57,28 +57,37 @@ class ColBenchBenchmark(BaseBenchmark):
      """ColBench benchmark implementation"""
      
@@ -124,9 +132,18 @@ index 1baac4f..ce528e9 100644
          # Create benchmark dictionary
          self.benchmark = {}
 diff --git a/hal/benchmarks/corebench.py b/hal/benchmarks/corebench.py
-index 92996b5..2b8f2c0 100644
+index 92996b5..6884952 100644
 --- a/hal/benchmarks/corebench.py
 +++ b/hal/benchmarks/corebench.py
+@@ -4,7 +4,7 @@ import urllib.request
+ import tarfile
+ import time
+ import shutil
+-from typing import Dict, Any
++from typing import Dict, Any, Optional
+ import numpy as np
+ from scipy.stats import t
+ import math
 @@ -15,20 +15,26 @@ from .base_benchmark import BaseBenchmark
  class CoreBench(BaseBenchmark):
      """Base class for CoreBench benchmarks of different difficulty levels"""
@@ -202,9 +219,18 @@ index 92996b5..2b8f2c0 100644
      def _construct_prompt(self, task):
          """
 diff --git a/hal/benchmarks/scicode.py b/hal/benchmarks/scicode.py
-index da14de7..a96d5b9 100644
+index da14de7..ca305cf 100644
 --- a/hal/benchmarks/scicode.py
 +++ b/hal/benchmarks/scicode.py
+@@ -2,7 +2,7 @@ import os
+ import time
+ import shutil
+ from pathlib import Path
+-from typing import Dict, Any
++from typing import Dict, Any, Optional
+ from datasets import load_dataset
+ import docker
+ 
 @@ -12,13 +12,20 @@ from .base_benchmark import BaseBenchmark
  class SciCodeBenchmark(BaseBenchmark):
      """SciCode benchmark implementation"""
@@ -291,3 +317,32 @@ index d82a6c6..4d8e38d 100644
                      run_id=run_id,  # Now guaranteed to have a value
                      use_vm=vm,
                      use_docker=docker,
+diff --git a/hal/utils/weave_utils.py b/hal/utils/weave_utils.py
+index 700f024..68d7d5e 100644
+--- a/hal/utils/weave_utils.py
++++ b/hal/utils/weave_utils.py
+@@ -32,6 +32,24 @@ MODEL_PRICES_DICT = {
+                 "gpt-4.5-preview-2025-02-27": {"prompt_tokens": 75/1e6, "completion_tokens": 150/1e6},
+                 "Mistral-small-zgjes": {"prompt_tokens": 0.001/1000, "completion_tokens": 0.003/1000},
+                 "Mistral-large-ygkys": {"prompt_tokens": 0.004/1000, "completion_tokens": 0.012/1000},
++                "openai/o3-mini": {"prompt_tokens": 1.1/1e6, "completion_tokens": 4.4/1e6},
++                "openai/o4-mini": {"prompt_tokens": 1.1/1e6, "completion_tokens": 4.4/1e6},
++                "openai/o1": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "openai/o1-mini": {"prompt_tokens": 3/1e6, "completion_tokens": 12/1e6},
++                "openai/gpt-4o": {"prompt_tokens": 2.5/1e6, "completion_tokens": 10/1e6},
++                "openai/gpt-4o-mini": {"prompt_tokens": 0.15/1e6, "completion_tokens": 0.6/1e6},
++                "openai/gpt-4.1": {"prompt_tokens": 2/1e6, "completion_tokens": 8/1e6},
++                "openai/gpt-5": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "openai/gpt-5.1": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "openai/gpt-5.2": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "openai/gpt-5.1-codex": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "openai/gpt-5-codex": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "o3-mini": {"prompt_tokens": 1.1/1e6, "completion_tokens": 4.4/1e6},
++                "o4-mini": {"prompt_tokens": 1.1/1e6, "completion_tokens": 4.4/1e6},
++                "o1": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "gpt-5": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "gpt-5.1": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
++                "gpt-5.2": {"prompt_tokens": 15/1e6, "completion_tokens": 60/1e6},
+                 "o1-mini-2024-09-12": {"prompt_tokens": 3/1e6, "completion_tokens": 12/1e6},
+                 "o3-mini-2025-01-31": {"prompt_tokens": 1.1/1e6, "completion_tokens": 4.4/1e6},
+                 "o4-mini-2025-04-16": {"prompt_tokens": 1.1/1e6, "completion_tokens": 4.4/1e6},
