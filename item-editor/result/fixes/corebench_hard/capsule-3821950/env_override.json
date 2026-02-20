@@ -1,0 +1,4 @@
+{
+  "HAL_CONDA_CHANNELS": "conda-forge defaults",
+  "HAL_CONDA_PACKAGES": "r-base=4.1 r-rmarkdown r-knitr r-dplyr r-ggplot2 r-scales r-bchron r-hmisc r-devtools r-gridextra r-maptools pandoc"
+}

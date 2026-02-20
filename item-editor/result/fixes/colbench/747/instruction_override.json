@@ -1,0 +1,11 @@
+{
+  "clarifications": [
+    "The function uses substring matching on both inputs and returns one of four canned responses:",
+    "1. If 'relationship' is in problem_description AND 'low' is in budget: return 'Contact Al-Anon and get some counseling through local hospitals or United Way.'",
+    "2. Else if 'general' is in problem_description AND 'medium' is in budget: return 'Seek counseling through a university psychology department.'",
+    "3. Else if 'specific' is in problem_description AND 'high' is in budget: return 'Get private counseling.'",
+    "4. Otherwise: return 'Please provide more information.'",
+    "The function returns a single string, not a list or dictionary."
+  ],
+  "notes": "The hidden implementation uses exact substring matching with hardcoded keywords and canned response strings. These cannot be derived from the generic prompt 'provide counseling recommendations based on problem and budget'. The exact response text and keyword triggers are arbitrary."
+}

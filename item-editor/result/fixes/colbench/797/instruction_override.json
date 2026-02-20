@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The function should return a tuple of (slashing_angle_degrees, slashing_depth_inches).",
+    "For 'sourdough' dough type: if proofing_time > 2 hours, return (45, 0.75); otherwise return (30, 0.5).",
+    "For 'yeast' dough type: if oven_temperature > 425 degrees Fahrenheit, return (40, 0.6); otherwise return (35, 0.4).",
+    "Temperature is in Fahrenheit and proofing_time is in hours.",
+    "Only 'sourdough' and 'yeast' dough types need to be supported."
+  ],
+  "notes": "The original task description does not specify the exact threshold values (2 hours, 425F) or the return values. The simulated user was unable to provide these constants despite them being in the hidden information. This clarification makes the expected piecewise logic explicit."
+}

@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "For the UMAP visualization, use a legend (positioned outside the plot) to show cell type labels rather than placing text labels directly on the scatter points.",
+    "Use scanpy's plotting functions (e.g., sc.pl.umap) which automatically create clean legends.",
+    "Ensure the plot is not cluttered - use appropriate figure size and point sizes for clarity."
+  ],
+  "additional_context": "The visualization should be clean and professional, with colors clearly distinguishable and a readable legend."
+}

@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "An ATM is NOT legitimate (return False) if it matches one of these known skimmer configurations:",
+    "  - Serial: 123456, Width: 480, Height: 800, Pinpad Color: 'blue', Camera: True",
+    "  - Serial: 789012, Width: 640, Height: 400, Pinpad Color: 'red', Camera: True",
+    "All other ATM configurations should be considered legitimate (return True).",
+    "Compare the exact tuple of all 5 parameters against the known skimmer list."
+  ],
+  "notes": "The hidden solution uses a simple blacklist comparison with two arbitrary magic tuples. The simulated user could not reveal these tuples because they are only encoded in the hidden code, not as answerable facts. This fix makes the blacklist discoverable while preserving the implementation challenge."
+}

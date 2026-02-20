@@ -1,0 +1,8 @@
+{
+  "task_id": "63",
+  "ife_detected": true,
+  "ife_type": "api_version_mismatch",
+  "fix_applied": true,
+  "fix_types": ["instruction_override"],
+  "notes": "NeuroKit2 API changed between versions - ecg_plot() no longer accepts sampling_rate parameter. Domain knowledge was outdated."
+}

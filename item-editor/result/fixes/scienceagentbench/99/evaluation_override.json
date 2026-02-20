@@ -1,0 +1,5 @@
+{
+  "figure_tolerance": "relaxed",
+  "skip_style_check": true,
+  "notes": "UMAP visualizations can have equivalent scientific content with different color schemes, point sizes, or axis labels. GPT-4 visual evaluation should focus on: (1) correct data representation, (2) proper coloring by the specified variables, (3) three subplots combined correctly. Minor stylistic differences should not cause failure."
+}

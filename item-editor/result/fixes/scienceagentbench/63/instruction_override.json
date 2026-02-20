@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "The current NeuroKit2 API signature for ecg_plot is: ecg_plot(ecg_signals, info=None) - do NOT pass sampling_rate to ecg_plot().",
+    "The info dictionary returned by ecg_process() should be passed to ecg_plot() for proper visualization.",
+    "Similarly, rsp_plot uses: rsp_plot(rsp_signals, info=None) without sampling_rate parameter.",
+    "To save the figure: use fig = plt.gcf() after calling ecg_plot/rsp_plot, then fig.savefig('path.png', bbox_inches='tight')."
+  ],
+  "additional_context": "The sampling_rate parameter is only used in ecg_process() and rsp_process(), not in the plotting functions."
+}

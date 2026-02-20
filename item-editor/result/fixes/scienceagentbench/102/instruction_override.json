@@ -1,0 +1,22 @@
+{
+  "task_id": "102",
+  "clarifications": [
+    "CRITICAL: Your final Python code MUST include these import statements at the top: `from modnet.models import MODNetModel`, `from modnet.preprocessing import MODData`, `import pandas as pd`, `import numpy as np`, `import pickle`. The evaluation environment needs MODNet to be detected for proper installation.",
+    "The development sandbox blocks these imports, but the evaluation Docker container can install MODNet if it detects the imports via pipreqs. Write your code as if imports work.",
+    "MODNet (Material Optimal Descriptor Network) requires pymatgen for crystal structure handling and matminer for featurization.",
+    "Load the pre-computed MODData objects using pickle: `with open('md_ref_index_train/train.pkl', 'rb') as f: train_data = pickle.load(f)`. Note: The pickle files contain MODNet-specific objects.",
+    "Initialize MODNetModel with specified architecture: 300 input features, hidden layer sizes [128, 64, 32], 'elu' activation.",
+    "The MP_2018.6 dataset contains pymatgen Structure objects for prediction.",
+    "Save predictions to 'pred_results/ref_index_predictions_pred.csv' with proper column format."
+  ],
+  "critical_imports": [
+    "from modnet.models import MODNetModel",
+    "from modnet.preprocessing import MODData",
+    "import pymatgen",
+    "from pymatgen.core import Structure",
+    "import pandas as pd",
+    "import numpy as np",
+    "import pickle"
+  ],
+  "notes": "MODNet does NOT have special handling in the Docker harness like DeepChem or OGGM. The env_override.json specifies packages that need to be installed. This task may require manual harness modification to pre-install MODNet."
+}

@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The Omer has 49 days split into two periods: Period 1 is days 1-24, Period 2 is days 25-49.",
+    "Period 1 activities (restricted early): 'shaving', 'haircuts', 'music'",
+    "Period 2 activities (restricted late): 'parties', 'weddings', 'concerts'",
+    "For each activity in the input list: if it's a Period 1 activity, map it to omer_days[:24]; if Period 2, map it to omer_days[24:]; otherwise, map it to the string 'N/A'.",
+    "Return a dictionary where keys are activity names and values are either a list of days or 'N/A'."
+  ],
+  "notes": "The hidden implementation contains hardcoded activity lists that cannot be derived from the prompt. The prompt says 'I'm not sure how to split them correctly' but provides no categorization rules. These clarifications reveal the arbitrary hidden mapping."
+}

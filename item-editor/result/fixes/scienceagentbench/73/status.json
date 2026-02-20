@@ -1,0 +1,8 @@
+{
+  "task_id": "73",
+  "ife_detected": true,
+  "ife_type": "ambiguous_instruction",
+  "fix_applied": true,
+  "fix_types": ["instruction_override"],
+  "notes": "Task instruction didn't specify data array structure or which dimensions to average. Agent averaged incorrectly, producing 16 time points instead of expected 200."
+}

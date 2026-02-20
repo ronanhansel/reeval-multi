@@ -1,0 +1,16 @@
+{
+  "task_id": "35",
+  "step_overrides": {
+    "35.2": {
+      "original_description": "Provide a function that takes in three positive numbers x,y,z and return an array of smallest quadratic combinations of the three numbers (up to N numbers). To be specific, $i^2x+j^2y+k^2z$ is defined as a valid quadratic combinations, where the coefficients i,j,k are at least The output should be in ascending order.",
+      "fixed_description": "Provide a function that takes in three positive numbers x,y,z and return an array of smallest quadratic combinations of the three numbers (up to N numbers). To be specific, $i^2x+j^2y+k^2z$ is defined as a valid quadratic combination, where the coefficients i,j,k are at least 1 (positive integers). The output should be in ascending order.",
+      "reason": "The original description is truncated - 'i,j,k are at least' is incomplete. Based on the physics context (quantum dot excited states), the coefficients should be positive integers starting from 1."
+    },
+    "35.3": {
+      "original_description": "With the previous functions, provide a function that gets the incremental energy of all three dimensions of the cuboid quantum dot, calculates their linear combinations, and then returns the smallest N non-zero energy levels. The input is the relative effective mass $m_r$, the dimensional feature sizes a,b,c and the array limit N. The output is a numpy array containing the smallest N non-zero energy levels. The output should be in descending order.",
+      "original_docstring": "With the feature sizes in three dimensions a, b, and c, the relative mass mr and the array length N, return a numpy array of the size N that contains the corresponding photon wavelength of the excited states' energy.",
+      "fixed_description": "With the previous functions, provide a function that gets the incremental energy of all three dimensions of the cuboid quantum dot, calculates their quadratic combinations, and then returns the N smallest non-zero transition wavelengths. The input is the relative effective mass $m_r$, the dimensional feature sizes a,b,c and the array limit N. The output is a numpy array containing the N wavelengths corresponding to the smallest N non-zero transition energies, in descending order (largest wavelengths first, as these correspond to smallest energies).",
+      "reason": "The original description says 'energy levels' but the docstring says 'wavelength', and test cases compare sorted(A)[::-1] suggesting descending wavelength order. Clarified that output is WAVELENGTHS (not energies) in DESCENDING order."
+    }
+  }
+}

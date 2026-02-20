@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "Use a simplified calculation model: oxygen_supply = breathing_depth * breathing_frequency * oxygen_consumption_rate",
+    "Simply multiply all three input parameters together and return the result.",
+    "Note: This is a simplified abstract model, not a physiologically accurate calculation."
+  ],
+  "notes": "The hidden implementation is a simple product of all inputs, which is not physiologically meaningful (multiplying consumption rate into supply). The task provides no formula or units, making the expected behavior arbitrary and undiscoverable."
+}

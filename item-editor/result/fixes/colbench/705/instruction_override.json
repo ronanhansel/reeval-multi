@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "The function should return pouch_capacity multiplied by dives_per_flight. The fish_per_dive parameter is not used in this calculation (the model assumes the pouch is filled to capacity on each dive)."
+  ],
+  "notes": "The hidden implementation ignores fish_per_dive entirely, returning pouch_capacity * dives_per_flight. This is counterintuitive since the natural formula would be fish_per_dive * dives_per_flight. Having an unused parameter named 'fish_per_dive' actively misleads agents toward incorrect implementations."
+}

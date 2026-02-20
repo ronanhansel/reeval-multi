@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "The rating formula is: (stars + (likes - dislikes)/(likes + dislikes) + len(comments) * 0.1) / 3",
+    "Round the result to 2 decimal places.",
+    "The 'comments' parameter is a list, so use len(comments) to get the count."
+  ],
+  "notes": "The simulated user provided contradictory guidance (different scale/range, approved a different formula with weights and log scaling). The hidden solution uses a specific formula that averages three components: stars, a signed vote ratio, and 0.1 times comment count. This fix clarifies the expected formula."
+}

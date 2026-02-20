@@ -1,0 +1,7 @@
+{
+  "clarifications": [
+    "The output should be a geographical/spatial heatmap visualization, where each location on the map shows the count of how many 5-year warm spell occurrences happened at that grid cell over the 240-year period.",
+    "Use iris.plot to create a contourf or pcolormesh visualization with appropriate colorbar showing the count values."
+  ],
+  "additional_context": "The visualization should display spatial distribution across North America, not a time series plot."
+}

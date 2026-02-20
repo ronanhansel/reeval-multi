@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "Note: The 'slideshow banner' mentioned in the description should be implemented as a static hero header section with a solid pink background color, welcome text, and a 'Book Now' button. The design uses a pink/white color scheme throughout, including the footer. Focus on clean section organization (Destinations, Tour Packages, Blog, Testimonials) with a newsletter signup in the footer."
+  ],
+  "notes": "The task says 'slideshow banner at the top featuring beautiful travel destinations' but the ground truth has a static pink header with text and no slideshow or destination images at top. This clarification aligns the task with the expected output while preserving the collaborative design challenge."
+}

@@ -1,0 +1,12 @@
+{
+  "clarifications": [
+    "Despite the name 'sounds similar', use this positional character matching algorithm:",
+    "1. Remove all spaces from both phrases and convert to lowercase",
+    "2. Zip the two strings together (comparing characters at the same position)",
+    "3. Count how many positions have matching characters",
+    "4. Divide the match count by the length of the target phrase",
+    "5. Return True if this ratio >= tolerance, else False",
+    "Note: This is NOT phonetic comparison - it's positional character overlap."
+  ],
+  "notes": "The task description says 'sounds similar' which implies phonetic comparison, but the hidden solution implements positional character matching after removing spaces. This is a spec/implementation mismatch that cannot be resolved through dialogue. The fix clarifies the actual algorithm expected."
+}

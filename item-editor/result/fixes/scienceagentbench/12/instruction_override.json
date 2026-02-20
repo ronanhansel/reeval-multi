@@ -1,0 +1,22 @@
+{
+  "task_id": "12",
+  "clarifications": [
+    "CRITICAL: Your final Python code MUST include these import statements at the top: `from DeepPurpose import utils, dataset, DTI`, `from DeepPurpose import models`, `import torch`, `import pandas as pd`, `import numpy as np`. The evaluation environment has DeepPurpose and its dependencies pre-installed.",
+    "The development sandbox blocks these imports, but the evaluation Docker container has DeepPurpose with descriptastorus properly configured when pipreqs detects DeepPurpose imports. Write your code as if imports work.",
+    "DeepPurpose has an unusual package structure. The standard import is: `from DeepPurpose import utils, models` and `from DeepPurpose import DTI`.",
+    "Use DeepPurpose's DTI module for drug-target interaction prediction.",
+    "For DAVIS dataset loading: `X_drug, X_target, Y = dataset.load_process_DAVIS(path='./data/', binary=False)`",
+    "For model training, use appropriate encoders: drug_encoding (e.g., 'Morgan'), target_encoding (e.g., 'CNN').",
+    "Save predictions to the specified output format (CSV or numpy array as required by the task)."
+  ],
+  "critical_imports": [
+    "from DeepPurpose import utils",
+    "from DeepPurpose import dataset",
+    "from DeepPurpose import DTI",
+    "from DeepPurpose import models",
+    "import torch",
+    "import pandas as pd",
+    "import numpy as np"
+  ],
+  "notes": "The evaluation Docker installs descriptastorus (required by DeepPurpose) when DeepPurpose is detected in imports. The base image has TensorFlow 2.17 and PyTorch 2.3 pre-installed. DeepPurpose works with these versions."
+}

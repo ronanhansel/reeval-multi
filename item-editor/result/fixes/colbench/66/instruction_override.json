@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "Note: The layout should use a two-section approach rather than a persistent sidebar. The top section features a large travel destination image alongside introductory text. Below that, a 'Filter and Sort' heading appears in a narrow column with 'Travel Packages' content in a wider column. The 'filters and sorting options' mentioned are section labels, not interactive form controls."
+  ],
+  "notes": "The task says 'left sidebar with filters' but the ground truth shows a section-based layout without an actual sidebar or filter controls. This clarification aligns the task description with the expected output structure while preserving the collaborative design challenge."
+}

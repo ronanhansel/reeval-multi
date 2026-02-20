@@ -1,0 +1,10 @@
+{
+  "task_id": "12",
+  "ife_detected": true,
+  "ife_type": "sandbox_import_restriction",
+  "fix_applied": true,
+  "fix_types": ["instruction_override", "env_override"],
+  "root_cause": "Agent sandbox blocks DeepPurpose imports during development, causing pipreqs to not detect DeepPurpose, which means descriptastorus is not installed in evaluation container",
+  "fix_description": "instruction_override tells agent to include proper import statements with correct capitalization (DeepPurpose not deeppurpose); this triggers pipreqs detection and descriptastorus post-install hook",
+  "notes": "Docker base image has TensorFlow 2.17 and torch 2.3 pre-installed. The capitalization of 'DeepPurpose' is critical for pipreqs detection."
+}

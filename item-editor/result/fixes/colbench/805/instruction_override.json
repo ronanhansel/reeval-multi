@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The function should return a tuple of (horizontal_shadow, vertical_shadow).",
+    "Calculate horizontal shadow as: title_bar_height + 2 * border_thickness",
+    "Calculate vertical shadow as: max(10, window_height // 4)",
+    "The shadow dimensions should depend on the input parameters, not be constants.",
+    "All inputs are in the same unit (points/pixels)."
+  ],
+  "notes": "The original task description says 'some sort of shadow dimensions' which is underspecified. The hidden solution uses a specific formula that the simulated user was unable to communicate and actively contradicted by endorsing constant values. This fix makes the expected formula explicit."
+}

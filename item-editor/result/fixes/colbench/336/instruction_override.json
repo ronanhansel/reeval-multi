@@ -1,0 +1,9 @@
+{
+  "clarifications": [
+    "The `group_comp` parameter is a list of class names as strings (e.g., ['mage', 'warrior']).",
+    "Recommendation rules: If role is 'priest' AND 'mage' is in group_comp, then: return 'Holy' if level < 50, or return 'Shadow' if level >= 50.",
+    "For all other cases (role is not 'priest', or no mage in group), return exactly: 'Not enough information to recommend a leveling spec'",
+    "The level 50 threshold is the cutoff between Holy and Shadow recommendations."
+  ],
+  "notes": "The hidden implementation has arbitrary game-specific logic with a level-50 threshold that is not derivable from the task description or standard WoW knowledge. The simulated user cannot provide these details."
+}

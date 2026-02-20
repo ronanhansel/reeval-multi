@@ -1,0 +1,7 @@
+{
+  "clarifications": [
+    "Note: The `people_data` parameter is a dictionary where keys are person names (strings) and values are dictionaries containing physical attributes like 'hair_color' and 'eye_color'.",
+    "Note: The `preferences` parameter is also a dictionary with keys being person names and values being their preference profiles."
+  ],
+  "notes": "The simulated user provides conflicting schema descriptions (sometimes implying list-of-dicts, sometimes dict-of-dicts). This clarification makes the expected input format explicit based on the hidden reference implementation to prevent agent mismatch."
+}

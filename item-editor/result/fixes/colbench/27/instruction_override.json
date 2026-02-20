@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "Note: The sort order (ascending or descending) should be clarified with the user during dialogue."
+  ],
+  "notes": "The original task says 'highest to lowest' but tests expect ascending. This clarification prompts the agent to confirm the sort order."
+}

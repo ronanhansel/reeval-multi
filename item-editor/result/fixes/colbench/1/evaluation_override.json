@@ -1,0 +1,16 @@
+{
+  "issue_type": "parser_regex_mismatch",
+  "severity": "critical",
+  "description": "Frontend HTML task uses Python-only code fence regex parser",
+  "evidence": {
+    "parser_error": "regex pattern ```(?:py|python)?\\s*\\n(.*?)\\n``` was not found",
+    "task_requirement": "raw html code wrapped in <html> tag",
+    "contradiction": "Parser rejects valid HTML submissions that follow task instructions"
+  },
+  "required_fix": {
+    "location": "benchmark harness/parser",
+    "action": "Accept html fenced blocks or raw HTML for frontend tasks",
+    "alternative_regex": "(?:py|python|html)?\\s*\\n(.*?)\\n"
+  },
+  "notes": "This is an infrastructure-level IFE that affects all frontend tasks. Valid HTML solutions are rejected purely due to parsing constraints unrelated to design quality."
+}

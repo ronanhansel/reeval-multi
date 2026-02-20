@@ -1,0 +1,10 @@
+{
+  "clarifications": [
+    "The baseline driving share is 89% (0.89) of total travelers.",
+    "For the year 2012 specifically, ignore the economy_impact and return total_travelers * 0.89",
+    "For all other years, calculate: total_travelers * (0.89 - economy_impact/100)",
+    "The economy_impact is a percentage point reduction from the baseline (e.g., economy_impact=5 means reduce share by 5 percentage points).",
+    "Return the estimated number of drivers (not a percentage)."
+  ],
+  "notes": "The original task does not specify the baseline percentage, the special-case year, or how economy_impact affects the calculation. The simulated user explicitly denied knowing these values despite them being in the hidden information. This fix makes the expected formula explicit."
+}

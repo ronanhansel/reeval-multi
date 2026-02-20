@@ -1,0 +1,8 @@
+{
+  "clarifications": [
+    "The main script is located at 'code/main.py', not in the root directory.",
+    "You must run 'python main.py' from within the 'code/' directory (cd code && python main.py) because the code uses relative paths to access '../data/features/' for the feature files.",
+    "The original requirements.txt has outdated version pins (numpy==1.19.5, pandas==1.2.5) incompatible with Python 3.10+. Install compatible modern versions of the dependencies (numpy, pandas, matplotlib, scikit-learn, xgboost, imbalanced-learn, shap) without the strict version pins.",
+    "Use MPLBACKEND=Agg for headless plotting since there is no display."
+  ]
+}

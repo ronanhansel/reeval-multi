@@ -1,0 +1,6 @@
+{
+  "clarifications": [
+    "Use the `final_answer` tool (not `finish_answer`) to submit your final HTML code."
+  ],
+  "notes": "The task prompt incorrectly references 'finish_answer' tool which does not exist. The correct tool name is 'final_answer'."
+}

@@ -1,0 +1,7 @@
+{
+  "HAL_NETWORK_ACCESS": "true",
+  "HAL_TIMEOUT_SECONDS": 1200,
+  "HAL_PIP_PACKAGES": "oggm salem tables geopandas",
+  "FORCE_INSTALL_PACKAGES": "oggm salem tables geopandas",
+  "notes": "OGGM requires salem for visualization. The Dockerfile has special handling for OGGM (adds salem, tables, geopandas) but only if pipreqs detects 'oggm' in imports. The key API is in oggm.sandbox.distribute_2d, not oggm.core.flowline. Extended timeout for potential downloads."
+}

@@ -1,0 +1,13 @@
+{
+  "clarifications": [
+    "The peace index is a weighted sum with the following weights:",
+    "- election_turnout: weight 0.3",
+    "- rebel_support: weight 0.2 (added directly, not inverted)",
+    "- economic_justice: weight 0.2",
+    "- minority_rights: weight 0.1",
+    "- violence term: weight 0.2, calculated as (1 - num_violent_incidents / total_population)",
+    "Formula: election_turnout*0.3 + rebel_support*0.2 + economic_justice*0.2 + minority_rights*0.1 + (1 - num_violent_incidents/total_population)*0.2",
+    "All input factors (except violence term inputs) should be between 0 and 1."
+  ],
+  "notes": "The original task description only says the index should be 'based on' various factors without specifying weights or the violence formula. The weights are arbitrary and not derivable from any standard peace index methodology. This fix makes the exact expected formula explicit."
+}

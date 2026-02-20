@@ -1,0 +1,6 @@
+{
+  "accept_alternatives": true,
+  "accept_raw_sum": true,
+  "accept_minutes_conversion": true,
+  "notes": "Task asks for 'duration in minutes' but hidden code returns raw sum without conversion. Both approaches should be accepted since the specification is ambiguous about input units and conversion requirements."
+}
