@@ -54,6 +54,7 @@ results
 output
 eval_traces/
 eval_response_matrix/
+paper/
 
 !config/
 !config/**
