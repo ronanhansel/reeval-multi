@@ -197,7 +197,6 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
 
         # Reconstruction loss using torch.distributions
         p = probs[train_mask_t].clamp(eps, 1 - eps)
-        
         if model_type == 'beta':
             # Beta NLL: α = μφ, β = (1-μ)φ
             y = y_train[train_mask_t].clamp(eps, 1 - eps)
