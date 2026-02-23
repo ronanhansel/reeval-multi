@@ -1,7 +1,8 @@
+import os
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 import torch
 from huggingface_hub import snapshot_download
 import pickle
-import os
 import subprocess
 from pathlib import Path
 from huggingface_hub import login
@@ -16,19 +17,17 @@ if token:
 else:
     login()  # Will prompt for token interactively
 
-# Download snapshot directly into the traces folder
-local_path = snapshot_download(
-    repo_id="aims-foundation/eval_traces", 
-    repo_type="dataset",
-    local_dir=traces_dir / "eval_traces",  # Specify the local directory
-    local_dir_use_symlinks=False  # Optional: avoid symlinks, download files directly
-)
 
 local_path = snapshot_download(
     repo_id="aims-foundation/eval_response_matrix", 
     repo_type="dataset",
     local_dir=traces_dir / "eval_response_matrix",  # Specify the local directory
-    local_dir_use_symlinks=False  # Optional: avoid symlinks, download files directly
+    max_workers=8
 )
 
-# Then in the terminal do `hal-decrypt -D ../item-editor`
+local_path = snapshot_download(
+    repo_id="aims-foundation/eval_traces", 
+    repo_type="dataset",
+    local_dir=traces_dir / "eval_traces",  # Specify the local directory
+    max_workers=8
+)
