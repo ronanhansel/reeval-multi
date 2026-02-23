@@ -23,8 +23,31 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import sys
+import subprocess
 from huggingface_hub import snapshot_download
-from tueplots import bundles
+
+# Conditionally import tueplots and check for latex
+HAS_TEX = False
+try:
+    from tueplots import bundles
+    # Check if latex is actually installed on the system
+    import platform
+    if platform.system() != 'Windows':
+        result = subprocess.run(['which', 'latex'], capture_output=True, text=True)
+        if result.returncode == 0:
+            HAS_TEX = True
+except ImportError:
+    pass
+
+import contextlib
+
+@contextlib.contextmanager
+def optional_rc_context():
+    if HAS_TEX:
+        with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+            yield
+    else:
+        yield
 
 sys.path.append('..')
 
@@ -136,29 +159,29 @@ def visualize_binary_response_matrix(Y, title="Response Matrix Y", output_path=N
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
     values = df.values.astype(float)
-    with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+    with optional_rc_context():
         fig, ax = plt.subplots(figsize=(6.75, 2.5))  # Full ICML page width
         cax = ax.imshow(values, aspect='auto', cmap=cmap, norm=norm, interpolation='nearest')
 
-        ax.set_title(title)
-        ax.set_xlabel('Items (sorted by difficulty)')
-        ax.set_ylabel('Models (sorted by performance)')
+    ax.set_title(title)
+    ax.set_xlabel('Items (sorted by difficulty)')
+    ax.set_ylabel('Models (sorted by performance)')
 
-        # Add model labels on y-axis
-        short_labels = [lbl.split('.')[-1][:25] if '.' in lbl else lbl[:25] for lbl in row_labels]
-        ax.set_yticks(range(len(row_labels)))
-        ax.set_yticklabels(short_labels, fontsize=6)
+    # Add model labels on y-axis
+    short_labels = [lbl.split('.')[-1][:25] if '.' in lbl else lbl[:25] for lbl in row_labels]
+    ax.set_yticks(range(len(row_labels)))
+    ax.set_yticklabels(short_labels, fontsize=6)
 
-        # Colorbar
-        cbar = plt.colorbar(cax, ax=ax, shrink=0.8)
-        cbar.set_ticks([0, 1])
-        cbar.set_ticklabels(['0 (Fail)', '1 (Pass)'])
+    # Colorbar
+    cbar = plt.colorbar(cax, ax=ax, shrink=0.8)
+    cbar.set_ticks([0, 1])
+    cbar.set_ticklabels(['0 (Fail)', '1 (Pass)'])
 
-        if output_path:
-            plt.savefig(output_path, dpi=300, bbox_inches='tight')
-            print(f"[OUTPUT] Saved binary response matrix plot: {output_path}")
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"[OUTPUT] Saved binary response matrix plot: {output_path}")
 
-        plt.close()
+    plt.close()
 
 
 def visualize_probability_matrix(P_hat, title="Empirical Probability Matrix $\\hat{P}$", output_path=None, sort_by_mean=True):
@@ -194,28 +217,28 @@ def visualize_probability_matrix(P_hat, title="Empirical Probability Matrix $\\h
     # Continuous colormap: red (0) -> white (0.5) -> blue (1)
     cmap = plt.cm.RdBu
 
-    with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
+    with optional_rc_context():
         fig, ax = plt.subplots(figsize=(6.75, 2.5))  # Full ICML page width
         cax = ax.imshow(values, aspect='auto', cmap=cmap, vmin=0, vmax=1, interpolation='nearest')
 
-        ax.set_title(title)
-        ax.set_xlabel('Items (sorted by difficulty)')
-        ax.set_ylabel('Models (sorted by performance)')
+    ax.set_title(title)
+    ax.set_xlabel('Items (sorted by difficulty)')
+    ax.set_ylabel('Models (sorted by performance)')
 
-        # Add model labels on y-axis
-        short_labels = [lbl.split('.')[-1][:25] if '.' in lbl else lbl[:25] for lbl in row_labels]
-        ax.set_yticks(range(len(row_labels)))
-        ax.set_yticklabels(short_labels, fontsize=6)
+    # Add model labels on y-axis
+    short_labels = [lbl.split('.')[-1][:25] if '.' in lbl else lbl[:25] for lbl in row_labels]
+    ax.set_yticks(range(len(row_labels)))
+    ax.set_yticklabels(short_labels, fontsize=6)
 
-        # Colorbar
-        cbar = plt.colorbar(cax, ax=ax, shrink=0.8)
-        cbar.set_label('Probability')
+    # Colorbar
+    cbar = plt.colorbar(cax, ax=ax, shrink=0.8)
+    cbar.set_label('Probability')
 
-        if output_path:
-            plt.savefig(output_path, dpi=300, bbox_inches='tight')
-            print(f"[OUTPUT] Saved probability matrix plot: {output_path}")
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"[OUTPUT] Saved probability matrix plot: {output_path}")
 
-        plt.close()
+    plt.close()
 
 
 def plot_response_and_probability_matrices(output_dir=None):
@@ -392,77 +415,96 @@ def plot_auc_comparison(df, output_path=None):
     plt.close()
 
 
-def plot_rmse_convergence(df, output_path=None):
+def plot_rmse_convergence(output_path=None):
     """
-    Line plot showing RMSE vs number of training samples.
+    Line plot showing RMSE vs number of training samples for RAW, PCA, and SAE embeddings.
+    """
+    csv_files = {
+        'PCA': os.path.join(RESULT_DIR, 'amortized_irt_pca_beta.csv'),
+        'SAE': os.path.join(RESULT_DIR, 'amortized_irt_sae_beta.csv'),
+        'RAW': os.path.join(RESULT_DIR, 'amortized_irt_raw_beta.csv')
+    }
+    
+    data = {}
+    for name, path in csv_files.items():
+        if os.path.exists(path):
+            data[name] = pd.read_csv(path)
 
-    Visualizes how prediction accuracy improves as more
-    response matrix samples become available.
-    """
-    if df is None or len(df) == 0:
-        print("No data for RMSE convergence plot")
+    if not data:
+        print("No CSV data found to plot RMSE convergence.")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    base_df = next(iter(data.values()))
+    with optional_rc_context():
+        fig, ax = plt.subplots(figsize=(6.75, 3))
+    
+    ax.plot(base_df['n_samples'], base_df['rmse_mean'], 'k--', label='Global Mean')
+    ax.plot(base_df['n_samples'], base_df['rmse_rasch'], 'k-', label='Rasch-IRT')
+    
+    colors = {'PCA': muted_blue, 'SAE': muted_red, 'RAW': muted_green}
+    for name, df in data.items():
+        if 'rmse_amortized' in df.columns:
+            ax.plot(df['n_samples'], df['rmse_amortized'], '^-', color=colors[name], label=f'Amortized IRT ({name})', markersize=4)
 
-    ax.plot(df['n_samples'], df['rmse_mean'], 'o-', label='Global Mean',
-            color=muted_blue, markersize=4)
-    ax.plot(df['n_samples'], df['rmse_rasch'], 's-', label='Rasch-IRT',
-            color=muted_orange, markersize=4)
-    ax.plot(df['n_samples'], df['rmse_amortized'], '^-', label='Amortized IRT',
-            color=muted_green, markersize=4)
-
-    ax.set_xlabel('Number of Samples (n)')
-    ax.set_ylabel('RMSE')
-    ax.legend()
+    ax.set_xlabel('Number of Response Matrix Samples (N)')
+    ax.set_ylabel('Test RMSE')
+    ax.legend(fontsize=8)
     ax.grid(True, linestyle='--', alpha=0.6)
 
     plt.tight_layout()
 
     if output_path is None:
-        emb_type = df['embedding_type'].iloc[0] if 'embedding_type' in df.columns else 'unknown'
-        output_path = os.path.join(RESULT_DIR, f'rmse_convergence_{emb_type}.pdf')
+        output_path = os.path.join(RESULT_DIR, 'rmse_convergence.pdf')
 
     plt.savefig(output_path, bbox_inches='tight')
     print(f"[OUTPUT] Saved plot: {output_path}")
     plt.close()
 
-
-def plot_auc_convergence(df, output_path=None):
+def plot_auc_convergence(output_path=None):
     """
-    Line plot showing AUC vs number of training samples.
-
-    Visualizes how prediction accuracy improves as more
-    response matrix samples become available.
+    Line plot showing AUC vs number of training samples for RAW, PCA, and SAE embeddings.
     """
-    if df is None or len(df) == 0:
-        print("No data for AUC convergence plot")
+    csv_files = {
+        'PCA': os.path.join(RESULT_DIR, 'amortized_irt_pca_beta.csv'),
+        'SAE': os.path.join(RESULT_DIR, 'amortized_irt_sae_beta.csv'),
+        'RAW': os.path.join(RESULT_DIR, 'amortized_irt_raw_beta.csv')
+    }
+    
+    data = {}
+    for name, path in csv_files.items():
+        if os.path.exists(path):
+            data[name] = pd.read_csv(path)
+
+    if not data:
+        print("No CSV data found to plot AUC convergence.")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    base_df = next(iter(data.values()))
+    with optional_rc_context():
+        fig, ax = plt.subplots(figsize=(6.75, 3))
+        
+        ax.plot(base_df['n_samples'], base_df['auc_mean'], 'k--', label='Global Mean')
+        ax.plot(base_df['n_samples'], base_df['auc_rasch'], 'k-', label='Rasch-IRT')
+        
+        colors = {'PCA': muted_blue, 'SAE': muted_red, 'RAW': muted_green}
+        for name, df in data.items():
+            if 'auc_amortized' in df.columns:
+                ax.plot(df['n_samples'], df['auc_amortized'], '^-', color=colors[name], label=f'Amortized IRT ({name})', markersize=4)
 
-    ax.plot(df['n_samples'], df['auc_mean'], 'o-', label='Global Mean',
-            color=muted_blue, markersize=4)
-    ax.plot(df['n_samples'], df['auc_rasch'], 's-', label='Rasch-IRT',
-            color=muted_orange, markersize=4)
-    ax.plot(df['n_samples'], df['auc_amortized'], '^-', label='Amortized IRT',
-            color=muted_green, markersize=4)
+        ax.set_xlabel('Number of Response Matrix Samples (N)')
+        ax.set_ylabel('Test AUC')
+        ax.set_ylim(0.5, 1)
+        ax.legend(fontsize=8)
+        ax.grid(True, linestyle='--', alpha=0.6)
 
-    ax.set_xlabel('Number of Samples (n)')
-    ax.set_ylabel('AUC')
-    ax.set_ylim(0.5, 1)
-    ax.legend()
-    ax.grid(True, linestyle='--', alpha=0.6)
+        plt.tight_layout()
 
-    plt.tight_layout()
+        if output_path is None:
+            output_path = os.path.join(RESULT_DIR, 'auc_convergence.pdf')
 
-    if output_path is None:
-        emb_type = df['embedding_type'].iloc[0] if 'embedding_type' in df.columns else 'unknown'
-        output_path = os.path.join(RESULT_DIR, f'auc_convergence_{emb_type}.pdf')
-
-    plt.savefig(output_path, bbox_inches='tight')
-    print(f"[OUTPUT] Saved plot: {output_path}")
-    plt.close()
+        plt.savefig(output_path, bbox_inches='tight')
+        print(f"[OUTPUT] Saved plot: {output_path}")
+        plt.close()
 
 
 def plot_active_dims(df, output_path=None):
@@ -542,45 +584,115 @@ def plot_helm_auc_comparison(output_path=None):
     plt.close()
 
 
+def plot_benchmark_panels(output_dir=None):
+    if output_dir is None:
+        output_dir = RESULT_DIR
+        
+    benchmarks = ['scienceagentbench', 'scicode', 'corebench_hard']
+    titles = ['ScienceAgentBench', 'SciCode', 'CoreBench-Hard']
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    post_rev_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'post-revision')
+    
+    data = []
+    for b in benchmarks:
+        b_dir = os.path.join(post_rev_dir, b, 'resmat')
+        if not os.path.exists(b_dir):
+            data.append((None, None))
+            continue
+            
+        dfs = []
+        prefix0_df = None
+        for f in sorted(os.listdir(b_dir)):
+            if not f.startswith('resmat'): continue
+            df = pd.read_csv(os.path.join(b_dir, f), index_col=0)
+            dfs.append(df)
+            if '0.csv' in f and prefix0_df is None:
+                prefix0_df = df
+                
+        if not dfs:
+            data.append((None, None))
+            continue
+            
+        if prefix0_df is None:
+            prefix0_df = dfs[0]
+
+        all_cols = sorted(list(set().union(*[df.columns for df in dfs])))
+        shared_idx = sorted(list(set.intersection(*[set(df.index) for df in dfs])))
+        
+        aligned_dfs = [df.loc[shared_idx].reindex(columns=all_cols) for df in dfs]
+        stacked = np.array([df.values for df in aligned_dfs], dtype=float)
+        beta_mean = np.nanmean(stacked, axis=0)
+        
+        beta_df = pd.DataFrame(beta_mean, index=shared_idx, columns=all_cols)
+        prefix0_clean = prefix0_df.loc[shared_idx].reindex(columns=all_cols)
+        data.append((prefix0_clean, beta_df))
+
+    if not any(pre is not None for pre, _ in data):
+        print("No multi-benchmark matrices found for panel.")
+        return
+
+    # Panel Pre
+    with optional_rc_context():
+        fig, axes = plt.subplots(1, 3, figsize=(6.75, 2.5))
+        for i, (ax, (pre, _), title) in enumerate(zip(axes, data, titles)):
+            if pre is not None:
+                sns.heatmap(pre, cmap=mcolors.ListedColormap(["#d62728", "#1f77b4"]), ax=ax, cbar=False, vmin=0, vmax=1)
+                ax.set_title(f"{title} ($Y_1$)", fontsize=9)
+                ax.set_xticks([]); ax.set_yticks([])
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'hal_response_matrix_panel_pre.pdf'))
+        plt.close()
+
+    # Panel Post
+    with optional_rc_context():
+        fig, axes = plt.subplots(1, 4, figsize=(6.75, 2.5), gridspec_kw={'width_ratios': [1, 1, 1, 0.05]})
+        for i, (ax, (_, post), title) in enumerate(zip(axes[:-1], data, titles)):
+            if post is not None:
+                sns.heatmap(post, cmap=plt.cm.RdBu, ax=ax, cbar=False, vmin=0, vmax=1)
+                ax.set_title(f"{title} ($\\hat{{P}}$)", fontsize=9)
+                ax.set_xticks([]); ax.set_yticks([])
+                
+        # Shared color palette bar
+        norm = mcolors.Normalize(vmin=0, vmax=1)
+        cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.RdBu), cax=axes[-1])
+        cbar.set_label('Target Probability')
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'hal_response_matrix_panel_post.pdf'))
+        plt.close()
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
     parser = argparse.ArgumentParser(description='Generate plots from amortized IRT results')
-    parser.add_argument('--csv', type=str, default=None,
-                        help='Path to amortized_irt CSV results (default: auto-detect)')
-    parser.add_argument('--response-matrix', action='store_true',
-                        help='Generate response matrix and probability matrix visualizations')
+    parser.add_argument('--output-dir', type=str, default=None,
+                        help='Override output directory for final paper figures')
     args = parser.parse_args()
 
     print("=" * 60)
     print("GENERATING PLOTS")
     print("=" * 60)
+    
+    out_dir = args.output_dir or RESULT_DIR
 
-    # Generate response matrix visualizations
-    print("\n[Response Matrix] Generating response matrix and probability matrix plots...")
-    plot_response_and_probability_matrices()
+    # Generate response matrix visualizations (ColBench Y1 & P_hat)
+    print("\n[Response Matrix] Generating Colbench response and probability matrix plots...")
+    plot_response_and_probability_matrices(out_dir)
+    
+    # Generate unified panel visuals for scicode, scienceagentbench, corebench
+    print("\n[Response Matrix] Generating continuous multi-benchmark panels...")
+    plot_benchmark_panels(out_dir)
 
     # Generate HELM comparison plot (always)
     print("\n[HELM] Generating HELM AUC comparison...")
-    plot_helm_auc_comparison()
+    plot_helm_auc_comparison(os.path.join(out_dir, 'auc_comparison_helm.pdf'))
 
-    # Load and plot amortized IRT results
-    df = load_amortized_irt_results(args.csv)
-
-    if df is not None and len(df) > 0:
-        emb_type = df['embedding_type'].iloc[0] if 'embedding_type' in df.columns else 'unknown'
-        print(f"\n[Amortized IRT] Generating plots for {emb_type} embeddings...")
-
-        # Generate all amortized IRT plots
-        plot_rmse_comparison(df)
-        plot_auc_comparison(df)
-        plot_rmse_convergence(df)
-        plot_auc_convergence(df)
-        plot_active_dims(df)
-    else:
-        print("\n[Amortized IRT] No CSV results found. Run amortized_irt.py first.")
+    # Plot AUC and RMSE curves
+    print("\n[Amortized IRT] Generating performance learning curves for all embedding types...")
+    plot_rmse_convergence(os.path.join(out_dir, 'rmse_convergence.pdf'))
+    plot_auc_convergence(os.path.join(out_dir, 'auc_comparison.pdf'))
 
     print("\n" + "=" * 60)
     print("PLOTTING COMPLETE")
