@@ -633,19 +633,18 @@ def plot_benchmark_panels(output_dir=None):
 
     # Panel Pre
     with optional_rc_context():
-        fig, axes = plt.subplots(1, 3, figsize=(6.75, 2.5))
+        fig, axes = plt.subplots(1, 3, figsize=(6.75, 2.5), layout='constrained')
         for i, (ax, (pre, _), title) in enumerate(zip(axes, data, titles)):
             if pre is not None:
                 sns.heatmap(pre, cmap=mcolors.ListedColormap(["#d62728", "#1f77b4"]), ax=ax, cbar=False, vmin=0, vmax=1)
                 ax.set_title(f"{title} ($Y_1$)", fontsize=9)
                 ax.set_xticks([]); ax.set_yticks([])
-        plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'hal_response_matrix_panel_pre.pdf'))
         plt.close()
 
     # Panel Post
     with optional_rc_context():
-        fig, axes = plt.subplots(1, 4, figsize=(6.75, 2.5), gridspec_kw={'width_ratios': [1, 1, 1, 0.05]})
+        fig, axes = plt.subplots(1, 4, figsize=(6.75, 2.5), gridspec_kw={'width_ratios': [1, 1, 1, 0.05]}, layout='constrained')
         for i, (ax, (_, post), title) in enumerate(zip(axes[:-1], data, titles)):
             if post is not None:
                 sns.heatmap(post, cmap=plt.cm.RdBu, ax=ax, cbar=False, vmin=0, vmax=1)
@@ -657,7 +656,6 @@ def plot_benchmark_panels(output_dir=None):
         cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.RdBu), cax=axes[-1])
         cbar.set_label('Target Probability')
         
-        plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'hal_response_matrix_panel_post.pdf'))
         plt.close()
 
