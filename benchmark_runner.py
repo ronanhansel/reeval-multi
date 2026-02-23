@@ -65,14 +65,18 @@ def run_experiment(emb_type, n_samples, model_type, lambda_tau, snapping_thresho
 def main():
     results = []
     
-    # Grid definitions
-    n54_lambdas = [1.32, 1.34, 1.36] 
+# Grid definitions
+    n54_lambdas_pca = [0.1, 0.3, 0.5, 0.8, 1.0, 1.2, 1.38, 1.5, 1.8]
+    n54_lambdas_sae = [0.1, 0.3, 0.5, 0.8, 1.0, 1.2, 1.34, 1.5, 1.8]
+    n54_lambdas_raw = [0.1, 0.3, 0.5, 0.8, 1.0, 1.5, 2.0]
     
     configs = [
-        ('sae', 54, 'beta', n54_lambdas, [0.01]),
+        ('pca', 54, 'beta', n54_lambdas_pca, [0.01]),
+        ('sae', 54, 'beta', n54_lambdas_sae, [0.01]),
+        ('raw', 54, 'beta', n54_lambdas_raw, [0.01]),
     ]
     
-    print("Starting Grid Search...")
+    print("Starting Grid Search on N=54 for MAX performance...")
     
     for emb_type, n, m_type, lambdas, snaps in configs:
         for l, s in itertools.product(lambdas, snaps):
@@ -83,28 +87,27 @@ def main():
             
             print(f"Result: Active Dims={m['active_dims']}, AUC={m['auc_amortized']}")
 
-    print("\n\n=== CONSOLIDATED BEST RESULTS ===")
+    print("\n\n=== CONSOLIDATED BEST N=54 RESULTS ===")
     df = pd.DataFrame(results)
     
     # Find best hyperparams for each category
     # Criteria: We want active_dims between 2 and 20, maximize auc_amortized
     best_rows = []
     
-    for emb_type in ['pca', 'sae']:
-        for n in [1, 54]:
-            sub_df = df[(df['emb_type'] == emb_type) & (df['n_samples'] == n)]
-            if sub_df.empty: continue
+    for emb_type in ['pca', 'sae', 'raw']:
+        sub_df = df[(df['emb_type'] == emb_type) & (df['n_samples'] == 54)]
+        if sub_df.empty: continue
+        
+        # Filter by valid active dims constraint
+        valid_df = sub_df[(sub_df['active_dims'] >= 2) & (sub_df['active_dims'] <= 35)]
+        
+        if not valid_df.empty:
+            best_row = valid_df.sort_values('auc_amortized', ascending=False).iloc[0]
+        else:
+            # Fallback to whatever has highest AUC if no dimensions filter is met
+            best_row = sub_df.sort_values('auc_amortized', ascending=False).iloc[0]
             
-            # Filter by valid active dims constraint
-            valid_df = sub_df[(sub_df['active_dims'] >= 2) & (sub_df['active_dims'] <= 28)]
-            
-            if not valid_df.empty:
-                best_row = valid_df.sort_values('auc_amortized', ascending=False).iloc[0]
-            else:
-                # Fallback to whatever has highest AUC if no dimensions filter is met
-                best_row = sub_df.sort_values('auc_amortized', ascending=False).iloc[0]
-                
-            best_rows.append(best_row)
+        best_rows.append(best_row)
             
     best_df = pd.DataFrame(best_rows)
     print(best_df[['emb_type', 'n_samples', 'model_type', 'lambda_tau', 'snapping_threshold', 'active_dims', 'rmse_rasch', 'rmse_amortized', 'auc_rasch', 'auc_amortized']].to_string())
