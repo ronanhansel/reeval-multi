@@ -49,6 +49,7 @@ new_traces/
 node_modules
 
 results/
+result/
 output/
 results
 output

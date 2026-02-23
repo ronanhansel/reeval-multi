@@ -51,21 +51,23 @@ HF_REPO_ID = "ronanhansel/data-reeval-multi"
 
 def load_response_matrices():
     """
-    Load all 22 response matrices Y_1, ..., Y_22 from colbench directory.
-    Downloads from HuggingFace if not found locally.
+    Load response matrices from local item-editor directory.
 
     Returns:
         list of DataFrames: Each DataFrame is a binary response matrix (models x items)
     """
-    # Download from HuggingFace (uses cache if already downloaded)
-    data_dir = snapshot_download(repo_id=HF_REPO_ID, repo_type="dataset")
-    colbench_dir = os.path.join(data_dir, 'colbench')
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
+    post_rev_dir = os.path.join(resmat_dir, 'post-revision')
+
+    colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
 
     all_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
     if not all_files:
         print(f"No response matrix files found in {colbench_dir}")
         return None
 
+    # Sort files to ensure stable order
     all_dfs = [pd.read_csv(os.path.join(colbench_dir, f), index_col=0) for f in all_files]
     print(f"Loaded {len(all_dfs)} response matrices from {colbench_dir}")
     return all_dfs
@@ -92,7 +94,7 @@ def compute_empirical_probability_matrix(response_matrices):
 
     # Stack and average
     filtered_dfs = [df.loc[shared_indices] for df in response_matrices]
-    stacked = np.array([df.values for df in filtered_dfs])
+    stacked = np.array([df.values for df in filtered_dfs], dtype=float)
     p_hat = np.nanmean(stacked, axis=0)
 
     return pd.DataFrame(p_hat, index=shared_indices, columns=filtered_dfs[0].columns)
@@ -133,6 +135,7 @@ def visualize_binary_response_matrix(Y, title="Response Matrix Y", output_path=N
     bounds = [-0.5, 0.5, 1.5]
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
+    values = df.values.astype(float)
     with plt.rc_context(bundles.icml2024(usetex=True, family="serif")):
         fig, ax = plt.subplots(figsize=(6.75, 2.5))  # Full ICML page width
         cax = ax.imshow(values, aspect='auto', cmap=cmap, norm=norm, interpolation='nearest')

@@ -54,23 +54,23 @@ RANDOM_SEED = 42
 K_MODEL = 30
 
 # Tau sparsity settings
-LAMBDA_TAU = 0.002
-TAU_INIT = 0.5
-TAU_WARMUP = 200
-RAMP_EPOCHS = 200
+LAMBDA_TAU = 2.0
+TAU_INIT = 0.2
+TAU_WARMUP = 20
+RAMP_EPOCHS = 50
 SNAPPING_THRESHOLD = 0.005
 DEAD_ZONE_VALUE = -0.1
 TAU_THRESHOLD = 0.01
 
 # Training settings
-EPOCHS = 1000
-EVAL_EVERY = 100
+EPOCHS = 150
+EVAL_EVERY = 25
 
 # Learning rates
-LR_THETA = 0.02
-LR_GLOBAL = 0.005
-WD_THETA = 1e-3
-WD_W = 1e-5
+LR_THETA = 0.01
+LR_GLOBAL = 0.002
+WD_THETA = 5.0
+WD_W = 0.1
 
 # Beta distribution precision parameter
 BETA_PHI = 10.0
@@ -98,7 +98,7 @@ class AmortizedIRTModel(nn.Module):
     Tau parameters enable automatic dimensionality discovery through sparsity.
     """
 
-    def __init__(self, N, J, K, d, x_j_emb, dropout=0.0):
+    def __init__(self, N, J, K, d, x_j_emb, dropout=0.7):
         super().__init__()
         self.register_buffer('x_j', x_j_emb)  # Pre-computed embeddings (J x d)
         self.dropout = dropout
@@ -231,12 +231,21 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
                         model.tau_raw[k] = DEAD_ZONE_VALUE
 
         # Evaluation
-        if epoch % EVAL_EVERY == 0:
+        if epoch % EVAL_EVERY == 0 or epoch == epochs - 1:
             model.eval()
             with torch.no_grad():
                 p_eval = model()
+                
+                # Train metrics
+                train_rmse = compute_rmse(p_eval.cpu().numpy(), y_train.cpu().numpy(), train_mask_t.cpu().numpy())
+                train_auc = evaluate_auc(p_eval, y_train, train_mask_t)
+                
+                # Test metrics
                 curr_rmse = compute_rmse(p_eval.cpu().numpy(), y_oracle.cpu().numpy(), test_mask_oracle)
+                curr_auc = evaluate_auc(p_eval, y_oracle, torch.from_numpy(test_mask_oracle).to(device))
                 best_rmse = min(best_rmse, curr_rmse)
+                
+                print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f}")
 
     return best_rmse
 
@@ -253,16 +262,72 @@ def load_data(embedding_type='pca', embedding_dim=48):
         embedding_type: 'raw', 'pca', or 'sae'
         embedding_dim: dimension for pca/sae embeddings (ignored for raw)
     """
-    # Download from HuggingFace (uses cache if already downloaded)
-    data_dir = snapshot_download(repo_id=HF_REPO_ID, repo_type="dataset")
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
+    post_rev_dir = os.path.join(resmat_dir, 'post-revision')
+    
+    # Load from local directory instead of huggingface cache
+    colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
+    processed_emb_dir = os.path.join(repo_root, 'model', 'processed_embeddings')
+    raw_emb_file = os.path.join(resmat_dir, 'all_benchmarks_embeddings_4096_8B.pkl')
 
-    resmat_dir = os.path.join(data_dir, 'colbench')
-    processed_emb_dir = os.path.join(data_dir, 'hal', 'processed_embeddings')
-    raw_emb_file = os.path.join(data_dir, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
-
-    # Load response matrices
-    all_files = sorted([f for f in os.listdir(resmat_dir) if f.startswith('resmat')])
-    all_dfs = [pd.read_csv(os.path.join(resmat_dir, f), index_col=0) for f in all_files]
+    # 1. Load ColBench response matrices
+    colbench_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
+        
+    colbench_dfs = []
+    for f in colbench_files:
+        df = pd.read_csv(os.path.join(colbench_dir, f), index_col=0)
+        df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
+        colbench_dfs.append(df)
+    
+    # 2. Load other benchmarks response matrices
+    other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
+    
+    # Find maximum number of runs across other benchmarks
+    max_other_runs = 0
+    for benchmark in other_benchmarks:
+        b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
+        if os.path.exists(b_resmat_dir):
+            b_files = [f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')]
+            max_other_runs = max(max_other_runs, len(b_files))
+            
+    other_dfs = []
+    for i in range(max_other_runs):
+        combined_df = None
+        for benchmark in other_benchmarks:
+            b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
+            if not os.path.exists(b_resmat_dir): continue
+            
+            b_files = sorted([f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')])
+            if i < len(b_files):
+                df = pd.read_csv(os.path.join(b_resmat_dir, b_files[i]), index_col=0)
+                # Ensure unique columns by prefixing with benchmark name if not already
+                df.columns = [f"{benchmark}.{c}" if not str(c).startswith(benchmark) else c for c in df.columns]
+                if combined_df is None:
+                    combined_df = df
+                else:
+                    combined_df = pd.concat([combined_df, df], axis=1, join='outer')
+        
+        if combined_df is not None:
+            other_dfs.append(combined_df)
+            
+    max_runs = max(len(colbench_dfs), len(other_dfs))
+    all_dfs = []
+    for i in range(max_runs):
+        dfs_to_concat = []
+        if i < len(colbench_dfs):
+            dfs_to_concat.append(colbench_dfs[i])
+        else:
+            dfs_to_concat.append(colbench_dfs[i % len(colbench_dfs)])
+            
+        if i < len(other_dfs):
+            dfs_to_concat.append(other_dfs[i])
+        elif len(other_dfs) > 0:
+            dfs_to_concat.append(other_dfs[-1])
+            
+        if dfs_to_concat:
+            combined = pd.concat(dfs_to_concat, axis=1, join='outer')
+            all_dfs.append(combined)
 
     # Find global shared indices (models present in all matrices)
     global_shared_indices = set(all_dfs[0].index)
@@ -312,11 +377,14 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
     print("PREPARING EXPERIMENT DATA")
     print("=" * 60)
 
+    # Find the union of all columns across all dfs to handle potential missing items in some runs
+    all_columns = sorted(list(set().union(*[df.columns for df in all_dfs])))
+    
     # Create oracle matrix (average across all response matrices)
-    oracle_dfs_filtered = [df.loc[global_shared_indices] for df in all_dfs]
-    oracle_stacked = np.array([df.values for df in oracle_dfs_filtered])
+    oracle_dfs_filtered = [df.loc[global_shared_indices].reindex(columns=all_columns) for df in all_dfs]
+    oracle_stacked = np.array([df.values for df in oracle_dfs_filtered], dtype=float)
     oracle_matrix = np.nanmean(oracle_stacked, axis=0)
-    oracle_df = pd.DataFrame(oracle_matrix, index=global_shared_indices, columns=oracle_dfs_filtered[0].columns)
+    oracle_df = pd.DataFrame(oracle_matrix, index=global_shared_indices, columns=all_columns)
 
     print(f"Total matrices: {len(all_dfs)}")
     print(f"Global user intersection: {len(global_shared_indices)} users")
@@ -416,9 +484,11 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
 
     # Prepare training data from n_files samples
     current_dfs = [all_dfs[i].loc[global_shared_indices] for i in range(n_files)]
-    current_stacked = np.array([df.values for df in current_dfs])
+    all_columns = sorted(list(set().union(*[df.columns for df in current_dfs])))
+    current_dfs = [df.reindex(columns=all_columns) for df in current_dfs]
+    current_stacked = np.array([df.values for df in current_dfs], dtype=float)
     train_target_matrix = np.nanmean(current_stacked, axis=0)
-    train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=current_dfs[0].columns)
+    train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=all_columns)
 
     train_values = train_target_df.values.copy()
 

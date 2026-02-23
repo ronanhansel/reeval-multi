@@ -166,13 +166,10 @@ def generate_raw_embeddings_from_text(data_dir, output_file, model_name=DEFAULT_
 # ══════════════════════════════════════════════════════════════════════════════
 
 def ensure_data_downloaded():
-    """Download raw data from HuggingFace (uses cache if already downloaded).
-
-    Returns:
-        tuple: (data_dir, emb_file) paths
-    """
-    data_dir = snapshot_download(repo_id=HF_REPO_ID, repo_type="dataset")
-    emb_file = os.path.join(data_dir, 'hal', 'all_benchmarks_embeddings_4096_8B.pkl')
+    """Returns local paths for the main data directory and raw embeddings."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
+    emb_file = os.path.join(data_dir, 'all_benchmarks_embeddings_4096_8B.pkl')
     return data_dir, emb_file
 
 

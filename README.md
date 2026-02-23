@@ -127,8 +127,6 @@ The repository is modularly structured into the following components:
 - `data-collection/`: Scripts for downloading existing benchmarks and traces (e.g., `hal.py`).
 - `test/`: Backend scripts and testing utilities.
 
-*Note: The `paper/` directory contains manuscript drafts and LaTeX source files and is explicitly ignored in version control.*
-
 ---
 
 ## 3. The Item-Editor Pipeline
