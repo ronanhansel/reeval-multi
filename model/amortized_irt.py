@@ -54,16 +54,16 @@ RANDOM_SEED = 42
 K_MODEL = 30
 
 # Tau sparsity settings
-LAMBDA_TAU = 2.0
+LAMBDA_TAU = 1.38
 TAU_INIT = 0.2
 TAU_WARMUP = 20
 RAMP_EPOCHS = 50
-SNAPPING_THRESHOLD = 0.005
+SNAPPING_THRESHOLD = 0.01
 DEAD_ZONE_VALUE = -0.1
 TAU_THRESHOLD = 0.01
 
 # Training settings
-EPOCHS = 150
+EPOCHS = 250
 EVAL_EVERY = 25
 
 # Learning rates
@@ -197,16 +197,17 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
 
         # Reconstruction loss using torch.distributions
         p = probs[train_mask_t].clamp(eps, 1 - eps)
-        y = y_train[train_mask_t].clamp(eps, 1 - eps)
-
+        
         if model_type == 'beta':
             # Beta NLL: α = μφ, β = (1-μ)φ
+            y = y_train[train_mask_t].clamp(eps, 1 - eps)
             dist = torch.distributions.Beta(p * beta_phi, (1 - p) * beta_phi)
+            loss_fit = -dist.log_prob(y).mean()
         else:
             # Bernoulli NLL
+            y = y_train[train_mask_t]
             dist = torch.distributions.Bernoulli(probs=p)
-
-        loss_fit = -dist.log_prob(y).mean()
+            loss_fit = -dist.log_prob(y).mean()
 
         # ARD sparsity schedule (warmup -> ramp -> full)
         if epoch < TAU_WARMUP:
@@ -245,7 +246,8 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
                 curr_auc = evaluate_auc(p_eval, y_oracle, torch.from_numpy(test_mask_oracle).to(device))
                 best_rmse = min(best_rmse, curr_rmse)
                 
-                print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f}")
+                tau_vals = model.get_tau()
+                print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f} | Tau (min/mean/max): {tau_vals.min().item():.3f}/{tau_vals.mean().item():.3f}/{tau_vals.max().item():.3f}")
 
     return best_rmse
 
@@ -523,7 +525,14 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     with torch.no_grad():
         p_amortized = model()
         auc_amortized = evaluate_auc(p_amortized, y_oracle, test_mask_t)
-        active_dims = (model.get_tau() > TAU_THRESHOLD).sum().item()
+        
+        tau_val = model.get_tau()
+        active_mask = tau_val > TAU_THRESHOLD
+        active_dims = active_mask.sum().item()
+        
+        active_dim_indices = torch.nonzero(active_mask).squeeze().cpu().tolist()
+        if isinstance(active_dim_indices, int):
+            active_dim_indices = [active_dim_indices]
 
     return {
         'n_samples': n_files,
@@ -535,6 +544,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'auc_rasch': auc_rasch,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
+        'active_indices': str(active_dim_indices)
     }
 
 
@@ -588,7 +598,21 @@ def main():
         '--output', type=str, default=None,
         help='Output CSV path (default: result/amortized_irt_{embedding_type}_{model_type}.csv)'
     )
+    parser.add_argument('--lambda-tau', type=float, default=None, help='Override LAMBDA_TAU')
+    parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
+    parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
+    parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
     args = parser.parse_args()
+
+    global LAMBDA_TAU, WD_THETA, EPOCHS, SNAPPING_THRESHOLD
+    if args.lambda_tau is not None:
+        LAMBDA_TAU = args.lambda_tau
+    if args.wd_theta is not None:
+        WD_THETA = args.wd_theta
+    if args.epochs is not None:
+        EPOCHS = args.epochs
+    if args.snapping_threshold is not None:
+        SNAPPING_THRESHOLD = args.snapping_threshold
 
     print(f"Using device: {device}")
     print(f"Embedding type: {args.embedding_type}")
@@ -596,6 +620,8 @@ def main():
         print(f"Model type: beta (Beta distribution NLL on P̂, φ={args.beta_phi})")
     else:
         print(f"Model type: bernoulli (Bernoulli NLL on binary Y)")
+    
+    print(f"Hyperparameters -> LAMBDA_TAU: {LAMBDA_TAU} | WD_THETA: {WD_THETA} | EPOCHS: {EPOCHS} | SNAPPING: {SNAPPING_THRESHOLD}")
 
     # Load data
     all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(

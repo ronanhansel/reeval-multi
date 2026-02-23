@@ -48,9 +48,10 @@ except ImportError:
 # Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
-HF_REPO_ID = "ronanhansel/data-reeval-multi"
+HF_REPO_ID = "aims-foundation/eval_response_matrix"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'processed_embeddings')
+CACHE_DIR = os.path.join(OUTPUT_DIR, '.cache')
 
 # Benchmarks for raw embedding generation
 BENCHMARKS = [
@@ -102,27 +103,23 @@ def generate_raw_embeddings_from_text(data_dir, output_file, model_name=DEFAULT_
     os.environ['HF_HOME'] = CACHE_DIR
 
     # Load input data
-    print("Loading input data from CSV files...")
-    dfs = []
-
-    for benchmark in BENCHMARKS:
-        csv_file = os.path.join(data_dir, f"{benchmark}_inputs.csv")
-        if os.path.exists(csv_file):
-            temp_df = pd.read_csv(csv_file)
-            temp_df['benchmark'] = benchmark
-            dfs.append(temp_df)
-            print(f"  Loaded {len(temp_df)} items from {benchmark}")
-        else:
-            print(f"  WARNING: {csv_file} not found")
-
-    if not dfs:
-        raise FileNotFoundError("No input CSV files found!")
-
-    df = pd.concat(dfs, ignore_index=True)
+    pkl_file = os.path.join(data_dir, "all_benchmarks_inputs.pkl")
+    print(f"Loading input data from {pkl_file}...")
+    
+    if not os.path.exists(pkl_file):
+        raise FileNotFoundError(f"{pkl_file} not found!")
+        
+    df = pd.read_pickle(pkl_file)
     print(f"Total: {len(df)} task inputs")
 
+    # Handle formatting drift between old and new dataset
+    if 'benchmark_id' in df.columns:
+        df['benchmark'] = df['benchmark_id']
+    if 'task_input' in df.columns:
+        df['text_input'] = df['task_input']
+
     if 'task_id' not in df.columns or 'text_input' not in df.columns:
-        raise ValueError("CSV files must have 'task_id' and 'text_input' columns")
+        raise ValueError("Input data must have 'task_id' and 'text_input' (or 'task_input') columns")
 
     # Pre-process text
     print(f"Pre-processing texts (truncating to {MAX_CHARS} chars)...")
@@ -390,7 +387,7 @@ def push_to_huggingface(output_dir, repo_id=HF_REPO_ID):
     for filename in os.listdir(output_dir):
         if filename.startswith('embeddings_') and filename.endswith('.pkl'):
             local_path = os.path.join(output_dir, filename)
-            remote_path = f"hal/processed_embeddings/{filename}"
+            remote_path = f"processed_embeddings/{filename}"
 
             print(f"  Uploading {filename} -> {remote_path}")
             api.upload_file(
@@ -477,9 +474,8 @@ Examples:
         print("=" * 60)
         print("STEP 1: GENERATING RAW EMBEDDINGS FROM TEXT")
         print("=" * 60)
-        input_dir = os.path.join(data_dir, 'hal')
         raw_emb_file = generate_raw_embeddings_from_text(
-            data_dir=input_dir,
+            data_dir=data_dir,
             output_file=raw_emb_file,
             model_name=args.llm_model,
             batch_size=args.batch_size
