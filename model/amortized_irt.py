@@ -319,7 +319,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         
         if pre_revision == '8':
             colbench_agents = final_df[final_df.columns[final_df.columns.str.startswith('colbench')]].dropna(how='all').index
-            np.random.seed(0)
+            np.random.seed(RANDOM_SEED)
             sampled = np.random.choice(colbench_agents, size=8, replace=False)
             final_df = final_df.loc[sampled]
             
@@ -344,26 +344,25 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         # 2. Load other benchmarks response matrices
         other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
 
-        from utils import aggregate_remediation_resmats
-        aggregated_other_dfs = []
+        from utils import get_benchmark_iterations
+        bench_iterations = {} # benchmark -> [df0, df1, ..., df10]
         for benchmark in other_benchmarks:
             b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
             if os.path.exists(b_resmat_dir):
-                agg_df = aggregate_remediation_resmats(b_resmat_dir, benchmark)
-                if agg_df is not None:
-                    aggregated_other_dfs.append(agg_df)
+                iters = get_benchmark_iterations(b_resmat_dir, benchmark)
+                if iters:
+                    bench_iterations[benchmark] = iters
                     
-        if aggregated_other_dfs:
-            combined_other = pd.concat(aggregated_other_dfs, axis=1, join='outer')
-        else:
-            combined_other = None
-
         all_dfs = []
         for col_df in colbench_dfs:
-            if combined_other is not None:
-                all_dfs.append(pd.concat([col_df, combined_other], axis=1, join='outer'))
-            else:
-                all_dfs.append(col_df)
+            current_bench_parts = [col_df]
+            for benchmark, iters in bench_iterations.items():
+                # Randomly pick an iteration (0 = base, 1-10 = remediation)
+                # This ensures N=1 uses one noisy run across all benchmarks.
+                idx = np.random.randint(0, len(iters))
+                current_bench_parts.append(iters[idx])
+            
+            all_dfs.append(pd.concat(current_bench_parts, axis=1, join='outer'))
     
         # Find shared indices for the model target matrices.
         # The user specifically requested 32 unique agents for the post-revision sweep.
@@ -522,7 +521,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     # Prepare training data from n_files samples
     if n_files < len(all_dfs):
         sampled_indices = np.random.choice(len(all_dfs), n_files, replace=False)
-        print(f"Sampled agents: {sampled_indices}")
+        print(f"Sampled iterations: {sampled_indices}")
         current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in sampled_indices]
     else:
         current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in range(n_files)]
@@ -597,10 +596,17 @@ def parse_n_samples(arg, total_files):
     """Parse --n-samples argument into list of integers."""
     if arg == 'all':
         return list(range(1, total_files + 1))
+    if arg == 'max':
+        return [total_files]
+    if arg == '1,all':
+        return [1, total_files]
 
     result = []
     for part in arg.split(','):
         part = part.strip()
+        if part == 'all':
+            result.append(total_files)
+            continue
         if '-' in part:
             start, end = part.split('-')
             result.extend(range(int(start), int(end) + 1))
@@ -702,7 +708,7 @@ def main():
 
     results = []
     for i, n in enumerate(n_values):
-        print(f"\n[{i+1}/{len(n_values)}] Processing with n={n} sample(s)...")
+        print(f"\n[{i+1}/{len(n_values)}] Processing with n={n} iteration(s)...")
         result = run_experiment(n, all_dfs, global_shared_indices, data,
                                 model_type=args.model_type, beta_phi=args.beta_phi)
         result['embedding_type'] = actual_emb_type
@@ -721,7 +727,8 @@ def main():
         output_path = args.output
     else:
         suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}.csv')
+        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}_seed_{RANDOM_SEED}.csv')
         
     df_results.to_csv(output_path, index=False)
 

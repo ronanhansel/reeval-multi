@@ -1,0 +1,2 @@
+n_samples,model_type,rmse_mean,rmse_rasch,rmse_amortized,auc_mean,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type,scenario
+1,beta,0.45447615073467706,0.4508954146554114,0.43575175987409154,0.5,0.5722951844903065,0.639249530956848,26,"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29]",sae,Pre-8

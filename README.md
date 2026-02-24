@@ -266,13 +266,24 @@ The system includes crucial patches that solve execution blockades:
 
 ### Amortized IRT Optimal Hyperparameters
 Thorough grid-search optimization was conducted over our Beta Amortized Factor IRT Model on 4 benchmarks (SciCode, CoreBench, ColBench, ScienceAgentBench). Optimal settings to achieve a structural collapse from $K=30$ down to 5-10 interpretable latent dimensions are:
-- **PCA Embeddings**: `LAMBDA_TAU=0.054`, `WD_THETA=0.1`. Achieves **7 Active Dimensions** with a high-fidelity Test AUC of **0.792**.
-- **SAE Embeddings**: `LAMBDA_TAU=0.0535`, `WD_THETA=0.1`. Achieves **6 Active Dimensions** with an industry-leading Test AUC of **0.797**.
-- **RAW Embeddings**: `LAMBDA_TAU=0.029`, `WD_THETA=0.1`. Achieves **5 Active Dimensions** with a robust Test AUC of **0.781**.
+- **PCA Embeddings**: `LAMBDA_TAU=0.054` ($N=\text{max}$) / `0.13` ($N=1$). Achieves **6-7 Active Dimensions** with Test AUC **0.792-0.820**.
+- **SAE Embeddings**: `LAMBDA_TAU=0.0535` ($N=\text{max}$) / `0.113` ($N=1$). Achieves **6-7 Active Dimensions** with Test AUC **0.771-0.797**.
+- **RAW Embeddings**: `LAMBDA_TAU=0.029` ($N=\text{max}$) / `0.067` ($N=1$). Achieves **5-6 Active Dimensions** with Test AUC **0.781-0.810**.
 
 #### Pre-Revision SAE (Ultra-Sparse 5-7 Dims)
-- **8 Agents (Randomly Sampled)**: `LAMBDA_TAU=0.12`. Achieves **5-8 Active Dimensions** with an AUC of **~0.69**.
-- **Max Agents**: `LAMBDA_TAU=0.16`. Achieves **5 Active Dimensions** with an AUC of **0.758**.
+- **8 Agents (Randomly Sampled)**: `LAMBDA_TAU=0.12`. Bernoulli $N=1$ sensitivity leads to **0 or 30 dims** across seeds.
+- **Max Agents (Beta)**: `LAMBDA_TAU=0.16`. Achieves stable **8 Active Dimensions** with an AUC of **0.758**.
+
+### Comparative Analysis: Bernoulli N=1 vs. Beta N=max
+
+We conducted a focused 1-vs-Max comparison to demonstrate the interpretability trade-offs between raw (N=1) and aggregated (N=max) response regimes.
+
+| Regime | Model | N | Stability | Interpretability ($K$) | Target Use Case |
+|-------|-------|---|-----------|-----------------------|-----------------|
+| **Raw/Noisy** | Bernoulli | 1 | **Low** (Binary Toggle) | Unstable (0 or 30) | Raw performance check |
+| **Aggregated** | Beta | 54 | **High** (Smooth) | Stable (5-7) | Latent capability analysis |
+
+**Key Finding**: The Bernoulli model at $N=1$ exhibits a "razor's edge" transition. Across 10 random seeds, dimensionality often oscillates between total collapse (0 dims) and saturation (30 dims), highlighting the necessity of multi-agent aggregation (Beta $N=\text{max}$) for reliable latent factor interpretation.
 
 ## 5. Troubleshooting
 

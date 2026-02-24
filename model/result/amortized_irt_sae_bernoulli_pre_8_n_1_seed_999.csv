@@ -1,0 +1,2 @@
+n_samples,model_type,rmse_mean,rmse_rasch,rmse_amortized,auc_mean,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type,scenario
+1,bernoulli,0.45937796416591403,0.5033727675531225,0.4306774872571009,0.5,0.5497105589120049,0.6934452337015596,0,[],sae,Pre-8

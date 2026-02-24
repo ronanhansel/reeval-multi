@@ -71,8 +71,24 @@ import pandas as pd
 
 def aggregate_remediation_resmats(benchmark_dir, benchmark_name):
     """
-    For a given benchmark directory, aggregate the base 0-indexed resmat 
-    with the remediation resmats (1-10 indices).
+    Legacy function: aggregates all remediation runs into a single averaged matrix.
+    """
+    iters = get_benchmark_iterations(benchmark_dir, benchmark_name)
+    if not iters:
+        return None
+        
+    df_base = iters[0].copy()
+    if len(iters) > 1:
+        remediation_concat = pd.concat(iters[1:])
+        remediation_avg = remediation_concat.groupby(remediation_concat.index).mean()
+        df_base.update(remediation_avg)
+    return df_base
+
+def get_benchmark_iterations(benchmark_dir, benchmark_name):
+    """
+    Returns a list of dataframes where each is df_base.update(df_remediation_i).
+    Iteration 0 is the base (index_0) with NO updates.
+    Iterations 1..N are base updated with remediation 1..N.
     """
     files = [f for f in os.listdir(benchmark_dir) if f.startswith('resmat')]
     
@@ -83,26 +99,30 @@ def aggregate_remediation_resmats(benchmark_dir, benchmark_name):
             break
             
     if base_file is None:
-        return None
+        return []
         
     df_base = pd.read_csv(os.path.join(benchmark_dir, base_file), index_col=0)
-    df_base.columns = [f"{benchmark_name}.{c}" if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) else c for c in df_base.columns]
+    df_base.columns = [
+        f"{benchmark_name}.{c}" 
+        if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) 
+        else c for c in df_base.columns
+    ]
     
-    remediation_dfs = []
-    for f in files:
+    results = [df_base.copy()]
+    
+    # Sort files to ensure deterministic order if needed, but not strictly required
+    for f in sorted(files):
         if f != base_file:
-            df = pd.read_csv(os.path.join(benchmark_dir, f), index_col=0)
-            df.columns = [f"{benchmark_name}.{c}" if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) else c for c in df.columns]
-            remediation_dfs.append(df)
+            df_rem = pd.read_csv(os.path.join(benchmark_dir, f), index_col=0)
+            df_rem.columns = [
+                f"{benchmark_name}.{c}" 
+                if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) 
+                else c for c in df_rem.columns
+            ]
             
-    if not remediation_dfs:
-        return df_base
-        
-    remediation_concat = pd.concat(remediation_dfs)
-    remediation_avg = remediation_concat.groupby(remediation_concat.index).mean()
-    
-    # Update base dataframe exactly where remediation data exists.
-    df_base.update(remediation_avg)
-    
-    return df_base
+            df_iter = df_base.copy()
+            df_iter.update(df_rem)
+            results.append(df_iter)
+            
+    return results
 
