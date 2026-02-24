@@ -1,2 +1,0 @@
-n_samples,model_type,rmse_naive,rmse_rasch,rmse_amortized,auc_naive,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type
-1,bernoulli,0.2623404051775929,0.3570037438880194,0.21794850963016016,0.5,0.5528141139216647,0.8398801221397068,30,"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]",pca

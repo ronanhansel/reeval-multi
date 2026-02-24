@@ -1,2 +1,0 @@
-n_samples,model_type,rmse_mean,rmse_rasch,rmse_amortized,auc_mean,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type
-1,beta,0.2623404051775929,0.3570037438880194,0.27222105288065185,0.5,0.5528141139216647,0.7709409281109811,5,"[6, 15, 18, 19, 20]",sae

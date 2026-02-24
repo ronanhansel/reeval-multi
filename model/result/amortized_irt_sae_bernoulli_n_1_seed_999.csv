@@ -1,2 +1,0 @@
-n_samples,model_type,rmse_naive,rmse_rasch,rmse_amortized,auc_naive,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type
-1,bernoulli,0.2866108647199483,0.34863297278136085,0.2681457179852725,0.5,0.6280291387738446,0.691993783265175,0,[],sae

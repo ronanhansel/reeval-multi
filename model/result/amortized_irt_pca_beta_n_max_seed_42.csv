@@ -1,2 +1,0 @@
-n_samples,model_type,rmse_naive,rmse_rasch,rmse_amortized,auc_naive,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type
-54,beta,0.26235738808567505,0.2615523877120376,0.23476764056059354,0.5,0.6140159083198251,0.7934934217966599,6,"[2, 3, 13, 15, 16, 20]",pca

@@ -587,6 +587,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     return {
         'n_samples': n_files,
         'model_type': model_type,
+        'seed': RANDOM_SEED,
         'rmse_naive': rmse_naive,
         'rmse_rasch': rmse_rasch,
         'rmse_amortized': best_rmse,
@@ -731,16 +732,23 @@ def main():
         print(f"   -> AUC  | Naive: {result['auc_naive']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
               f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
 
-    # Save results to CSV
+    # Save results to CSV (Consolidated)
     df_results = pd.DataFrame(results)
     if args.output:
         output_path = args.output
     else:
         suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
         n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}_seed_{RANDOM_SEED}.csv')
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
         
-    df_results.to_csv(output_path, index=False)
+    if os.path.exists(output_path):
+        # Append to existing results to consolidate seeds
+        df_old = pd.read_csv(output_path)
+        # Avoid duplicate (n_samples, seed) entries if re-run
+        df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed'], keep='last')
+        df_combined.to_csv(output_path, index=False)
+    else:
+        df_results.to_csv(output_path, index=False)
 
     print("\n" + "=" * 60)
     print("EXPERIMENT COMPLETE")
