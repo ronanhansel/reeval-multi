@@ -17,34 +17,90 @@ warnings.filterwarnings('ignore')
 
 def load_post_revision_data():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'post-revision', 'colbench_backend_programming', 'resmat')
+    post_rev_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'post-revision')
 
-    colbench_files = sorted([f for f in os.listdir(resmat_dir) if f.startswith('resmat')])
+    # 1. Load ColBench (main anchors)
     dfs = []
-    for f in colbench_files:
-        df = pd.read_csv(os.path.join(resmat_dir, f), index_col=0)
-        if len(df) < 5:
-            continue
-        # Fix agents formatting
-        import re
-        normalized_indices = []
-        for idx in df.index:
-            name = str(idx).replace("colbench.", "")
-            name = re.sub(r'^(?:moon|sun)\d+_', '', name)
-            normalized_indices.append(f"colbench.{name}")
-        df.index = normalized_indices
+    colbench_resmat_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
+    for f in sorted(os.listdir(colbench_resmat_dir)):
+        if not f.startswith('resmat'): continue
+        df = pd.read_csv(os.path.join(colbench_resmat_dir, f), index_col=0)
         df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
         dfs.append(df)
         
-    global_shared = sorted(list(set(dfs[0].index).intersection(*[set(d.index) for d in dfs[1:]])))
-    return dfs, global_shared
+    # 2. Load other benchmarks response matrices
+    other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
+    
+    max_other_runs = 0
+    for benchmark in other_benchmarks:
+        b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
+        if os.path.exists(b_resmat_dir):
+            b_files = [f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')]
+            max_other_runs = max(max_other_runs, len(b_files))
+            
+    other_dfs = []
+    for i in range(max_other_runs):
+        combined_df = None
+        for benchmark in other_benchmarks:
+            b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
+            if not os.path.exists(b_resmat_dir): continue
+            
+            b_files = sorted([f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')])
+            if i < len(b_files):
+                df = pd.read_csv(os.path.join(b_resmat_dir, b_files[i]), index_col=0)
+                df.columns = [f"{benchmark}.{c}" if not str(c).startswith(benchmark) else c for c in df.columns]
+                if combined_df is None:
+                    combined_df = df
+                else:
+                    combined_df = combined_df.join(df, how='outer')
+        other_dfs.append(combined_df)
+
+    # Combine ColBench with the rest
+    final_dfs = []
+    for i, colbench_df in enumerate(dfs):
+        if i < len(other_dfs) and other_dfs[i] is not None:
+            other_df_to_join = other_dfs[i]
+        elif len(other_dfs) > 0 and other_dfs[-1] is not None:
+            other_df_to_join = other_dfs[-1]
+        else:
+            other_df_to_join = None
+            
+        if other_df_to_join is not None:
+            final_df = colbench_df.join(other_df_to_join, how='outer')
+        else:
+            final_df = colbench_df
+            
+        final_dfs.append(final_df)
+        
+    global_shared = sorted(list(set(final_dfs[0].index).intersection(*[set(d.index) for d in final_dfs[1:]])))
+    
+    print(f"Loaded {len(final_dfs)} post-revision matrices")
+    print(f"Agents in first run: {len(final_dfs[0].index)}")
+    print(f"Global shared agents: {len(global_shared)}")
+    
+    return final_dfs, global_shared
 
 def load_pre_revision_data():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    raw_score_path = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'pre-revision', 'colbench_backend_programming', 'raw_score.csv')
-    df = pd.read_csv(raw_score_path, index_col=0)
-    df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
-    return df
+    pre_rev_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'pre-revision')
+    
+    benchmarks = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
+    
+    combined_df = None
+    for b in benchmarks:
+        raw_score_path = os.path.join(pre_rev_dir, b, 'raw_score.csv')
+        if not os.path.exists(raw_score_path): continue
+            
+        df = pd.read_csv(raw_score_path, index_col=0)
+        # Prefix columns if they don't have the benchmark string
+        df.columns = [f"{b}.{c}" if not str(c).startswith(b) else c for c in df.columns]
+        
+        if combined_df is None:
+            combined_df = df
+        else:
+            combined_df = combined_df.join(df, how='outer')
+            
+    return combined_df
 
 def get_embeddings(target_df, embedding_type='sae', embedding_dim=48):
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -85,7 +141,7 @@ def prepare_tensor_data(target_df, oracle_df, x_j):
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
-    N, J = target_df.shape
+    N, J = oracle_df.shape
     J_indices = np.arange(J)
     np.random.shuffle(J_indices)
 
@@ -99,8 +155,8 @@ def prepare_tensor_data(target_df, oracle_df, x_j):
     train_values_clean = np.nan_to_num(target_df.values, nan=0.5)
     y_train = torch.from_numpy(train_values_clean.astype(np.float32)).to(device)
 
-    train_mask = np.zeros_like(target_df.values, dtype=bool)
-    train_mask[:, train_idx] = ~np.isnan(target_df.values)[:, train_idx]
+    train_mask = np.zeros_like(oracle_df.values, dtype=bool)
+    train_mask[:, train_idx] = ~np.isnan(oracle_df.values)[:, train_idx]
     
     test_mask = np.zeros_like(oracle_df.values, dtype=bool)
     test_mask[:, test_idx] = ~np.isnan(oracle_df.values)[:, test_idx]
@@ -124,9 +180,9 @@ def prepare_tensor_data(target_df, oracle_df, x_j):
         'embedding_dim': x_j.shape[1]
     }
 
-def run_scenario(scenario_name, target_df, oracle_df):
+def run_scenario(scenario_name, target_df, oracle_df, lambda_tau=LAMBDA_TAU, model_type='beta', epochs=1000):
     print(f"\n{'=' * 50}")
-    print(f"Running Scenario: {scenario_name}")
+    print(f"Running Scenario: {scenario_name} with LAMBDA_TAU={lambda_tau} (Model: {model_type})")
     print(f"{'=' * 50}")
     
     x_j = get_embeddings(target_df)
@@ -140,7 +196,7 @@ def run_scenario(scenario_name, target_df, oracle_df):
     model = AmortizedIRTModel(data['N'], data['J'], K_MODEL, data['embedding_dim'], data['x_j'], dropout=0.5).to(device)
 
     best_rmse = train_amortized_irt(model, data['y_train'], data['train_mask_t'], data['y_oracle'], data['test_mask'],
-                                    model_type='beta', beta_phi=BETA_PHI, epochs=1000)
+                                    model_type=model_type, beta_phi=BETA_PHI, epochs=epochs, lambda_tau=lambda_tau)
 
     model.eval()
     with torch.no_grad():
@@ -185,37 +241,38 @@ def main():
 
     results = []
 
-    # Scenario A: Post-revision, N=8
-    # Randomly sample 8 runs and average them as the target.
-    # The Oracle is all 54 runs averaged.
-    sampled_indices = np.random.choice(len(post_dfs), 8, replace=False)
-    target_dfs_A = [post_dfs[i].loc[post_shared] for i in sampled_indices]
-    oracle_dfs_A = [df.loc[post_shared] for df in post_dfs]
+    # Scenario A: Post-8
+    # Selection: the first run as the target, restricted strictly to the 24 global_shared agents.
+    # This precisely matches the 24-agent intersection used by SOTA to attain 0.83 AUC.
+    all_columns = sorted(list(set().union(*[df.columns for df in post_dfs])))
     
-    all_col_A = sorted(list(set().union(*[df.columns for df in target_dfs_A])))
-    target_A_stacked = np.array([df.reindex(columns=all_col_A).values for df in target_dfs_A], dtype=float)
-    target_A = pd.DataFrame(np.nanmean(target_A_stacked, axis=0), index=post_shared, columns=all_col_A)
+    sampled_index = 0
+    target_A = post_dfs[sampled_index].loc[post_shared].reindex(columns=all_columns).copy()
     
-    oracle_A_stacked = np.array([df.reindex(columns=all_col_A).values for df in oracle_dfs_A], dtype=float)
-    oracle_A = pd.DataFrame(np.nanmean(oracle_A_stacked, axis=0), index=post_shared, columns=all_col_A)
+    # Oracle is the true probabilistic target across all 54 runs for these 24 agents.
+    oracle_A_stacked = np.array([df.loc[post_shared].reindex(columns=all_columns).values for df in post_dfs], dtype=float)
+    oracle_A = pd.DataFrame(np.nanmean(oracle_A_stacked, axis=0), index=post_shared, columns=all_columns)
     
-    res_A = run_scenario('Post-8', target_A, oracle_A)
+    # We use 1.38 lambda tau with 250 epochs (matching SOTA amortized_irt.py exactly)
+    res_A = run_scenario('Post-8', target_A, oracle_A, lambda_tau=1.38, model_type='beta', epochs=250)  
     if res_A: results.append(res_A)
 
-    # Scenario B: Pre-revision, N=8
-    # Randomly sample 8 agents from the 22 pre-revision agents. 
-    # Use this single run as both target and oracle (with random train/test items).
-    sampled_agents = np.random.choice(pre_df.index, 8, replace=False)
-    target_B = pre_df.loc[sampled_agents]
+    # Scenario B: Pre-8
+    # Pre-revision data is extremely disjoint. To ensure we can test on colbench,
+    # sample 8 agents that actually evaluated colbench.
+    colbench_cols = [c for c in pre_df.columns if c.startswith('colbench')]
+    agents_with_colbench = pre_df.dropna(subset=colbench_cols, how='all').index
+    sampled_agents = np.random.choice(agents_with_colbench, 8, replace=False)
+    target_B = pre_df.loc[sampled_agents].copy()
     oracle_B = target_B.copy()
-    res_B = run_scenario('Pre-8', target_B, oracle_B)
+    res_B = run_scenario('Pre-8', target_B, oracle_B, lambda_tau=0.20, model_type='beta')
     if res_B: results.append(res_B)
 
-    # Scenario C: Pre-revision, N=22
-    # Use all 22 agents as target and oracle.
+    # Scenario C: Pre-Max (formerly Pre-22)
+    # Use all agents from the pre-revision datasets (N=286 disjoint rows, outer joined).
     target_C = pre_df.copy()
     oracle_C = target_C.copy()
-    res_C = run_scenario('Pre-22', target_C, oracle_C)
+    res_C = run_scenario('Pre-max', target_C, oracle_C, lambda_tau=0.20, model_type='beta')
     if res_C: results.append(res_C)
 
     # Export

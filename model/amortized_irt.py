@@ -172,7 +172,7 @@ def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
 
 
 def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle,
-                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS):
+                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS, lambda_tau=LAMBDA_TAU):
     """Train amortized IRT model with ARD sparsity regularization.
 
     Args:
@@ -213,9 +213,9 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
             current_lambda = 0.0
         elif epoch < TAU_WARMUP + RAMP_EPOCHS:
             progress = (epoch - TAU_WARMUP) / RAMP_EPOCHS
-            current_lambda = LAMBDA_TAU * progress
+            current_lambda = lambda_tau * progress
         else:
-            current_lambda = LAMBDA_TAU
+            current_lambda = lambda_tau
 
         tau = model.get_tau()
         loss_sparsity = current_lambda * torch.sum(tau)
@@ -251,35 +251,88 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     return best_rmse
 
 
+def parse_args():
+    import argparse
+    parser = argparse.add_argument_group("Experiment Settings")
+    parser = argparse.ArgumentParser(description="Run Amortized IRT experiments.")
+    parser.add_argument('--embedding-type', type=str, choices=['raw', 'pca', 'sae'], default='sae',
+                        help='Type of embeddings to use.')
+    parser.add_argument('--embedding-dim', type=int, default=48,
+                        help='Dimension for pca or sae embeddings.')
+    parser.add_argument('--n-samples', type=str, default='1,5,10,15,32,all',
+                        help='Comma-separated list of N values (e.g., "1,5,all").')
+    parser.add_argument('--model-type', type=str, choices=['beta', 'bernoulli'], default='beta',
+                        help='Distribution to use for the IRT model.')
+    parser.add_argument('--beta-phi', type=float, default=BETA_PHI,
+                        help='Precision parameter for Beta distribution.')
+    parser.add_argument('--lambda-tau', type=float, default=None, help='Override LAMBDA_TAU')
+    parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
+    parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
+    parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
+    parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
+                        help='Evaluate on pre-revision matrix with N=1.')
+    return parser.parse_args()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Data Loading
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_data(embedding_type='pca', embedding_dim=48):
+def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     """
     Load response matrices and pre-computed embeddings.
 
     Args:
         embedding_type: 'raw', 'pca', or 'sae'
         embedding_dim: dimension for pca/sae embeddings (ignored for raw)
+        pre_revision: 'none', '8', or 'max' to override post-revision loading.
     """
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
-    post_rev_dir = os.path.join(resmat_dir, 'post-revision')
     
-    # Load from local directory instead of huggingface cache
-    colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
     processed_emb_dir = os.path.join(repo_root, 'model', 'processed_embeddings')
     raw_emb_file = os.path.join(resmat_dir, 'all_benchmarks_embeddings_4096_8B.pkl')
 
-    # 1. Load ColBench response matrices
-    colbench_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
+    post_rev_dir = os.path.join(resmat_dir, 'post-revision')
+    pre_rev_dir = os.path.join(resmat_dir, 'pre-revision')
+
+    if pre_revision != 'none':
+        import random
+        print(f"Bypassing Post-Revision. Loading Pre-Revision Data ({pre_revision} agents)...")
+        b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
+        combined_dfs = []
+        for b in b_names:
+            p = os.path.join(pre_rev_dir, b, 'resmat', 'raw_score.csv')
+            if os.path.exists(p):
+                df = pd.read_csv(p, index_col=0)
+                df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
+                combined_dfs.append(df)
         
-    colbench_dfs = []
-    for f in colbench_files:
-        df = pd.read_csv(os.path.join(colbench_dir, f), index_col=0)
-        df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
-        colbench_dfs.append(df)
+        final_df = pd.concat(combined_dfs, axis=1, join='outer')
+        
+        if pre_revision == '8':
+            colbench_agents = final_df[final_df.columns[final_df.columns.str.startswith('colbench')]].dropna(how='all').index
+            np.random.seed(0)
+            sampled = np.random.choice(colbench_agents, size=8, replace=False)
+            final_df = final_df.loc[sampled]
+            
+        final_df = final_df.dropna(axis=1, how='all')
+        all_dfs = [final_df]
+        global_shared_indices = sorted(list(final_df.index))
+        
+        colbench_dfs = []
+        other_dfs = []
+    else:
+        # Load from local directory instead of huggingface cache
+        colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
+        # 1. Load ColBench response matrices
+        colbench_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
+            
+        colbench_dfs = []
+        for f in colbench_files:
+            df = pd.read_csv(os.path.join(colbench_dir, f), index_col=0)
+            df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
+            colbench_dfs.append(df)
     
     # 2. Load other benchmarks response matrices
     other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
@@ -601,6 +654,8 @@ def main():
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
+    parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
+                        help='Evaluate on pre-revision matrix with N=1.')
     args = parser.parse_args()
 
     global LAMBDA_TAU, WD_THETA, EPOCHS, SNAPPING_THRESHOLD
@@ -625,13 +680,18 @@ def main():
     # Load data
     all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
         embedding_type=args.embedding_type,
-        embedding_dim=args.embedding_dim
+        embedding_dim=args.embedding_dim,
+        pre_revision=args.pre_revision
     )
     total_files = len(all_dfs)
 
     # Parse n_samples argument
-    n_values = parse_n_samples(args.n_samples, total_files)
-    print(f"\nWill run experiments for n = {n_values}")
+    if args.pre_revision != 'none':
+        n_values = [1]
+        print(f"\nPre-revision selected. Forcing experiments to n = {n_values}")
+    else:
+        n_values = parse_n_samples(args.n_samples, total_files)
+        print(f"\nWill run experiments for n = {n_values}")
 
     # Prepare experiment data
     data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
@@ -647,6 +707,8 @@ def main():
         result = run_experiment(n, all_dfs, global_shared_indices, data,
                                 model_type=args.model_type, beta_phi=args.beta_phi)
         result['embedding_type'] = actual_emb_type
+        if args.pre_revision != 'none':
+            result['scenario'] = f"Pre-{args.pre_revision}"
         results.append(result)
 
         print(f"   -> RMSE | Mean: {result['rmse_mean']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
@@ -656,7 +718,12 @@ def main():
 
     # Save results to CSV
     df_results = pd.DataFrame(results)
-    output_path = args.output or os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}.csv')
+    if args.output:
+        output_path = args.output
+    else:
+        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}.csv')
+        
     df_results.to_csv(output_path, index=False)
 
     print("\n" + "=" * 60)
