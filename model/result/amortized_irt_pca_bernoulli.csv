@@ -1,2 +1,0 @@
-n_samples,model_type,rmse_mean,rmse_rasch,rmse_amortized,auc_mean,auc_rasch,auc_amortized,active_dims,embedding_type
-1,bernoulli,0.27984300318308936,0.2721521548853246,0.3088277219523148,0.5,0.581043956043956,0.7115384615384615,0,pca

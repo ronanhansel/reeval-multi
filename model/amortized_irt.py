@@ -55,16 +55,16 @@ K_MODEL = 30
 
 # Tau sparsity settings
 LAMBDA_TAU = 1.38
-TAU_INIT = 0.2
-TAU_WARMUP = 20
-RAMP_EPOCHS = 50
-SNAPPING_THRESHOLD = 0.01
+TAU_INIT = 0.5
+TAU_WARMUP = 100
+RAMP_EPOCHS = 400
+SNAPPING_THRESHOLD = 0.001
 DEAD_ZONE_VALUE = -0.1
-TAU_THRESHOLD = 0.01
+TAU_THRESHOLD = 0.001
 
 # Training settings
-EPOCHS = 250
-EVAL_EVERY = 25
+EPOCHS = 1000
+EVAL_EVERY = 20
 
 # Learning rates
 LR_THETA = 0.01
@@ -182,9 +182,10 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     """
     optimizer = optim.AdamW([
         {'params': [model.theta, model.theta_bias], 'lr': LR_THETA, 'weight_decay': WD_THETA},
-        {'params': [model.W, model.tau_raw, model.global_bias], 'lr': LR_GLOBAL, 'weight_decay': WD_W},
+        {'params': [model.W, model.global_bias], 'lr': LR_GLOBAL, 'weight_decay': WD_W},
         {'params': model.difficulty_proj.parameters(), 'lr': LR_GLOBAL}
     ])
+    optimizer_tau = optim.SGD([model.tau_raw], lr=0.05)
 
     best_rmse = float('inf')
 
@@ -193,6 +194,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     for epoch in range(epochs + 1):
         model.train()
         optimizer.zero_grad()
+        optimizer_tau.zero_grad()
         probs = model()
 
         # Reconstruction loss using torch.distributions
@@ -221,6 +223,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
         loss_sparsity = current_lambda * torch.sum(tau)
         (loss_fit + loss_sparsity).backward()
         optimizer.step()
+        optimizer_tau.step()
 
         # Tau snapping (enforce exact zeros)
         if epoch > TAU_WARMUP + 50 and epoch % 10 == 0:
@@ -246,7 +249,11 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
                 best_rmse = min(best_rmse, curr_rmse)
                 
                 tau_vals = model.get_tau()
-                print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f} | Tau (min/mean/max): {tau_vals.min().item():.3f}/{tau_vals.mean().item():.3f}/{tau_vals.max().item():.3f}")
+                print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f}")
+                
+                active_indices = torch.where(tau_vals > SNAPPING_THRESHOLD)[0].cpu().numpy()
+                print(f"  Active Dims ({len(active_indices)}): Tau Mean={tau_vals.mean().item():.4f}, Max={tau_vals.max().item():.4f}")
+                print("-" * 40)
 
     return best_rmse
 
@@ -302,7 +309,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
         combined_dfs = []
         for b in b_names:
-            p = os.path.join(pre_rev_dir, b, 'resmat', 'raw_score.csv')
+            p = os.path.join(pre_rev_dir, b, 'raw_score.csv')
             if os.path.exists(p):
                 df = pd.read_csv(p, index_col=0)
                 df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
@@ -334,60 +341,36 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
             df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
             colbench_dfs.append(df)
     
-    # 2. Load other benchmarks response matrices
-    other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
-    
-    # Find maximum number of runs across other benchmarks
-    max_other_runs = 0
-    for benchmark in other_benchmarks:
-        b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
-        if os.path.exists(b_resmat_dir):
-            b_files = [f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')]
-            max_other_runs = max(max_other_runs, len(b_files))
-            
-    other_dfs = []
-    for i in range(max_other_runs):
-        combined_df = None
+        # 2. Load other benchmarks response matrices
+        other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
+
+        from utils import aggregate_remediation_resmats
+        aggregated_other_dfs = []
         for benchmark in other_benchmarks:
             b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
-            if not os.path.exists(b_resmat_dir): continue
-            
-            b_files = sorted([f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')])
-            if i < len(b_files):
-                df = pd.read_csv(os.path.join(b_resmat_dir, b_files[i]), index_col=0)
-                # Ensure unique columns by prefixing with benchmark name if not already
-                df.columns = [f"{benchmark}.{c}" if not str(c).startswith(benchmark) else c for c in df.columns]
-                if combined_df is None:
-                    combined_df = df
-                else:
-                    combined_df = pd.concat([combined_df, df], axis=1, join='outer')
-        
-        if combined_df is not None:
-            other_dfs.append(combined_df)
-            
-    max_runs = max(len(colbench_dfs), len(other_dfs))
-    all_dfs = []
-    for i in range(max_runs):
-        dfs_to_concat = []
-        if i < len(colbench_dfs):
-            dfs_to_concat.append(colbench_dfs[i])
+            if os.path.exists(b_resmat_dir):
+                agg_df = aggregate_remediation_resmats(b_resmat_dir, benchmark)
+                if agg_df is not None:
+                    aggregated_other_dfs.append(agg_df)
+                    
+        if aggregated_other_dfs:
+            combined_other = pd.concat(aggregated_other_dfs, axis=1, join='outer')
         else:
-            dfs_to_concat.append(colbench_dfs[i % len(colbench_dfs)])
-            
-        if i < len(other_dfs):
-            dfs_to_concat.append(other_dfs[i])
-        elif len(other_dfs) > 0:
-            dfs_to_concat.append(other_dfs[-1])
-            
-        if dfs_to_concat:
-            combined = pd.concat(dfs_to_concat, axis=1, join='outer')
-            all_dfs.append(combined)
+            combined_other = None
 
-    # Find global shared indices (models present in all matrices)
-    global_shared_indices = set(all_dfs[0].index)
-    for df in all_dfs[1:]:
-        global_shared_indices = global_shared_indices.intersection(set(df.index))
-    global_shared_indices = sorted(list(global_shared_indices))
+        all_dfs = []
+        for col_df in colbench_dfs:
+            if combined_other is not None:
+                all_dfs.append(pd.concat([col_df, combined_other], axis=1, join='outer'))
+            else:
+                all_dfs.append(col_df)
+    
+        # Find shared indices for the model target matrices.
+        # The user specifically requested 32 unique agents for the post-revision sweep.
+        # We use all_dfs[0].index as the canonical baseline because intersecting all 54 runs 
+        # inadvertently drops ColBench entirely due to runs like resmat_moon21 being empty.
+        # The IRT model correctly handles missing runs by padding their absence with NaNs.
+        global_shared_indices = sorted(list(set(all_dfs[0].index)))
 
     # Load embeddings based on type
     if embedding_type == 'raw':
@@ -435,7 +418,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
     all_columns = sorted(list(set().union(*[df.columns for df in all_dfs])))
     
     # Create oracle matrix (average across all response matrices)
-    oracle_dfs_filtered = [df.loc[global_shared_indices].reindex(columns=all_columns) for df in all_dfs]
+    oracle_dfs_filtered = [df.reindex(index=global_shared_indices, columns=all_columns) for df in all_dfs]
     oracle_stacked = np.array([df.values for df in oracle_dfs_filtered], dtype=float)
     oracle_matrix = np.nanmean(oracle_stacked, axis=0)
     oracle_df = pd.DataFrame(oracle_matrix, index=global_shared_indices, columns=all_columns)
@@ -537,7 +520,12 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     embedding_dim = data['embedding_dim']
 
     # Prepare training data from n_files samples
-    current_dfs = [all_dfs[i].loc[global_shared_indices] for i in range(n_files)]
+    if n_files < len(all_dfs):
+        sampled_indices = np.random.choice(len(all_dfs), n_files, replace=False)
+        print(f"Sampled agents: {sampled_indices}")
+        current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in sampled_indices]
+    else:
+        current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in range(n_files)]
     all_columns = sorted(list(set().union(*[df.columns for df in current_dfs])))
     current_dfs = [df.reindex(columns=all_columns) for df in current_dfs]
     current_stacked = np.array([df.values for df in current_dfs], dtype=float)
@@ -571,7 +559,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     # 3. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
     best_rmse = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
-                                     model_type=model_type, beta_phi=beta_phi)
+                                     model_type=model_type, beta_phi=beta_phi,
+                                     epochs=EPOCHS, lambda_tau=LAMBDA_TAU)
 
     model.eval()
     with torch.no_grad():
@@ -623,6 +612,7 @@ def parse_n_samples(arg, total_files):
 
 
 def main():
+    global LAMBDA_TAU, WD_THETA, WD_W, EPOCHS, SNAPPING_THRESHOLD, RANDOM_SEED
     parser = argparse.ArgumentParser(description='Amortized IRT Experiment')
     parser.add_argument(
         '--embedding-type', type=str, default='pca',
@@ -652,21 +642,30 @@ def main():
     )
     parser.add_argument('--lambda-tau', type=float, default=None, help='Override LAMBDA_TAU')
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
+    parser.add_argument('--wd-w', type=float, default=None, help='Override WD_W')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
     parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
+    parser.add_argument('--seed', type=int, default=RANDOM_SEED, help=f'Random seed (default: {RANDOM_SEED})')
     args = parser.parse_args()
 
-    global LAMBDA_TAU, WD_THETA, EPOCHS, SNAPPING_THRESHOLD
     if args.lambda_tau is not None:
         LAMBDA_TAU = args.lambda_tau
     if args.wd_theta is not None:
         WD_THETA = args.wd_theta
+    if args.wd_w is not None:
+        WD_W = args.wd_w
     if args.epochs is not None:
         EPOCHS = args.epochs
     if args.snapping_threshold is not None:
         SNAPPING_THRESHOLD = args.snapping_threshold
+
+    RANDOM_SEED = args.seed
+    torch.manual_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+    import random
+    random.seed(RANDOM_SEED)
 
     print(f"Using device: {device}")
     print(f"Embedding type: {args.embedding_type}")
@@ -675,7 +674,7 @@ def main():
     else:
         print(f"Model type: bernoulli (Bernoulli NLL on binary Y)")
     
-    print(f"Hyperparameters -> LAMBDA_TAU: {LAMBDA_TAU} | WD_THETA: {WD_THETA} | EPOCHS: {EPOCHS} | SNAPPING: {SNAPPING_THRESHOLD}")
+    print(f"Hyperparameters -> LAMBDA_TAU: {LAMBDA_TAU} | WD_THETA: {WD_THETA} | WD_W: {WD_W} | EPOCHS: {EPOCHS} | SNAPPING: {SNAPPING_THRESHOLD} | SEED: {RANDOM_SEED}")
 
     # Load data
     all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(

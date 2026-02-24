@@ -1,7 +1,0 @@
-Model,Config,Test AUC,Active Dims
-Global Mean,None,0.5,N/A
-Rasch IRT,None,0.5398,N/A
-Amortized IRT (PCA),dim=1,0.557,0.0
-Amortized IRT (PCA),dim=48,0.6799,8.0
-Amortized IRT (PCA),dim=128,0.6813,0.0
-Amortized IRT (PCA),dim=4096,0.6401,0.0
