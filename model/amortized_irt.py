@@ -544,11 +544,21 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     train_mask_current[:, train_idx] = ~np.isnan(train_target_df.values)[:, train_idx]
     train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
 
-    # 1. Global Mean baseline
-    mean_val = y_train[train_mask_current_t].mean()
-    pred_mean = mean_val.expand_as(y_oracle)
-    rmse_mean = compute_rmse(pred_mean.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_mean = evaluate_auc(pred_mean, y_oracle, test_mask_t)
+    # 1. Naive Item-Mean baseline
+    # Predict each item as its mean observed success rate in the current iteration
+    # Since we have N users/agents, the item-wise mean is the average across users.
+    valid_counts = train_mask_current_t.sum(dim=0)
+    item_sums = (y_train * train_mask_current_t).sum(dim=0)
+    
+    # Avoid division by zero: if an item has no observations, use global mean
+    global_mean = y_train[train_mask_current_t].mean()
+    item_means = torch.where(valid_counts > 0, item_sums / valid_counts, global_mean)
+    
+    # Broadcast item_means to (N, J) shape to match p_rasch and p_amortized
+    p_naive = item_means.unsqueeze(0).expand(N, J)
+    
+    rmse_naive = compute_rmse(p_naive.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_naive = evaluate_auc(p_naive, y_oracle, test_mask_t)
 
     # 2. Rasch IRT baseline
     p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
@@ -577,10 +587,10 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     return {
         'n_samples': n_files,
         'model_type': model_type,
-        'rmse_mean': rmse_mean,
+        'rmse_naive': rmse_naive,
         'rmse_rasch': rmse_rasch,
         'rmse_amortized': best_rmse,
-        'auc_mean': auc_mean,
+        'auc_naive': auc_naive,
         'auc_rasch': auc_rasch,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
@@ -716,9 +726,9 @@ def main():
             result['scenario'] = f"Pre-{args.pre_revision}"
         results.append(result)
 
-        print(f"   -> RMSE | Mean: {result['rmse_mean']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
+        print(f"   -> RMSE | Naive: {result['rmse_naive']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
               f"Amortized: {result['rmse_amortized']:.4f}")
-        print(f"   -> AUC  | Mean: {result['auc_mean']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
+        print(f"   -> AUC  | Naive: {result['auc_naive']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
               f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
 
     # Save results to CSV
