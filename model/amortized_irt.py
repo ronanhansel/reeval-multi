@@ -187,6 +187,8 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     ])
     optimizer_tau = optim.SGD([model.tau_raw], lr=0.05)
 
+    best_state = None
+    best_loss = float('inf')
     best_rmse = float('inf')
 
     eps = 1e-6
@@ -221,6 +223,13 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
 
         tau = model.get_tau()
         loss_sparsity = current_lambda * torch.sum(tau)
+        total_loss = loss_fit + loss_sparsity
+
+        if total_loss.item() < best_loss:
+            best_loss = total_loss.item()
+            best_rmse = curr_rmse if 'curr_rmse' in locals() else best_rmse
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+
         (loss_fit + loss_sparsity).backward()
         optimizer.step()
         optimizer_tau.step()
@@ -255,7 +264,8 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
                 print(f"  Active Dims ({len(active_indices)}): Tau Mean={tau_vals.mean().item():.4f}, Max={tau_vals.max().item():.4f}")
                 print("-" * 40)
 
-    return best_rmse
+    final_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+    return best_rmse, best_state, final_state
 
 
 def parse_args():
@@ -567,12 +577,14 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
 
     # 3. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
-    best_rmse = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
+    best_rmse, best_state, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                      model_type=model_type, beta_phi=beta_phi,
                                      epochs=EPOCHS, lambda_tau=LAMBDA_TAU)
 
     model.eval()
     with torch.no_grad():
+        if best_state is not None:
+            model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
         p_amortized = model()
         auc_amortized = evaluate_auc(p_amortized, y_oracle, test_mask_t)
         
@@ -595,7 +607,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'auc_rasch': auc_rasch,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
-        'active_indices': str(active_dim_indices)
+        'active_indices': str(active_dim_indices),
+        'model_state': best_state,
+        'final_state': final_state
     }
 
 
@@ -665,6 +679,7 @@ def main():
     parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
     parser.add_argument('--seed', type=int, default=RANDOM_SEED, help=f'Random seed (default: {RANDOM_SEED})')
+    parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
     args = parser.parse_args()
 
     if args.lambda_tau is not None:
@@ -712,10 +727,13 @@ def main():
     # Prepare experiment data
     data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
 
-    # Run experiments
-    print("\n" + "=" * 60)
-    print(f"STARTING EXPERIMENTS ({actual_emb_type.upper()} embeddings, {args.model_type.upper()} model)")
-    print("=" * 60)
+    # Prepare output path
+    if args.output:
+        output_path = args.output
+    else:
+        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
+        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
 
     results = []
     for i, n in enumerate(n_values):
@@ -732,15 +750,25 @@ def main():
         print(f"   -> AUC  | Naive: {result['auc_naive']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
               f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
 
+        # Save model state to separate pkl if requested
+        if args.save_weights:
+            weight_path = output_path.replace('.csv', f'_seed_{RANDOM_SEED}_weights_best.pkl')
+            torch.save(result['model_state'], weight_path)
+            
+            final_weight_path = output_path.replace('.csv', f'_seed_{RANDOM_SEED}_weights_final.pkl')
+            torch.save(result['final_state'], final_weight_path)
+            print(f"   -> Saved weights to: {weight_path} and {final_weight_path}")
+
     # Save results to CSV (Consolidated)
-    df_results = pd.DataFrame(results)
-    if args.output:
-        output_path = args.output
-    else:
-        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
-        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
-        
+    # Remove large states from results before saving to CSV
+    save_results = []
+    for r in results:
+        r_copy = r.copy()
+        if 'model_state' in r_copy: del r_copy['model_state']
+        if 'final_state' in r_copy: del r_copy['final_state']
+        save_results.append(r_copy)
+    
+    df_results = pd.DataFrame(save_results)
     if os.path.exists(output_path):
         # Append to existing results to consolidate seeds
         df_old = pd.read_csv(output_path)
