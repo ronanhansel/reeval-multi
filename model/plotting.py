@@ -5,7 +5,6 @@ Plotting for Amortized IRT Experiments
 Generates plots from CSV results produced by amortized_irt.py:
   - Comparison bar plots (n=1 vs n=max for RMSE and AUC)
   - Convergence line plots (metrics vs number of samples)
-  - HELM benchmark comparison plots
 
 Usage:
     python plotting.py                           # Generate all plots
@@ -537,51 +536,7 @@ def plot_active_dims(df, output_path=None):
     plt.close()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# HELM Benchmark Plot (Hard-coded data)
-# ══════════════════════════════════════════════════════════════════════════════
 
-def plot_helm_auc_comparison(output_path=None):
-    """
-    Bar plot for HELM benchmark AUC comparison.
-    Uses hard-coded data from HELM experiments.
-    """
-    data = {
-        'Model': [
-            'Average', 'Rasch-IRT', 'Amortised Difficulty',
-            'Sub-Amortised IRT', 'Amortised IRT'
-        ],
-        'AUC': [0.6579, 0.6539, 0.7577, 0.7823, 0.8122],
-    }
-    df_helm = pd.DataFrame(data)
-    model_order = ['Average', 'Rasch-IRT', 'Amortised Difficulty', 'Sub-Amortised IRT', 'Amortised IRT']
-
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(
-        data=df_helm,
-        x='Model',
-        y='AUC',
-        order=model_order,
-        ax=ax,
-        color=muted_blue
-    )
-    ax.set_xlabel('')
-    ax.set_ylabel('AUC')
-    ax.set_ylim(0.5, 1)
-    ax.grid(axis='y', linestyle='--', alpha=0.6)
-    ax.tick_params(axis='x', rotation=15)
-
-    for i, v in enumerate(df_helm.set_index('Model').loc[model_order]['AUC']):
-        ax.text(i, v + 0.01, f'{v:.4f}', ha='center')
-
-    plt.tight_layout()
-
-    if output_path is None:
-        output_path = os.path.join(RESULT_DIR, 'auc_comparison_helm.pdf')
-
-    plt.savefig(output_path, bbox_inches='tight')
-    print(f"[OUTPUT] Saved plot: {output_path}")
-    plt.close()
 
 
 def plot_benchmark_panels(output_dir=None):
@@ -683,9 +638,7 @@ def main():
     print("\n[Response Matrix] Generating continuous multi-benchmark panels...")
     plot_benchmark_panels(out_dir)
 
-    # Generate HELM comparison plot (always)
-    print("\n[HELM] Generating HELM AUC comparison...")
-    plot_helm_auc_comparison(os.path.join(out_dir, 'auc_comparison_helm.pdf'))
+
 
     # Plot AUC and RMSE curves
     print("\n[Amortized IRT] Generating performance learning curves for all embedding types...")

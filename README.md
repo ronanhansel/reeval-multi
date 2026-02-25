@@ -120,7 +120,6 @@ jupyter nbextension enable --py widgetsnbextension
 
 The repository is modularly structured into the following components:
 
-- `helm/`: Amortised model execution on the entire HELM dataset using `embed_meta-llama_Llama-3.1-8B-Instruct`.
 - `hal/`: Amortised model execution on ColBench from HAL with `Qwen3-Embedding-8B` alongside Sparse Autoencoder (SAE) interpretations. Contains `pca_aggregate_survey.ipynb` (held out response matrices) and `sae_beta_irt.ipynb` ($N=22$).
 - `item-editor/`: **Automated Item-Level Fixing Pipeline**. Detects and fixes Intrinsic Formation Errors (IFEs) in AI agent benchmarks non-destructively.
 - `model/`: Configurations for LLM evaluation.

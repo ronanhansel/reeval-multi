@@ -118,12 +118,19 @@ def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'
     resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
     
     if pre_revision != 'none':
+        pre_rev_dir = os.path.join(resmat_dir, 'pre-revision')
         b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
         combined_dfs = []
         for b in b_names:
-            p = os.path.join(resmat_dir, 'pre-revision', b, 'raw_score.csv')
-            if os.path.exists(p):
-                df = pd.read_csv(p, index_col=0)
+            possible_files = ['raw_score.csv', 'benchmark.csv', 'success_rate.csv', 'written_score.csv']
+            df = None
+            for f in possible_files:
+                p = os.path.join(pre_rev_dir, b, f)
+                if os.path.exists(p):
+                    df = pd.read_csv(p, index_col=0)
+                    break
+            
+            if df is not None:
                 df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
                 combined_dfs.append(df)
         final_df = pd.concat(combined_dfs, axis=1, join='outer')
@@ -228,11 +235,14 @@ def plot_semantic_alignment():
         ('Post_max', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
     ]
     
-    if not os.path.exists(desc_path): return
-    with open(desc_path, "rb") as f:
-        descriptions = pickle.load(f)
-    if isinstance(descriptions, list):
-        descriptions = pd.DataFrame(descriptions)
+    if not os.path.exists(desc_path):
+        print(f"WARNING: {desc_path} not found. Semantic Alignment report will have 'N/A' for topics.")
+        descriptions = pd.DataFrame(columns=['neuron_idx', 'top_example_1'])
+    else:
+        with open(desc_path, "rb") as f:
+            descriptions = pickle.load(f)
+        if isinstance(descriptions, list):
+            descriptions = pd.DataFrame(descriptions)
 
     for label, w_path, pre_rev in configs:
         if not os.path.exists(w_path): continue

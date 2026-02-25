@@ -319,12 +319,22 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
         combined_dfs = []
         for b in b_names:
-            p = os.path.join(pre_rev_dir, b, 'raw_score.csv')
-            if os.path.exists(p):
-                df = pd.read_csv(p, index_col=0)
+            possible_files = ['raw_score.csv', 'benchmark.csv', 'success_rate.csv', 'written_score.csv']
+            df = None
+            for f in possible_files:
+                p = os.path.join(pre_rev_dir, b, f)
+                if os.path.exists(p):
+                    df = pd.read_csv(p, index_col=0)
+                    break
+            
+            if df is not None:
+                # Ensure columns are prefixed with benchmark name
                 df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
                 combined_dfs.append(df)
         
+        if not combined_dfs:
+            raise FileNotFoundError(f"No pre-revision data found in {pre_rev_dir}")
+            
         final_df = pd.concat(combined_dfs, axis=1, join='outer')
         
         if pre_revision == '8':

@@ -1,0 +1,2 @@
+n_samples,model_type,seed,rmse_naive,rmse_rasch,rmse_amortized,auc_naive,auc_rasch,auc_amortized,active_dims,active_indices,embedding_type,scenario
+1,beta,42,0.4482673687811704,0.44251692130714954,0.4203887650456283,0.5,0.6027606644962017,0.7169221136989733,30,"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]",sae,Pre-max

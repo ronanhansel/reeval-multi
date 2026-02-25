@@ -81,9 +81,9 @@ def collect_results():
 
 def format_label(val, se):
     if se > 1e-6: # Threshold for showing SE
-        return f"{val:.2f} ± {se:.2f}"
+        return f"{val:.3f} ± {se:.3f}"
     else:
-        return f"{val:.2f}"
+        return f"{val:.3f}"
 
 def plot_refined_results(df):
     plt.rcParams.update(get_bundle())
@@ -91,7 +91,7 @@ def plot_refined_results(df):
     # AUC Plot
     fig, ax = plt.subplots(figsize=(3.5, 2.5))
     bars = ax.bar(df['Model'], df['AUC_Mean'], yerr=df['AUC_SE'], 
-                  capsize=3, color=MAIN_BLUE)
+                  capsize=2, color=MAIN_BLUE, error_kw={'elinewidth': 0.6, 'capthick': 0.6})
     
     ax.set_ylabel("Predictive AUC")
     ax.set_ylim(0.4, 0.9)
@@ -111,7 +111,7 @@ def plot_refined_results(df):
     # RMSE Plot
     fig, ax = plt.subplots(figsize=(3.5, 2.5))
     bars = ax.bar(df['Model'], df['RMSE_Mean'], yerr=df['RMSE_SE'], 
-                  capsize=3, color=MAIN_BLUE)
+                  capsize=2, color=MAIN_BLUE, error_kw={'elinewidth': 0.6, 'capthick': 0.6})
     
     ax.set_ylabel("Predictive RMSE")
     ax.set_ylim(0, 0.6)
