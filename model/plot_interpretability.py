@@ -242,9 +242,10 @@ def plot_semantic_alignment():
         
         active = np.where(np.abs(A).max(axis=0) > 1e-6)[0]
         
-        print(f"\n### Semantic Alignment & Clarity: {label} (K={len(active)})")
-        print("| Dim | Tau Strength | Representative SAE Topic | Top 5 Loader Items + Context | Primary Benchmark | Purity |")
-        print("|---|---|---|---|---|---|")
+        report_lines = []
+        report_lines.append(f"\n### Semantic Alignment & Clarity: {label} (K={len(active)})")
+        report_lines.append("| Dim | Tau Strength | Representative SAE Topic | Top 5 Loader Items + Context | Primary Benchmark | Purity |")
+        report_lines.append("|---|---|---|---|---|---|")
         
         benchmarks = np.array([t.split('.')[0] for t in tids])
         
@@ -293,12 +294,20 @@ def plot_semantic_alignment():
             ent = entropy(bench_loadings) if loadings.sum() > 1e-6 else 0
             all_entropies.append(ent)
             
-            print(f"| {idx} | {tau[idx]:.3f} | {topic} | {loaders_str} | {primary} | {purity:.2f} |")
+            report_lines.append(f"| {idx} | {tau[idx]:.3f} | {topic} | {loaders_str} | {primary} | {purity:.2f} |")
             
-        print(f"\n**{label} Aggregate Metrics:**")
-        print(f"- Mean Benchmark Purity: {np.mean(all_purities):.4f}")
-        print(f"- Mean Loading Entropy (lower is cleaner): {np.mean(all_entropies):.4f}")
-        print("-" * 40)
+        report_lines.append(f"\n**{label} Aggregate Metrics:**")
+        report_lines.append(f"- Mean Benchmark Purity: {np.mean(all_purities):.4f}")
+        report_lines.append(f"- Mean Loading Entropy (lower is cleaner): {np.mean(all_entropies):.4f}")
+        report_lines.append("-" * 40)
+        
+        report_content = "\n".join(report_lines)
+        print(report_content)
+        
+        report_path = os.path.join(RESULT_DIR, f"semantic_alignment_{label}.md")
+        with open(report_path, "w") as f:
+            f.write(report_content)
+        print(f"Detailed report saved to {report_path}")
 
 def plot_2d_projections():
     plt.rcParams.update(get_bundle())

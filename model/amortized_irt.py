@@ -608,6 +608,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
         'active_indices': str(active_dim_indices),
+        'tau_values': str(tau_val.cpu().tolist()),
         'model_state': best_state,
         'final_state': final_state
     }
