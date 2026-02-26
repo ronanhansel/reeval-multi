@@ -9,7 +9,7 @@ Research code for the paper: "Reliable and Efficient Amortized Model-based Evalu
 ### Prerequisites
 
 - **OS**: Linux (Ubuntu 20.04+) or macOS
-- **Python**: 3.10+ (for reeval analysis) or 3.11-3.12 (for item-editor pipeline)
+- **Python**: 3.10+ (for hal analysis) or 3.11-3.12 (for item-editor pipeline)
 - **Docker**: Docker Engine 20.10+ (required for running benchmarks in isolated sandboxes)
 - **Conda**: Miniconda or Anaconda
 - **Git**: For cloning repository and submodules
@@ -25,8 +25,8 @@ cd agent-eval
 git submodule update --init --recursive
 
 # Create conda environment
-CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes conda create -n reeval python=3.10 -y
-conda activate reeval
+CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes conda create -n hal python=3.10 -y
+conda activate hal
 
 # Install base requirements
 pip install -r requirements.txt
@@ -331,6 +331,10 @@ bash model/reproduce.sh
 
 # Full sweep (10 seeds, all SOTA configurations used in the paper)
 bash model/reproduce.sh --full
+
+# Plot only (generate figures using existing results in model/result/)
+bash model/reproduce.sh --plot
+bash model/reproduce.sh --full --plot  # Verify full sweep results before plotting
 ```
 
 ### Plotting & Visualization
