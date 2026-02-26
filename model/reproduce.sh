@@ -4,90 +4,107 @@ set -euo pipefail
 ###############################################################################
 # reproduce.sh — Run all experiments from scratch and generate plots
 #
-# Data is automatically downloaded from HuggingFace if not present locally.
+# Usage:
+#   ./reproduce.sh          # Quick run (single seed for main configs)
+#   ./reproduce.sh --full   # Full sweep (10 seeds for all configs - SOTA)
 ###############################################################################
 
 eval "$(conda shell.bash hook)"
 conda activate reeval
-echo "[ENV] conda env: reeval  (python: $(which python))"
+echo "[ENV] conda env: reeval (python: $(which python))"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 RESULT_DIR="${SCRIPT_DIR}/result"
 
+# ── Parameters ─────────────────────────────────────────────────────────────
+SEEDS="42"
+FULL_SWEEP=false
+
+if [[ "${1:-}" == "--full" ]]; then
+    FULL_SWEEP=true
+    SEEDS="42 123 789 2024 1337 555 666 777 888 999"
+    echo "[MODE] Running FULL sweep (10 seeds)..."
+else
+    echo "[MODE] Running QUICK reproduction (1 seed)..."
+fi
+
 # ── HuggingFace cache configuration ─────────────────────────────────────────
-# Set HF_HOME to avoid permission issues with default cache location
-export HF_HOME="${HF_HOME:-/lfs/skampere1/0/sttruong/.cache/huggingface}"
+export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 mkdir -p "${HF_HOME}"
-echo "[ENV] HF_HOME: ${HF_HOME}"
 
 echo "=========================================================="
-echo "  REPRODUCE — Fresh Run"
+echo "  REPRODUCE — Amortized IRT"
 echo "=========================================================="
-echo ""
 echo "  Working dir : ${SCRIPT_DIR}"
 echo "  Output dir  : ${RESULT_DIR}"
-echo ""
-
-# ── Install LaTeX packages for tueplots rendering ────────────────────────────
-echo "[LATEX] Checking/installing required LaTeX packages..."
-if command -v tlmgr &> /dev/null; then
-    # Install packages needed for tueplots ICML style (skip verification due to gpg issues)
-    tlmgr --verify-repo=none install type1cm cm-super underscore 2>/dev/null || true
-    echo "[LATEX] Done."
-else
-    echo "[LATEX] tlmgr not found. If LaTeX rendering fails, install: type1cm, cm-super, underscore"
-fi
 echo ""
 
 # ── Clean previous results ───────────────────────────────────────────────────
 echo "[CLEAN] Removing previous results …"
 rm -rf "${RESULT_DIR}"
 mkdir -p "${RESULT_DIR}"
-echo "[CLEAN] Done."
 echo ""
 
-# ── Run experiments ──────────────────────────────────────────────────────────
-# amortized_irt.py auto-downloads data from HuggingFace if not present
+# ── Run Function ─────────────────────────────────────────────────────────────
+run_exp() {
+    local emb=$1
+    local n=$2
+    local model=$3
+    local tau=$4
+    local pre=${5:-false}
+    local seed=$6
+    
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $tau --seed $seed"
+    if [[ "$pre" != "false" ]]; then
+        cmd="$cmd --pre-revision $pre"
+    fi
+    
+    echo " -> Running: $emb (N=$n, $model) Tau=$tau Seed=$seed"
+    eval $cmd
+}
 
-echo "=========================================================="
-echo "  RUNNING: amortized_irt.py (PCA embeddings)"
-echo "=========================================================="
-python "${SCRIPT_DIR}/amortized_irt.py" --embedding-type pca
-echo ""
+# ── Execution ───────────────────────────────────────────────────────────────
 
-echo "=========================================================="
-echo "  RUNNING: amortized_irt.py (SAE embeddings)"
-echo "=========================================================="
-python "${SCRIPT_DIR}/amortized_irt.py" --embedding-type sae
-echo ""
+for seed in $SEEDS; do
+    echo "--- Seed $seed ---"
+    
+    # 1. PCA Embeddings
+    run_exp pca max beta 0.054 false $seed
+    if $FULL_SWEEP; then
+        run_exp pca 1 bernoulli 0.0155 false $seed
+    fi
+    
+    # 2. SAE Embeddings
+    run_exp sae max beta 0.0535 false $seed
+    if $FULL_SWEEP; then
+        run_exp sae 1 bernoulli 0.0159 false $seed
+    fi
+    
+    # 3. RAW Embeddings
+    run_exp raw max beta 0.029 false $seed
+    if $FULL_SWEEP; then
+        run_exp raw 1 bernoulli 0.0151 false $seed
+    fi
+    
+    # 4. Pre-Revision Checks (Full Sweep only)
+    if $FULL_SWEEP; then
+        run_exp sae 1 bernoulli 0.0159 8 $seed
+        run_exp sae 1 beta 0.16 max $seed
+    fi
+done
 
 # ── Generate plots ───────────────────────────────────────────────────────────
-echo "=========================================================="
-echo "  RUNNING: plotting.py"
-echo "=========================================================="
-python "${SCRIPT_DIR}/plotting.py"
 echo ""
-
-# ── Summary ──────────────────────────────────────────────────────────────────
 echo "=========================================================="
-echo "  OUTPUT SUMMARY"
+echo "  GENERATING PLOTS"
 echo "=========================================================="
-echo ""
-echo "  Output directory: ${RESULT_DIR}"
-echo ""
-
-echo "  Results (CSV):"
-for f in "${RESULT_DIR}"/*.csv; do
-    [ -e "$f" ] || continue
-    echo "    $(ls -lh "$f" | awk '{print $5, $NF}')"
-done
+cd "${REPO_ROOT}"
+PYTHONPATH=. python3 -m model.plotting.main --all
 
 echo ""
-echo "  Plots (PDF/PNG):"
-for f in "${RESULT_DIR}"/*.pdf "${RESULT_DIR}"/*.png; do
-    [ -e "$f" ] || continue
-    echo "    $(ls -lh "$f" | awk '{print $5, $NF}')"
-done
-
-echo ""
-echo "All scripts completed successfully."
+echo "=========================================================="
+echo "  REPRODUCTION COMPLETE"
+echo "=========================================================="
+echo "Plots saved in paper/figures/"
+echo "CSV results in model/result/"

@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-Plotting for Amortized IRT Experiments
+Performance Plotting for Amortized IRT Experiments
 
 Generates plots from CSV results produced by amortized_irt.py:
   - Comparison bar plots (n=1 vs n=max for RMSE and AUC)
   - Convergence line plots (metrics vs number of samples)
 
 Usage:
-    python plotting.py                           # Generate all plots
-    python plotting.py --csv result/custom.csv   # Use specific CSV
+    python -m model.plotting.performance
 """
 
 import argparse
 import os
+import sys
+import subprocess
+import contextlib
+import platform
 
 import matplotlib
 matplotlib.use("Agg")
@@ -21,24 +24,36 @@ import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import sys
-import subprocess
 from huggingface_hub import snapshot_download
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuration & Paths
+# ══════════════════════════════════════════════════════════════════════════════
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_ROOT = os.path.dirname(MODEL_DIR)
+
+RESULT_DIR = os.path.join(MODEL_DIR, 'result')
+FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
+os.makedirs(RESULT_DIR, exist_ok=True)
+os.makedirs(FIGURE_DIR, exist_ok=True)
+
+# Add repo root to path for imports if needed
+if REPO_ROOT not in sys.path:
+    sys.path.append(REPO_ROOT)
 
 # Conditionally import tueplots and check for latex
 HAS_TEX = False
 try:
     from tueplots import bundles
     # Check if latex is actually installed on the system
-    import platform
     if platform.system() != 'Windows':
         result = subprocess.run(['which', 'latex'], capture_output=True, text=True)
         if result.returncode == 0:
             HAS_TEX = True
 except ImportError:
     pass
-
-import contextlib
 
 @contextlib.contextmanager
 def optional_rc_context():
@@ -47,15 +62,6 @@ def optional_rc_context():
             yield
     else:
         yield
-
-sys.path.append('..')
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Configuration
-# ══════════════════════════════════════════════════════════════════════════════
-
-RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
-os.makedirs(RESULT_DIR, exist_ok=True)
 
 colors = sns.color_palette("muted")
 muted_blue = colors[0]
@@ -78,11 +84,14 @@ def load_response_matrices():
     Returns:
         list of DataFrames: Each DataFrame is a binary response matrix (models x items)
     """
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
+    resmat_dir = os.path.join(REPO_ROOT, 'item-editor', 'eval_response_matrix')
     post_rev_dir = os.path.join(resmat_dir, 'post-revision')
 
     colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
+
+    if not os.path.exists(colbench_dir):
+        print(f"Directory not found: {colbench_dir}")
+        return None
 
     all_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
     if not all_files:
@@ -245,10 +254,10 @@ def plot_response_and_probability_matrices(output_dir=None):
     Load response matrices, compute empirical probability, and visualize both.
 
     Args:
-        output_dir: Directory to save plots (default: RESULT_DIR)
+        output_dir: Directory to save plots (default: FIGURE_DIR)
     """
     if output_dir is None:
-        output_dir = RESULT_DIR
+        output_dir = FIGURE_DIR
 
     # Load response matrices
     response_matrices = load_response_matrices()
@@ -306,9 +315,6 @@ def load_amortized_irt_results(csv_path=None):
 def plot_rmse_comparison(df, output_path=None):
     """
     Bar plot comparing RMSE at n=1 vs n=max.
-
-    Shows performance of Global Mean, Rasch-IRT, and Amortized IRT
-    when using minimal vs maximal training data.
     """
     if df is None or len(df) == 0:
         print("No data for RMSE comparison plot")
@@ -351,7 +357,7 @@ def plot_rmse_comparison(df, output_path=None):
 
     if output_path is None:
         emb_type = df['embedding_type'].iloc[0] if 'embedding_type' in df.columns else 'unknown'
-        output_path = os.path.join(RESULT_DIR, f'rmse_comparison_{emb_type}.pdf')
+        output_path = os.path.join(FIGURE_DIR, f'rmse_comparison_{emb_type}.pdf')
 
     plt.savefig(output_path, bbox_inches='tight')
     print(f"[OUTPUT] Saved plot: {output_path}")
@@ -361,9 +367,6 @@ def plot_rmse_comparison(df, output_path=None):
 def plot_auc_comparison(df, output_path=None):
     """
     Bar plot comparing AUC at n=1 vs n=max.
-
-    Shows performance of Global Mean, Rasch-IRT, and Amortized IRT
-    when using minimal vs maximal training data.
     """
     if df is None or len(df) == 0:
         print("No data for AUC comparison plot")
@@ -407,7 +410,7 @@ def plot_auc_comparison(df, output_path=None):
 
     if output_path is None:
         emb_type = df['embedding_type'].iloc[0] if 'embedding_type' in df.columns else 'unknown'
-        output_path = os.path.join(RESULT_DIR, f'auc_comparison_{emb_type}.pdf')
+        output_path = os.path.join(FIGURE_DIR, f'auc_comparison_{emb_type}.pdf')
 
     plt.savefig(output_path, bbox_inches='tight')
     print(f"[OUTPUT] Saved plot: {output_path}")
@@ -453,7 +456,7 @@ def plot_rmse_convergence(output_path=None):
     plt.tight_layout()
 
     if output_path is None:
-        output_path = os.path.join(RESULT_DIR, 'rmse_convergence.pdf')
+        output_path = os.path.join(FIGURE_DIR, 'rmse_convergence.pdf')
 
     plt.savefig(output_path, bbox_inches='tight')
     print(f"[OUTPUT] Saved plot: {output_path}")
@@ -499,7 +502,7 @@ def plot_auc_convergence(output_path=None):
         plt.tight_layout()
 
         if output_path is None:
-            output_path = os.path.join(RESULT_DIR, 'auc_convergence.pdf')
+            output_path = os.path.join(FIGURE_DIR, 'auc_convergence.pdf')
 
         plt.savefig(output_path, bbox_inches='tight')
         print(f"[OUTPUT] Saved plot: {output_path}")
@@ -509,9 +512,6 @@ def plot_auc_convergence(output_path=None):
 def plot_active_dims(df, output_path=None):
     """
     Line plot showing number of active dimensions vs n_samples.
-
-    Visualizes how the model's effective dimensionality changes
-    with the amount of training data.
     """
     if df is None or len(df) == 0 or 'active_dims' not in df.columns:
         print("No data for active dims plot")
@@ -529,24 +529,20 @@ def plot_active_dims(df, output_path=None):
 
     if output_path is None:
         emb_type = df['embedding_type'].iloc[0] if 'embedding_type' in df.columns else 'unknown'
-        output_path = os.path.join(RESULT_DIR, f'active_dims_{emb_type}.pdf')
+        output_path = os.path.join(FIGURE_DIR, f'active_dims_{emb_type}.pdf')
 
     plt.savefig(output_path, bbox_inches='tight')
     print(f"[OUTPUT] Saved plot: {output_path}")
     plt.close()
 
 
-
-
-
 def plot_benchmark_panels(output_dir=None):
     if output_dir is None:
-        output_dir = RESULT_DIR
+        output_dir = FIGURE_DIR
         
     benchmarks = ['scienceagentbench', 'scicode', 'corebench_hard']
     titles = ['ScienceAgentBench', 'SciCode', 'CoreBench-Hard']
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    post_rev_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'post-revision')
+    post_rev_dir = os.path.join(REPO_ROOT, 'item-editor', 'eval_response_matrix', 'post-revision')
     
     data = []
     for b in benchmarks:
@@ -614,21 +610,13 @@ def plot_benchmark_panels(output_dir=None):
         plt.savefig(os.path.join(output_dir, 'hal_response_matrix_panel_post.pdf'))
         plt.close()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Main
-# ══════════════════════════════════════════════════════════════════════════════
 
-def main():
-    parser = argparse.ArgumentParser(description='Generate plots from amortized IRT results')
-    parser.add_argument('--output-dir', type=str, default=None,
-                        help='Override output directory for final paper figures')
-    args = parser.parse_args()
-
+def main(output_dir=None):
     print("=" * 60)
-    print("GENERATING PLOTS")
+    print("GENERATING PERFORMANCE PLOTS")
     print("=" * 60)
     
-    out_dir = args.output_dir or RESULT_DIR
+    out_dir = output_dir or FIGURE_DIR
 
     # Generate response matrix visualizations (ColBench Y1 & P_hat)
     print("\n[Response Matrix] Generating Colbench response and probability matrix plots...")
@@ -638,17 +626,18 @@ def main():
     print("\n[Response Matrix] Generating continuous multi-benchmark panels...")
     plot_benchmark_panels(out_dir)
 
-
-
     # Plot AUC and RMSE curves
     print("\n[Amortized IRT] Generating performance learning curves for all embedding types...")
     plot_rmse_convergence(os.path.join(out_dir, 'rmse_convergence.pdf'))
     plot_auc_convergence(os.path.join(out_dir, 'auc_comparison.pdf'))
 
     print("\n" + "=" * 60)
-    print("PLOTTING COMPLETE")
+    print("PERFORMANCE PLOTTING COMPLETE")
     print("=" * 60)
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Generate performance plots')
+    parser.add_argument('--output-dir', type=str, default=None, help='Output directory')
+    args = parser.parse_args()
+    main(args.output_dir)

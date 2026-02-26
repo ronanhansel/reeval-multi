@@ -1,4 +1,6 @@
+#!/usr/bin/env python3
 import os
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,8 +10,14 @@ from tueplots import bundles
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
 # ══════════════════════════════════════════════════════════════════════════════
-RESULT_DIR = "model/result"
-FIGURE_DIR = "paper/figures"
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_ROOT = os.path.dirname(MODEL_DIR)
+
+RESULT_DIR = os.path.join(MODEL_DIR, "result")
+FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
+
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 # Main Blue Color (from Pre_max)
@@ -25,11 +33,7 @@ def get_bundle():
 def collect_results():
     """
     Collect metrics for Naive, Rasch, Pre_8, Pre_max, Post_1, and Post_max.
-    Using the new consolidated CSV structure.
     """
-    
-    # 1. Naive & Rasch (from pre_max)
-    # We'll use the amortized_irt_sae_beta_pre_max_n_1.csv for benchmarks
     file_map = {
         'Pre_8': "amortized_irt_sae_bernoulli_pre_8_n_1.csv",
         'Pre_max': "amortized_irt_sae_beta_pre_max_n_1.csv",
@@ -37,8 +41,13 @@ def collect_results():
         'Post_max': "amortized_irt_sae_beta_n_max.csv"
     }
     
-    # Get Naive/Rasch from Pre_max file
-    pm_df = pd.read_csv(os.path.join(RESULT_DIR, file_map['Pre_max']))
+    # Check if Pre_max exists to get Naive/Rasch benchmarks
+    pm_path = os.path.join(RESULT_DIR, file_map['Pre_max'])
+    if not os.path.exists(pm_path):
+        print(f"Warning: {pm_path} not found. Cannot collect full results.")
+        return pd.DataFrame()
+
+    pm_df = pd.read_csv(pm_path)
     
     res = {
         'Naive': {'auc': pm_df['auc_naive'].tolist(), 'rmse': pm_df['rmse_naive'].tolist()},
@@ -86,6 +95,9 @@ def format_label(val, se):
         return f"{val:.3f}"
 
 def plot_refined_results(df):
+    if df.empty:
+        return
+
     plt.rcParams.update(get_bundle())
     
     # AUC Plot
@@ -95,7 +107,6 @@ def plot_refined_results(df):
     
     ax.set_ylabel("Predictive AUC")
     ax.set_ylim(0.4, 0.9)
-    ax.set_title("Model Predictability (AUC)")
     ax.set_xticks(range(len(df['Model'])))
     ax.set_xticklabels(df['Model'], rotation=15)
     
@@ -103,7 +114,7 @@ def plot_refined_results(df):
         height = bar.get_height()
         label = format_label(val, se)
         ax.text(bar.get_x() + bar.get_width() / 2, height + se + 0.01, label, 
-                ha='center', va='bottom', fontsize=5, fontweight='bold')
+                ha='center', va='bottom', fontsize=5)
 
     plt.savefig(os.path.join(FIGURE_DIR, "refined_auc_comparison.pdf"), bbox_inches='tight')
     plt.close()
@@ -115,7 +126,6 @@ def plot_refined_results(df):
     
     ax.set_ylabel("Predictive RMSE")
     ax.set_ylim(0, 0.6)
-    ax.set_title("Model Predictability (RMSE)")
     ax.set_xticks(range(len(df['Model'])))
     ax.set_xticklabels(df['Model'], rotation=15)
     
@@ -123,13 +133,23 @@ def plot_refined_results(df):
         height = bar.get_height()
         label = format_label(val, se)
         ax.text(bar.get_x() + bar.get_width() / 2, height + se + 0.01, label, 
-                ha='center', va='bottom', fontsize=5, fontweight='bold')
+                ha='center', va='bottom', fontsize=5)
 
     plt.savefig(os.path.join(FIGURE_DIR, "refined_rmse_comparison.pdf"), bbox_inches='tight')
     plt.close()
 
-if __name__ == "__main__":
+def main():
+    print("=" * 60)
+    print("GENERATING REMEDIATION PLOTS")
+    print("=" * 60)
+    
     df = collect_results()
-    print(df)
-    plot_refined_results(df)
-    print(f"Refined plots generated in {FIGURE_DIR}")
+    if not df.empty:
+        print(df)
+        plot_refined_results(df)
+        print(f"Refined plots generated in {FIGURE_DIR}")
+    
+    print("=" * 60)
+
+if __name__ == "__main__":
+    main()

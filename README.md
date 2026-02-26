@@ -286,16 +286,56 @@ We conducted a universal 1-vs-Max comparison where **every configuration was run
 
 **Key Finding**: The Bernoulli model at $N=1$ exhibits a "razor's edge" transition. Across 10 random seeds, dimensionality often oscillates between total collapse (0 dims) and saturation (30 dims), highlighting the necessity of multi-agent aggregation (Beta $N=\text{max}$) for reliable latent factor interpretation.
 
-## 5. Troubleshooting
+---
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `docent not found` | Submodule not installed | Run `pip install -e docent/docent/ && pip install -e docent/` inside `item-editor/` |
-| `TRAPI permission denied` | Wrong API version | Set `TRAPI_API_VERSION=2025-03-01-preview` in `.env` |
-| `No accounts in MSAL cache` | Azure auth expired | Run `az login` to refresh |
-| `rate limit exceeded` | Too many parallel requests | Reduce `--parallel-tasks` value in runner |
+## 5. Reproducing Results
 
-## License & Citation
+We provide a centralized reproduction script to run all experiments and generate the paper figures.
+
+### Data Generation & Processing
+
+The `model/amortized_irt.py` script automatically downloads the necessary binary response matrices and embeddings from HuggingFace to `model/result/` and `model/processed_embeddings/` if they are not found locally.
+
+To reproduce the results from the paper:
+
+```bash
+# Quick reproduction (single seed, main configurations)
+bash model/reproduce.sh
+
+# Full sweep (10 seeds, all SOTA configurations used in the paper)
+bash model/reproduce.sh --full
+```
+
+### Plotting & Visualization
+
+The plotting logic is organized into the `model/plotting` module. You can run specific visualizations or all of them using the unified entry point:
+
+```bash
+# Generate all plots (Performance, Interpretability, Remediation, Rubrics)
+python3 -m model.plotting.main --all
+
+# Generate only rubric statistics
+python3 -m model.plotting.main --rubrics
+
+# Generate only interpretability plots
+python3 -m model.plotting.main --interpretability
+```
+
+The figures will be saved in the `paper/figures/` directory.
+
+### SOTA Hyperparameters
+
+For transparency, the SOTA `lambda-tau` (sparsity) parameters configured in `reproduce.sh --full` are:
+
+- **PCA Embeddings**: `lambda-tau=0.054` (N=max, Beta)
+- **SAE Embeddings**: `lambda-tau=0.0535` (N=max, Beta)
+- **RAW Embeddings**: `lambda-tau=0.029` (N=max, Beta)
+- **Pre-Revision (8 agents)**: `lambda-tau=0.0159` (N=1, Bernoulli)
+- **Pre-Revision (max agents)**: `lambda-tau=0.16` (N=1, Beta)
+
+---
+
+## 6. Latest Updates & Patch Details
 
 Licensed under MIT.
 

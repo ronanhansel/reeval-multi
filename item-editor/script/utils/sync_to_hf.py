@@ -11,15 +11,15 @@ from huggingface_hub import HfApi
 # Configuration
 SYNC_CONFIGS = [
     {
-        "local_dir": "eval_traces",
-        "repo_id": "aims-foundation/eval_traces",
-        "repo_type": "dataset",
-    },
-    {
         "local_dir": "eval_response_matrix",
         "repo_id": "aims-foundation/eval_response_matrix",
         "repo_type": "dataset",
     },
+    {
+        "local_dir": "eval_traces",
+        "repo_id": "aims-foundation/eval_traces",
+        "repo_type": "dataset",
+    }
 ]
 
 def sync_all():

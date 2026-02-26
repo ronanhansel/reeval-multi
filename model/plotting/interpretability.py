@@ -1,4 +1,6 @@
+#!/usr/bin/env python3
 import os
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,10 +16,20 @@ from scipy.stats import entropy
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
 # ══════════════════════════════════════════════════════════════════════════════
-RESULT_DIR = "model/result"
-FIGURE_DIR = "paper/figures/interpretability"
-EMB_DIR = "model/processed_embeddings"
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_ROOT = os.path.dirname(MODEL_DIR)
+
+RESULT_DIR = os.path.join(MODEL_DIR, "result")
+FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures", "interpretability")
+EMB_DIR = os.path.join(MODEL_DIR, "processed_embeddings")
+
 os.makedirs(FIGURE_DIR, exist_ok=True)
+
+# Add repo root to path for imports if needed
+if REPO_ROOT not in sys.path:
+    sys.path.append(REPO_ROOT)
 
 # Colors
 MAIN_BLUE = '#1f77b4'
@@ -53,6 +65,10 @@ def plot_stability_comparison():
                 'K_SE': np.std(k_vals) / np.sqrt(len(k_vals)) if len(k_vals) > 1 else 0.0
             })
     
+    if not data:
+        print("No data found for stability comparison.")
+        return
+
     df_plot = pd.DataFrame(data)
     
     fig, ax = plt.subplots(figsize=(3.5, 2.5))
@@ -66,7 +82,7 @@ def plot_stability_comparison():
     # Highlight Post_max stability
     for i, label in enumerate(df_plot['Model']):
         if label == 'Post_max':
-            bars[i].set_color(STABLE_GREEN)
+            bars[i].set_color(MAIN_BLUE)
             
     plt.savefig(os.path.join(FIGURE_DIR, "k_stability_comparison.pdf"), bbox_inches='tight')
     plt.close()
@@ -113,9 +129,7 @@ def plot_razors_edge():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'):
-    # This logic matches load_data in amortized_irt.py
-    repo_root = os.getcwd()
-    resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
+    resmat_dir = os.path.join(REPO_ROOT, 'item-editor', 'eval_response_matrix')
     
     if pre_revision != 'none':
         pre_rev_dir = os.path.join(resmat_dir, 'pre-revision')
@@ -133,8 +147,12 @@ def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'
             if df is not None:
                 df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
                 combined_dfs.append(df)
-        final_df = pd.concat(combined_dfs, axis=1, join='outer')
-        oracle_df = final_df.dropna(axis=1, how='all')
+        if combined_dfs:
+            final_df = pd.concat(combined_dfs, axis=1, join='outer')
+            oracle_df = final_df.dropna(axis=1, how='all')
+        else:
+            print("Warning: No pre-revision data found.")
+            return None, None
     else:
         post_rev_dir = os.path.join(resmat_dir, 'post-revision')
         b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
@@ -144,14 +162,21 @@ def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'
             if os.path.exists(b_resmat_dir):
                 files = sorted([f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')])
                 if files:
-                    # Just take the first one or average them to get task IDs
                     df = pd.read_csv(os.path.join(b_resmat_dir, files[0]), index_col=0)
                     df.columns = [f"{b}.{c}" if not str(c).startswith(b) else c for c in df.columns]
                     combined_dfs.append(df)
-        oracle_df = pd.concat(combined_dfs, axis=1, join='outer')
+        if combined_dfs:
+            oracle_df = pd.concat(combined_dfs, axis=1, join='outer')
+        else:
+            print("Warning: No post-revision data found.")
+            return None, None
 
     # Load embeddings
     emb_file = os.path.join(EMB_DIR, f'embeddings_{embedding_type}_48.pkl')
+    if not os.path.exists(emb_file):
+        print(f"Embedding file not found: {emb_file}")
+        return None, None
+        
     emb_df = pd.read_pickle(emb_file)
     id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
     raw_embs_map = {str(r[id_col]): r['embedding'] for _, r in emb_df.iterrows()}
@@ -170,6 +195,10 @@ def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'
     x_j = x_j / (torch.norm(x_j, dim=1, keepdim=True) + 1e-8)
     
     # Load weights
+    if not os.path.exists(weight_path):
+        print(f"Weights file not found: {weight_path}")
+        return None, None
+        
     state = torch.load(weight_path)
     W = state['W']
     tau = torch.relu(state['tau_raw'])
@@ -181,7 +210,7 @@ def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'
     return loadings.numpy(), task_ids
 
 def get_item_inputs(tids):
-    input_path = "item-editor/eval_response_matrix/all_benchmarks_embeddings_4096_8B.pkl"
+    input_path = os.path.join(REPO_ROOT, "item-editor/eval_response_matrix/all_benchmarks_embeddings_4096_8B.pkl")
     if not os.path.exists(input_path): return {}
     df = pd.read_pickle(input_path)
     # Create lookup benchmark.task_id -> text_input
@@ -201,10 +230,13 @@ def plot_loading_heatmap():
     
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.0), sharey=True)
     
+    any_plotted = False
     for i, (label, w_path, pre_rev) in enumerate(configs):
         if not os.path.exists(w_path): continue
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
+        if A is None: continue
         
+        any_plotted = True
         # Filter for active dims only
         active = np.where(np.abs(A).max(axis=0) > 0.001)[0]
         if len(active) == 0: active = np.arange(A.shape[1])
@@ -221,13 +253,12 @@ def plot_loading_heatmap():
         if i == 0:
             axes[i].set_ylabel("Active Latent Dims ($K$)")
         axes[i].set_xticks([]) # Hide item ticks
-        
-    plt.savefig(os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf"), bbox_inches='tight')
+    
+    if any_plotted:
+        plt.savefig(os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf"), bbox_inches='tight')
     plt.close()
 
 def plot_semantic_alignment():
-    # We'll create a markdown table instead of a plot for "alignment" 
-    # as it's more readable for a brainstorm.
     desc_path = os.path.join(EMB_DIR, "feature_descriptions_sae.pkl")
     
     configs = [
@@ -247,6 +278,8 @@ def plot_semantic_alignment():
     for label, w_path, pre_rev in configs:
         if not os.path.exists(w_path): continue
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
+        if A is None: continue
+        
         weights = torch.load(w_path)
         tau = torch.relu(weights['tau_raw']).cpu().numpy()
         
@@ -329,13 +362,13 @@ def plot_2d_projections():
     
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.0))
     
+    any_plotted = False
     for i, (label, w_path, pre_rev) in enumerate(configs):
-        if not os.path.exists(w_path): 
-            print(f"Warning: {w_path} not found.")
-            continue
-            
+        if not os.path.exists(w_path): continue
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
-        
+        if A is None: continue
+            
+        any_plotted = True
         # Filter for active dims
         active = np.where(np.abs(A).max(axis=0) > 1e-6)[0]
         if len(active) < 2:
@@ -370,13 +403,23 @@ def plot_2d_projections():
         if i == 1:
             axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=6)
             
-    plt.savefig(os.path.join(FIGURE_DIR, "loading_2d_projections.pdf"), bbox_inches='tight')
+    if any_plotted:
+        plt.savefig(os.path.join(FIGURE_DIR, "loading_2d_projections.pdf"), bbox_inches='tight')
     plt.close()
 
-if __name__ == "__main__":
+def main():
+    print("=" * 60)
+    print("GENERATING INTERPRETABILITY PLOTS")
+    print("=" * 60)
+    
     plot_stability_comparison()
     plot_razors_edge()
     plot_loading_heatmap()
     plot_semantic_alignment()
     plot_2d_projections()
+    
     print(f"Interpretability plots generated in {FIGURE_DIR}")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    main()
