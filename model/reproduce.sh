@@ -89,8 +89,17 @@ for seed in $SEEDS; do
     
     # 4. Pre-Revision Checks (Full Sweep only)
     if $FULL_SWEEP; then
+        # SAE Pre-Revision
         run_exp sae 1 bernoulli 0.0159 8 $seed
         run_exp sae 1 beta 0.16 max $seed
+        
+        # PCA Pre-Revision
+        run_exp pca 1 bernoulli 0.0155 8 $seed
+        run_exp pca 1 beta 0.054 max $seed
+        
+        # RAW Pre-Revision
+        run_exp raw 1 bernoulli 0.0151 8 $seed
+        run_exp raw 1 beta 0.029 max $seed
     fi
 done
 

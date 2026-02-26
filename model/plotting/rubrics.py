@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tueplots import bundles
+from model.plotting import colors as pc
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -22,9 +23,7 @@ FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-# Colors - Professional Palette
-SOFT_BLUE = '#A0C4FF'    # Light, clean blue for Pre-revision
-EMERALD_GREEN = '#2ECC71' # Vibrant, professional green for Post-revision
+# Professional Aesthetics from pc (shared colors)
 
 def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
@@ -109,18 +108,16 @@ def plot_rubric_statistics(df):
         return
 
     plt.rcParams.update(get_bundle())
-    
-    # Use a slightly taller aspect ratio for readability
-    fig, ax = plt.subplots(figsize=(3.5, 3.5))
+    fig, ax = plt.subplots(figsize=(6.75, 2.5))
     
     x = np.arange(len(df['Benchmark']))
     width = 0.35
     
-    rects1 = ax.bar(x - width/2, df['Pre'], width, label='Pre-Revision', 
-                    color=SOFT_BLUE, edgecolor='#2C3E50', linewidth=0.8, alpha=0.9)
-    rects2 = ax.bar(x + width/2, df['Post_Mean'], width, yerr=df['Post_SE'], label='Post-Revision', 
-                    color=EMERALD_GREEN, edgecolor='#1B5E20', linewidth=0.8, alpha=0.9,
-                    capsize=4, error_kw={'elinewidth': 1.0, 'ecolor': '#1B5E20'})
+    # All bars use PRIMARY_LIGHT_BLUE
+    rects1 = ax.bar(x - width/2, df['Pre'], width, label='Pre-revision', 
+                    color=pc.PRIMARY_LIGHT_BLUE, alpha=0.9, edgecolor=pc.BAR_EDGE_COLOR, linewidth=pc.BAR_LINEWIDTH)
+    rects2 = ax.bar(x + width/2, df['Post_Mean'], width, yerr=df['Post_SE'], label='Post-revision', 
+                    color=pc.PRIMARY_LIGHT_BLUE, alpha=0.7, edgecolor=pc.BAR_EDGE_COLOR, linewidth=pc.BAR_LINEWIDTH, capsize=3)
 
     # Styling
     ax.set_ylabel('Fraction of Items Meeting Rubrics', fontsize=9)
