@@ -224,11 +224,11 @@ def plot_loading_heatmap():
     plt.rcParams.update(get_bundle())
     
     configs = [
-        ('Pre_max', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_pre_max_n_max_seed_42_weights_final.pkl"), 'max'),
-        ('Post_max', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
+        ('Pre-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_pre_max_n_max_seed_42_weights_final.pkl"), 'max'),
+        ('Post-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
     ]
     
-    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.0), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(4.5, 2.0), sharey=True)
     
     any_plotted = False
     for i, (label, w_path, pre_rev) in enumerate(configs):
@@ -248,10 +248,10 @@ def plot_loading_heatmap():
         A_sorted = A_sub[sort_idx]
         
         sns.heatmap(A_sorted.T, ax=axes[i], cmap='RdBu_r', center=0, cbar=False if i==0 else True)
-        axes[i].set_title(label)
-        axes[i].set_xlabel("Items (Sorted by Benchmark)")
+        axes[i].set_title(label, fontsize=11)
+        axes[i].set_xlabel("Items (Sorted by Benchmark)", fontsize=9)
         if i == 0:
-            axes[i].set_ylabel("Active Latent Dims ($K$)")
+            axes[i].set_ylabel("Active Latent Dims ($K$)", fontsize=9)
         axes[i].set_xticks([]) # Hide item ticks
     
     if any_plotted:
@@ -287,8 +287,8 @@ def plot_semantic_alignment():
         
         report_lines = []
         report_lines.append(f"\n### Semantic Alignment & Clarity: {label} (K={len(active)})")
-        report_lines.append("| Dim | Tau Strength | Representative SAE Topic | Top 5 Loader Items + Context | Primary Benchmark | Purity |")
-        report_lines.append("|---|---|---|---|---|---|")
+        report_lines.append("| Dim | Tau Strength | Top 5 Loader Items + Context | Primary Benchmark | Purity |")
+        report_lines.append("|---|---|---|---|---|")
         
         benchmarks = np.array([t.split('.')[0] for t in tids])
         
@@ -298,12 +298,6 @@ def plot_semantic_alignment():
         input_lookup = get_item_inputs(tids)
         
         for idx in active:
-            # Topic from SAE
-            row = descriptions[descriptions['neuron_idx'] == idx]
-            topic = "N/A"
-            if not row.empty:
-                topic = row.iloc[0]['top_example_1'][:60].replace('\n', ' ') + "..."
-            
             # Loaders
             loadings = np.abs(A[:, idx])
             top_5_indices = np.argsort(loadings)[-5:][::-1]
@@ -314,7 +308,7 @@ def plot_semantic_alignment():
                 if loadings[i] < 1e-6: continue
                 prompt = input_lookup.get(tid, "No description found")
                 # Truncate and clean prompt
-                prompt_snippet = prompt[:500].replace('\n', ' ').strip() + "..."
+                prompt_snippet = prompt[:3500].replace('\n', ' ').strip() + "..."
                 loader_details.append(f"**{tid}**: {prompt_snippet}")
             
             loaders_str = "<br>".join(loader_details) if loader_details else "None"
@@ -337,7 +331,7 @@ def plot_semantic_alignment():
             ent = entropy(bench_loadings) if loadings.sum() > 1e-6 else 0
             all_entropies.append(ent)
             
-            report_lines.append(f"| {idx} | {tau[idx]:.3f} | {topic} | {loaders_str} | {primary} | {purity:.2f} |")
+            report_lines.append(f"| {idx} | {tau[idx]:.3f} | {loaders_str} | {primary} | {purity:.2f} |")
             
         report_lines.append(f"\n**{label} Aggregate Metrics:**")
         report_lines.append(f"- Mean Benchmark Purity: {np.mean(all_purities):.4f}")
@@ -356,8 +350,8 @@ def plot_2d_projections():
     plt.rcParams.update(get_bundle())
     
     configs = [
-        ('Pre_max', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_pre_max_n_max_seed_42_weights_final.pkl"), 'max'),
-        ('Post_max', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
+        ('Pre-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_pre_max_n_max_seed_42_weights_final.pkl"), 'max'),
+        ('Post-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
     ]
     
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.0))
@@ -383,6 +377,14 @@ def plot_2d_projections():
         tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(tids)-1))
         X_2d = tsne.fit_transform(A_sub)
         
+        # Map benchmarks to cleaner names for legend
+        bench_map = {
+            'colbench_backend_programming': 'ColBench',
+            'corebench_hard': 'CoreBench',
+            'scienceagentbench': 'SAB',
+            'scicode': 'SciCode'
+        }
+        
         # Color by benchmark
         benchmarks = [t.split('.')[0] for t in tids]
         unique_b = sorted(list(set(benchmarks)))
@@ -395,13 +397,14 @@ def plot_2d_projections():
         
         for b, color in zip(unique_b, palette):
             mask = [bench == b for bench in benchmarks]
-            axes[i].scatter(X_2d[mask, 0], X_2d[mask, 1], label=b, color=color, s=20, alpha=0.6, edgecolors='none')
+            label_name = bench_map.get(b, b)
+            axes[i].scatter(X_2d[mask, 0], X_2d[mask, 1], label=label_name, color=color, s=15, alpha=0.7, edgecolors='none')
             
-        axes[i].set_title(f"{label} (K={A_sub.shape[1]})")
+        axes[i].set_title(f"{label} (K={A_sub.shape[1]})", fontsize=11)
         axes[i].set_xticks([])
         axes[i].set_yticks([])
         if i == 1:
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=6)
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8, frameon=True)
             
     if any_plotted:
         plt.savefig(os.path.join(FIGURE_DIR, "loading_2d_projections.pdf"), bbox_inches='tight')
