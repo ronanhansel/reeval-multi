@@ -102,6 +102,15 @@ def get_benchmark_iterations(benchmark_dir, benchmark_name):
         return []
         
     df_base = pd.read_csv(os.path.join(benchmark_dir, base_file), index_col=0)
+    
+    # [CRITICAL DATA FIX]: Base dataset parsing occasionally loads aggregated columns from multiple datasets 
+    # (e.g., SAB generation traces mistakenly embed SciCode tasks too due to logging intersections). 
+    # To prevent item-size explosion across iterations, cleanly drop any non-benchmark columns.
+    valid_cols = [c for c in df_base.columns if str(c).startswith(benchmark_name)]
+    if not valid_cols:
+        return []
+    df_base = df_base[valid_cols]
+    
     df_base.columns = [
         f"{benchmark_name}.{c}" 
         if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) 
@@ -114,15 +123,18 @@ def get_benchmark_iterations(benchmark_dir, benchmark_name):
     for f in sorted(files):
         if f != base_file:
             df_rem = pd.read_csv(os.path.join(benchmark_dir, f), index_col=0)
-            df_rem.columns = [
-                f"{benchmark_name}.{c}" 
-                if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) 
-                else c for c in df_rem.columns
-            ]
-            
-            df_iter = df_base.copy()
-            df_iter.update(df_rem)
-            results.append(df_iter)
+            valid_rem_cols = [c for c in df_rem.columns if str(c).startswith(benchmark_name)]
+            if valid_rem_cols:
+                df_rem = df_rem[valid_rem_cols]
+                df_rem.columns = [
+                    f"{benchmark_name}.{c}" 
+                    if not str(c).startswith(benchmark_name) and not str(c).startswith(benchmark_name.replace('_hard','')) 
+                    else c for c in df_rem.columns
+                ]
+                
+                df_iter = df_base.copy()
+                df_iter.update(df_rem)
+                results.append(df_iter)
             
     return results
 

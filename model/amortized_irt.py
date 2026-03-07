@@ -358,8 +358,15 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         colbench_dfs = []
         for f in colbench_files:
             df = pd.read_csv(os.path.join(colbench_dir, f), index_col=0)
-            df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
-            colbench_dfs.append(df)
+            
+            # [CRITICAL DATA FIX]: The base CSV files dynamically generated from trace logs
+            # inadvertently aggregate columns across multiple benchmarks (e.g. resmat_sky0.csv contains SAB + SciCode).
+            # This strict filter prevents cross-contamination to ensure pure N-dim modeling arrays.
+            valid_cols = [c for c in df.columns if str(c).startswith("colbench")]
+            if valid_cols:
+                df = df[valid_cols]
+                df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
+                colbench_dfs.append(df)
     
         # 2. Load other benchmarks response matrices
         other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]

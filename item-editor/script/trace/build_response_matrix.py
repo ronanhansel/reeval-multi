@@ -1406,10 +1406,22 @@ def main() -> None:
                     elif benchmark == "scienceagentbench":
                         sab_scores = load_scienceagentbench_eval_from_file(eval_path, benchmark_task_ids[benchmark])
 
-                row = []
-                for b in active_benchmarks:
-                    for task_id in benchmark_task_ids.get(b, []):
-                        if b != benchmark:
+              # --- Gather Data ---
+    columns = []
+    # Identify which parts of the `columns` list belong to which benchmark
+    # Use mapping: b -> (start_idx, end_idx)
+    col_bounds = {}
+    current_idx = 0
+    
+    for b in active_benchmarks:
+        start = current_idx
+        for task_id in benchmark_task_ids.get(b, []):
+            columns.append(f"{b}.{task_id}")
+            current_idx += 1
+        col_bounds[b] = (start, current_idx)
+
+    # Note: `rows` contains aligned arrays of length `len(columns)`
+    # The first element of `header` is "task_id", followed by exactly `columns`f b != benchmark:
                             row.append("")
                             continue
                         if task_id not in ok_tasks:
@@ -1512,106 +1524,88 @@ def main() -> None:
             
         # Determine subfolder based on benchmarks found for this prefix
         contributing_benchmarks = [b for b, rids in benchmark_run_ids.items() if rids]
-        if len(contributing_benchmarks) == 1:
-            b_name = contributing_benchmarks[0]
-            if b_name == "colbench":
+        # --- Write Data Per Benchmark ---
+        for b in active_benchmarks:
+            if b == "colbench":
                 subfolder = "colbench_backend_programming"
-            elif b_name == "corebench":
+            elif b == "corebench":
                 subfolder = "corebench_hard"
             else:
-                subfolder = b_name
-        elif len(contributing_benchmarks) > 1:
-            subfolder = "combined"
-        else:
-            subfolder = ""
-
-        # Remove prefix from filename if --original is set or if it matches the benchmark
-        if args.original:
-            # For original data, we typically want resmat_{benchmark}.csv or just resmat.csv inside the benchmark folder
-            # If pfx_for_file equals the benchmark name, it's redundant to repeat it if the folder is already the benchmark
-            # But standard practice is resmat_{benchmark}.csv
-            pass
-
-        if args.output:
-            output_dir = Path(args.output)
-            if subfolder:
-                output_dir = output_dir / subfolder
-            # Use 'resmat' subfolder for main matrices 
-            output_dir = output_dir / "resmat"
-            
-            if args.original:
-                 # If original, ensure we don't have double prefixes if pfx matches benchmark
-                 if pfx_for_file == subfolder:
-                     output_path = output_dir / f"resmat_{pfx_for_file}.csv"
-                 else:
-                     output_path = output_dir / f"resmat_{pfx_for_file}.csv"
-            else:
-                output_path = output_dir / f"resmat_{pfx_for_file}.csv"
-        else:
-            if args.original:
-                # Default for original: eval_response_matrix/pre-revision
-                output_dir = REPO_ROOT / "eval_response_matrix" / "pre-revision"
-            else:
-                output_dir = repo_root / "result" / ".hal_data"
-            
-            if subfolder:
-                output_dir = output_dir / subfolder
-            output_dir = output_dir / "resmat"
-            output_path = output_dir / f"resmat_{pfx_for_file}.csv"
-            
-        rows_with_labels = [[row_labels[i]] + rows[i] for i in range(len(rows))]
-        
-        # Ensure at least one agent row for original data if we have task columns
-        if args.original and not rows_with_labels and columns:
-            placeholder_row = ["original_agent"] + [""] * len(columns)
-            rows_with_labels.append(placeholder_row)
-
-        output_path = write_csv(output_path, header, rows_with_labels)
-        print(f"Wrote CSV: {output_path} with {len(rows_with_labels)} agent rows")
-
-        # Export Judge Verdicts to a separate file if present
-        has_any_verdicts = any(v for v in benchmark_to_verdicts.values())
-        if has_any_verdicts:
-            verdicts_dir = output_path.parent.parent / "verdicts"
-            verdicts_dir.mkdir(parents=True, exist_ok=True)
-            verdicts_path = verdicts_dir / f"verdict_{pfx_for_file}.csv"
-            
-            # Build the judge_verdict row matches 'columns' structure
-            judge_row = ["judge_verdict"]
-            val_count = 0
-            for b in active_benchmarks:
-                v_map = benchmark_to_verdicts.get(b, {})
-                for task_id in benchmark_task_ids.get(b, []):
-                    val = v_map.get(task_id)
-                    if val is not None:
-                        val_count += 1
-                    judge_row.append(str(val) if val is not None else "")
-            
-            write_csv(verdicts_path, header, [judge_row])
-            print(f"Wrote Verdict CSV: {verdicts_path}")
-
-        if args.extract_subscores:
-            # All labels in row_labels are now agents (no judge_verdict)
-            agent_labels = row_labels
-
-            for s_name, s_rows in subscore_type_to_rows.items():
-                # Only write files that actually have data
-                has_data = any(any(val != "" for val in r) for r in s_rows)
-                if not has_data:
-                    continue
+                subfolder = b
                 
-                # Use 'scores' subfolder for subtask scores, except for rubric_score
-                if s_name == "rubric_score":
-                    sub_output_dir = output_path.parent.parent / "rubrics"
+            if args.output:
+                b_output_dir = Path(args.output) / subfolder / "resmat"
+            else:
+                if args.original:
+                    b_output_dir = REPO_ROOT / "eval_response_matrix" / "pre-revision" / subfolder / "resmat"
                 else:
-                    sub_output_dir = output_path.parent.parent / "scores"
-                sub_output_dir.mkdir(parents=True, exist_ok=True)
-                sub_output_path = sub_output_dir / f"{s_name}_{pfx_for_file}.csv"
+                    b_output_dir = repo_root / "result" / ".hal_data" / subfolder / "resmat"
+            
+            b_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Slice header and rows using pre-computed bounds
+            start, end = col_bounds[b]
+            if start == end: continue # Nothing to write
+            
+            b_header = ["task_id"] + columns[start:end]
+            # Strip prefix internally explicitly for original datasets if we want cleanly scoped headers
+            if args.original:
+                b_header_stripped = ["task_id"] + [c.split('.', 1)[1] if '.' in c else c for c in b_header[1:]]
+            else:
+                b_header_stripped = b_header
                 
-                # Use filtered labels/rows (agent-only)
-                s_rows_with_labels = [[agent_labels[idx]] + s_rows[idx] for idx in range(len(agent_labels))]
-                write_csv(sub_output_path, header, s_rows_with_labels)
-                print(f"Wrote Subscore CSV: {sub_output_path}")
+            b_rows = []
+            for i in range(len(rows)):
+                # Each row in `rows` aligns perfectly with `columns`. Slice it.
+                row_slice = rows[i][start:end]
+                # Only write row if the agent actually participated in this benchmark
+                # (has at least one valid entry)
+                if any(val != "" for val in row_slice):
+                    b_rows.append([row_labels[i]] + row_slice)
+            
+            if not b_rows and columns:
+                if args.original:
+                    # Original requires placeholder
+                    b_rows.append(["original_agent"] + [""] * (end - start))
+                else:
+                    continue # Empty matrix, ignore.
+                    
+            out_path = b_output_dir / f"resmat_{pfx_for_file}.csv"
+            write_csv(out_path, b_header_stripped, b_rows)
+            print(f"Wrote CSV: {out_path} with {len(b_rows)} agent rows")
+            
+            # Export verdicts
+            has_b_verdicts = benchmark_to_verdicts.get(b)
+            if has_b_verdicts:
+                verdicts_dir = b_output_dir.parent / "verdicts"
+                verdicts_dir.mkdir(parents=True, exist_ok=True)
+                v_path = verdicts_dir / f"verdict_{pfx_for_file}.csv"
+                
+                judge_row = ["judge_verdict"]
+                for task_id in benchmark_task_ids.get(b, []):
+                    val = has_b_verdicts.get(task_id)
+                    judge_row.append(str(val) if val is not None else "")
+                
+                write_csv(v_path, b_header_stripped, [judge_row])
+                print(f"Wrote Verdict CSV: {v_path}")
+                
+            # Export subscores
+            if args.extract_subscores:
+                for s_name, s_rows in subscore_type_to_rows.items():
+                    # Check if this benchmark has meaningful subscores
+                    b_sub_rows = []
+                    for idx in range(len(row_labels)):
+                        sliced_s_row = s_rows[idx][start:end]
+                        if any(val != "" for val in sliced_s_row):
+                            b_sub_rows.append([row_labels[idx]] + sliced_s_row)
+                            
+                    if not b_sub_rows: continue
+                    
+                    sub_out_dir = b_output_dir.parent / ("rubrics" if s_name == "rubric_score" else "scores")
+                    sub_out_dir.mkdir(parents=True, exist_ok=True)
+                    s_path = sub_out_dir / f"{s_name}_{pfx_for_file}.csv"
+                    write_csv(s_path, b_header_stripped, b_sub_rows)
+                    print(f"Wrote Subscore CSV: {s_path}")
 
 if __name__ == "__main__":
     main()

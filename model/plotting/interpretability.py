@@ -163,8 +163,14 @@ def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'
                 files = sorted([f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')])
                 if files:
                     df = pd.read_csv(os.path.join(b_resmat_dir, files[0]), index_col=0)
-                    df.columns = [f"{b}.{c}" if not str(c).startswith(b) else c for c in df.columns]
-                    combined_dfs.append(df)
+                    
+                    # First, keep only columns that belong to this benchmark
+                    valid_cols = [c for c in df.columns if str(c).startswith(b)]
+                    if valid_cols:
+                        df = df[valid_cols]
+                        # Now rename properly (some might be pure ints, some might be "benchmark.id")
+                        df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
+                        combined_dfs.append(df)
         if combined_dfs:
             oracle_df = pd.concat(combined_dfs, axis=1, join='outer')
         else:
@@ -246,13 +252,41 @@ def plot_loading_heatmap():
         benchmarks = [t.split('.')[0] for t in tids]
         sort_idx = np.argsort(benchmarks)
         A_sorted = A_sub[sort_idx]
+        sorted_benchmarks = np.array(benchmarks)[sort_idx]
         
         sns.heatmap(A_sorted.T, ax=axes[i], cmap='RdBu_r', center=0, cbar=False if i==0 else True)
         axes[i].set_title(label, fontsize=11)
-        axes[i].set_xlabel("Items (Sorted by Benchmark)", fontsize=9)
         if i == 0:
             axes[i].set_ylabel("Active Latent Dims ($K$)", fontsize=9)
-        axes[i].set_xticks([]) # Hide item ticks
+            
+        # Add vertical lines and custom x ticks
+        unique_b = []
+        counts = []
+        for b in sorted_benchmarks:
+            if not unique_b or unique_b[-1] != b:
+                unique_b.append(b)
+                counts.append(1)
+            else:
+                counts[-1] += 1
+                
+        bench_map = {
+            'colbench_backend_programming': 'ColBench',
+            'corebench_hard': 'CoreBench',
+            'scienceagentbench': 'SAB',
+            'scicode': 'SciCode'
+        }
+                
+        boundaries = [0]
+        centers = []
+        for count in counts:
+            boundaries.append(boundaries[-1] + count)
+            centers.append(boundaries[-2] + count / 2.0)
+            
+        for b_idx in boundaries[1:-1]:
+            axes[i].axvline(x=b_idx, color='black', linewidth=1)
+            
+        axes[i].set_xticks(centers)
+        axes[i].set_xticklabels([bench_map.get(b, b) for b in unique_b], rotation=45, ha='right', fontsize=8)
     
     if any_plotted:
         plt.savefig(os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf"), bbox_inches='tight')
