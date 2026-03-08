@@ -18,7 +18,8 @@ REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 RESULT_DIR="${SCRIPT_DIR}/result"
 # ── Parameters ─────────────────────────────────────────────────────────────
 SEEDS="42"
-NUM_SEEDS=100
+NUM_SEEDS=50
+SHARED_TAUS="0.005 0.010 0.015 0.0151 0.0155 0.0159 0.020 0.025 0.029 0.030 0.035 0.040 0.045 0.050 0.0535 0.054 0.055 0.060 0.065 0.070 0.075 0.080 0.085 0.090 0.095 0.100 0.105 0.110 0.115 0.120 0.125 0.130 0.135 0.140 0.145 0.150 0.155 0.160 0.165 0.170 0.175 0.180 0.185 0.190 0.195 0.200 0.210 0.220 0.230 0.250"
 FULL_SWEEP=false
 ONLY_PLOT=false
 PARALLEL=1
@@ -215,10 +216,10 @@ if ! $ONLY_PLOT; then
         local base_tau=$4
         local pre=${5:-false}
         
-        # If full sweep, run 11 steps from 0.5x to 1.5x, otherwise just run base_tau
+        # If full sweep, run the shared global tau sweep, otherwise just run base_tau
         local taus="$base_tau"
         if $FULL_SWEEP; then
-            taus=$(awk -v t="$base_tau" 'BEGIN{for(i=0.5; i<=1.501; i+=0.1) printf "%.5f ", t*i}')
+            taus="$SHARED_TAUS"
         fi
         
         for tau in $taus; do

@@ -61,12 +61,24 @@ def load_filtered_csv(filename):
     if not os.path.exists(path):
         return None
         
-    df = pd.read_csv(path)
+    try:
+        df = pd.read_csv(path, on_bad_lines='skip')
+    except Exception:
+        return None
     
     if 'lambda_tau' in df.columns and filename in SOTA_TAUS:
+        df['lambda_tau'] = pd.to_numeric(df['lambda_tau'], errors='coerce')
+        df = df.dropna(subset=['lambda_tau'])
         target_tau = SOTA_TAUS[filename]
         # Allow small floating point tolerance
         df = df[np.isclose(df['lambda_tau'], target_tau, atol=1e-4)]
+        
+    if 'active_dims' in df.columns:
+        df['active_dims'] = pd.to_numeric(df['active_dims'], errors='coerce')
+    if 'auc_amortized' in df.columns:
+        df['auc_amortized'] = pd.to_numeric(df['auc_amortized'], errors='coerce')
+        
+    df = df.dropna(subset=['active_dims', 'auc_amortized'])
         
     return df
 
@@ -545,36 +557,61 @@ def plot_tau_sensitivity():
             
         path = os.path.join(RESULT_DIR, filename)
         try:
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, on_bad_lines='skip')
         except Exception:
             continue
             
         if 'lambda_tau' not in df.columns:
             continue
             
-        # Group by lambda_tau and take mean across seeds
-        df_grouped = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].mean().reset_index()
-        df_grouped = df_grouped.sort_values(by='lambda_tau')
+        # Coerce to numeric to handle any corrupted rows from concurrent writes
+        df['lambda_tau'] = pd.to_numeric(df['lambda_tau'], errors='coerce')
+        df['auc_amortized'] = pd.to_numeric(df['auc_amortized'], errors='coerce')
+        df['active_dims'] = pd.to_numeric(df['active_dims'], errors='coerce')
+        df = df.dropna(subset=['lambda_tau', 'auc_amortized', 'active_dims'])
+        
+        # Group by lambda_tau and get both mean and std error
+        df_mean = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].mean().reset_index()
+        df_se = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].sem().reset_index()
+        
+        df_mean = df_mean.sort_values(by='lambda_tau')
+        df_se = df_se.sort_values(by='lambda_tau')
+        
+        taus = df_mean['lambda_tau'].values
         
         fig, ax1 = plt.subplots(figsize=(4.5, 3.0))
         
         # Plot AUC on left axis
         color = MAIN_BLUE
         ax1.set_xlabel('Regularization Strength ($\\tau$)')
+        ax1.set_xlim(0.00, 0.26)
         ax1.set_ylabel('Predictive AUC', color=color)
-        ax1.plot(df_grouped['lambda_tau'], df_grouped['auc_amortized'], color=color, marker='o', linestyle='-')
+        ax1.set_ylim(0.58, 0.82)
+        
+        auc_means = df_mean['auc_amortized'].values
+        auc_ses = df_se['auc_amortized'].values
+        
+        ax1.plot(taus, auc_means, color=color, marker='o', linestyle='-', label='AUC')
+        ax1.fill_between(taus, auc_means - auc_ses, auc_means + auc_ses, color=color, alpha=0.2)
         ax1.tick_params(axis='y', labelcolor=color)
         
         # Plot Active Dims on right axis
         ax2 = ax1.twinx()
         color2 = STABLE_GREEN
         ax2.set_ylabel('Active Dimensions ($K$)', color=color2)
-        ax2.plot(df_grouped['lambda_tau'], df_grouped['active_dims'], color=color2, marker='s', linestyle='--')
+        ax2.set_ylim(-1.5, 31.5)
+        
+        k_means = df_mean['active_dims'].values
+        k_ses = df_se['active_dims'].values
+        
+        ax2.plot(taus, k_means, color=color2, marker='s', linestyle='--', label='Dims (K)')
+        ax2.fill_between(taus, k_means - k_ses, k_means + k_ses, color=color2, alpha=0.2)
         ax2.tick_params(axis='y', labelcolor=color2)
         
         # Align ticks
         ax1.grid(linestyle=':', alpha=0.6)
         
+        # Move titles and borders slightly to prevent overlap
         fig.tight_layout()
         plt.title(f"Sensitivity: {filename.replace('.csv', '')}")
         plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{filename.replace('.csv', '')}.pdf"), bbox_inches='tight')
