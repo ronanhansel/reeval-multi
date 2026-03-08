@@ -47,44 +47,70 @@ def plot_stability_comparison():
     plt.rcParams.update(get_bundle())
     
     file_map = {
-        'Pre_8': "amortized_irt_sae_bernoulli_pre_8_n_1.csv",
-        'Pre_max': "amortized_irt_sae_beta_pre_max_n_1.csv",
-        'Post_1': "amortized_irt_sae_bernoulli_n_1.csv",
-        'Post_max': "amortized_irt_sae_beta_n_max.csv"
+        'Pre-Rev (N=1)': "amortized_irt_sae_bernoulli_pre_8_n_1.csv",
+        'Pre-Rev (Best)': "amortized_irt_sae_beta_pre_max_n_max.csv",
+        'Post-Rev (N=max)': "amortized_irt_sae_beta_n_max.csv"
     }
     
-    data = []
+    all_rows = []
     for label, filename in file_map.items():
         path = os.path.join(RESULT_DIR, filename)
         if os.path.exists(path):
             df = pd.read_csv(path)
-            k_vals = df['active_dims'].tolist()
-            data.append({
-                'Model': label,
-                'K_Mean': np.mean(k_vals),
-                'K_SE': np.std(k_vals) / np.sqrt(len(k_vals)) if len(k_vals) > 1 else 0.0
-            })
+            for k in df['active_dims']:
+                all_rows.append({'Model': label, 'K': k})
     
-    if not data:
-        print("No data found for stability comparison.")
+    if not all_rows:
         return
 
-    df_plot = pd.DataFrame(data)
+    df_plot = pd.DataFrame(all_rows)
     
-    fig, ax = plt.subplots(figsize=(3.5, 2.5))
-    bars = ax.bar(df_plot['Model'], df_plot['K_Mean'], yerr=df_plot['K_SE'], 
-                  capsize=3, color=MAIN_BLUE, alpha=0.8)
+    fig, ax = plt.subplots(figsize=(4.0, 3.0))
+    
+    # Use a boxplot for distribution and swarmplot for individual seeds
+    sns.boxplot(data=df_plot, x='Model', y='K', color='#f0f0f0', width=0.5, ax=ax, showfliers=False)
+    sns.stripplot(data=df_plot, x='Model', y='K', palette='viridis', alpha=0.7, size=6, ax=ax, jitter=True)
     
     ax.set_ylabel("Active Dimensions ($K$)")
-    ax.set_ylim(0, 32)
-    ax.set_title("Latent Factor Stability")
+    ax.set_ylim(-1, 31)
+    ax.set_title("Dimensionality Stability (10 Seeds)")
     
-    # Highlight Post_max stability
-    for i, label in enumerate(df_plot['Model']):
-        if label == 'Post_max':
-            bars[i].set_color(MAIN_BLUE)
+    plt.savefig(os.path.join(FIGURE_DIR, "k_stability_distribution.pdf"), bbox_inches='tight')
+    plt.close()
+
+def plot_effectiveness():
+    """Scatter plot showing accuracy vs complexity (AUC vs K)."""
+    plt.rcParams.update(get_bundle())
+    
+    file_map = {
+        'Pre-Rev (N=1)': ("amortized_irt_sae_bernoulli_pre_8_n_1.csv", 'o'),
+        'Pre-Rev (Saturated)': ("amortized_irt_sae_beta_pre_max_n_max.csv", 'x'),
+        'Post-Rev (Fixed)': ("amortized_irt_sae_beta_n_max.csv", 's')
+    }
+    
+    fig, ax = plt.subplots(figsize=(4.0, 3.5))
+    
+    colors = sns.color_palette("husl", 3)
+    
+    for i, (label, (filename, marker)) in enumerate(file_map.items()):
+        path = os.path.join(RESULT_DIR, filename)
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            ax.scatter(df['active_dims'], df['auc_amortized'], 
+                       label=label, color=colors[i], marker=marker, s=40, alpha=0.6)
             
-    plt.savefig(os.path.join(FIGURE_DIR, "k_stability_comparison.pdf"), bbox_inches='tight')
+            # Draw a crosshair for the mean
+            mean_k = df['active_dims'].mean()
+            mean_auc = df['auc_amortized'].mean()
+            ax.plot(mean_k, mean_auc, marker='+', markersize=15, color=colors[i], markeredgewidth=3)
+
+    ax.set_xlabel("Active Dimensions ($K$)")
+    ax.set_ylabel("Predictive AUC")
+    ax.set_title("Effectiveness: Accuracy vs Complexity")
+    ax.legend(fontsize=8, loc='lower right')
+    ax.grid(linestyle=':', alpha=0.5)
+    
+    plt.savefig(os.path.join(FIGURE_DIR, "effectiveness_auc_vs_k.pdf"), bbox_inches='tight')
     plt.close()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -237,21 +263,62 @@ def plot_loading_heatmap():
     fig, axes = plt.subplots(1, 2, figsize=(4.5, 2.0), sharey=True)
     
     any_plotted = False
+    
+    bench_map = {
+        'colbench_backend_programming': 'ColBench',
+        'corebench_hard': 'CoreBench',
+        'scicode': 'SciCode',
+        'scienceagentbench': 'SAB'
+    }
+    
+    # Enforce left-to-right sorting independently of alphabet
+    ordered_benchmarks = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
+    b_order = {b: i for i, b in enumerate(ordered_benchmarks)}
+    
+    # 1. Load all data first to find the common exact intersection of tasks
+    loaded_data = []
+    common_tids = None
     for i, (label, w_path, pre_rev) in enumerate(configs):
-        if not os.path.exists(w_path): continue
+        if not os.path.exists(w_path): 
+            loaded_data.append(None)
+            continue
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
-        if A is None: continue
+        if A is None: 
+            loaded_data.append(None)
+            continue
+            
+        loaded_data.append((A, tids))
+        if common_tids is None:
+            common_tids = set(tids)
+        else:
+            common_tids = common_tids.intersection(set(tids))
+            
+    if not common_tids:
+        plt.close()
+        return
         
+    for i, (label, w_path, pre_rev) in enumerate(configs):
+        data = loaded_data[i]
+        if data is None: continue
+        
+        A, tids = data
         any_plotted = True
+        
         # Filter for active dims only
         active = np.where(np.abs(A).max(axis=0) > 0.001)[0]
         if len(active) == 0: active = np.arange(A.shape[1])
         A_sub = A[:, active]
         
-        # Sort items by benchmark for visual clumping
-        benchmarks = [t.split('.')[0] for t in tids]
-        sort_idx = np.argsort(benchmarks)
-        A_sorted = A_sub[sort_idx]
+        # Filter to only the intersection
+        tids_list = list(tids)
+        intersect_mask = [tids_list.index(t) for t in tids_list if t in common_tids]
+        A_intersect = A_sub[intersect_mask]
+        intersect_tids = [tids_list[idx] for idx in intersect_mask]
+        
+        # Sort items explicitly by predefined benchmark order
+        benchmarks = [t.split('.')[0] for t in intersect_tids]
+        sort_idx = np.argsort([b_order.get(b, 99) for b in benchmarks])
+        A_sorted = A_intersect[sort_idx]
         sorted_benchmarks = np.array(benchmarks)[sort_idx]
         
         sns.heatmap(A_sorted.T, ax=axes[i], cmap='RdBu_r', center=0, cbar=False if i==0 else True)
@@ -259,7 +326,7 @@ def plot_loading_heatmap():
         if i == 0:
             axes[i].set_ylabel("Active Latent Dims ($K$)", fontsize=9)
             
-        # Add vertical lines and custom x ticks
+        # Add vertical black lines and custom x-ticks at cluster centers
         unique_b = []
         counts = []
         for b in sorted_benchmarks:
@@ -269,13 +336,6 @@ def plot_loading_heatmap():
             else:
                 counts[-1] += 1
                 
-        bench_map = {
-            'colbench_backend_programming': 'ColBench',
-            'corebench_hard': 'CoreBench',
-            'scienceagentbench': 'SAB',
-            'scicode': 'SciCode'
-        }
-                
         boundaries = [0]
         centers = []
         for count in counts:
@@ -283,10 +343,9 @@ def plot_loading_heatmap():
             centers.append(boundaries[-2] + count / 2.0)
             
         for b_idx in boundaries[1:-1]:
-            axes[i].axvline(x=b_idx, color='black', linewidth=1)
+            axes[i].axvline(x=b_idx, color='black', linewidth=0.5, linestyle='--')
             
-        axes[i].set_xticks(centers)
-        axes[i].set_xticklabels([bench_map.get(b, b) for b in unique_b], rotation=45, ha='right', fontsize=8)
+        axes[i].set_xticks([])
     
     if any_plotted:
         plt.savefig(os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf"), bbox_inches='tight')
@@ -321,7 +380,7 @@ def plot_semantic_alignment():
         
         report_lines = []
         report_lines.append(f"\n### Semantic Alignment & Clarity: {label} (K={len(active)})")
-        report_lines.append("| Dim | Tau Strength | Top 5 Loader Items + Context | Primary Benchmark | Purity |")
+        report_lines.append("| Dim | Tau Strength | Top 10 Loader Items + Context | Primary Benchmark | Purity |")
         report_lines.append("|---|---|---|---|---|")
         
         benchmarks = np.array([t.split('.')[0] for t in tids])
@@ -334,16 +393,16 @@ def plot_semantic_alignment():
         for idx in active:
             # Loaders
             loadings = np.abs(A[:, idx])
-            top_5_indices = np.argsort(loadings)[-5:][::-1]
+            top_10_indices = np.argsort(loadings)[-10:][::-1]
             
             loader_details = []
-            for i in top_5_indices:
-                tid = tids[i]
-                if loadings[i] < 1e-6: continue
-                prompt = input_lookup.get(tid, "No description found")
-                # Truncate and clean prompt
-                prompt_snippet = prompt[:3500].replace('\n', ' ').strip() + "..."
-                loader_details.append(f"**{tid}**: {prompt_snippet}")
+            for tid_idx in top_10_indices:
+                tid = tids[tid_idx]
+                val = loadings[tid_idx]
+                # Only include if loading is significant
+                if val < 1e-6: continue 
+                desc = input_lookup.get(tid, "")[:3500].replace('\n', ' ').strip()
+                loader_details.append(f"**{tid}**: {desc}...")
             
             loaders_str = "<br>".join(loader_details) if loader_details else "None"
             
@@ -450,6 +509,7 @@ def main():
     print("=" * 60)
     
     plot_stability_comparison()
+    plot_effectiveness()
     plot_razors_edge()
     plot_loading_heatmap()
     plot_semantic_alignment()

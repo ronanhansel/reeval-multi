@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # Usage:
 #   ./reproduce.sh          # Quick run (single seed for main configs)
-#   ./reproduce.sh --full   # Full sweep (10 seeds for all configs - SOTA)
+#   ./reproduce.sh --full   # Full sweep (100 seeds for all configs - SOTA)
 ###############################################################################
 
 eval "$(conda shell.bash hook)"
@@ -19,6 +19,7 @@ RESULT_DIR="${SCRIPT_DIR}/result"
 
 # ── Parameters ─────────────────────────────────────────────────────────────
 SEEDS="42"
+NUM_SEEDS=100
 FULL_SWEEP=false
 ONLY_PLOT=false
 
@@ -26,7 +27,8 @@ for arg in "$@"; do
     case $arg in
         --full)
             FULL_SWEEP=true
-            SEEDS="42 123 789 2024 1337 555 666 777 888 999"
+            # Generate seed list up to NUM_SEEDS-1
+            SEEDS="$(seq -s ' ' 0 $((NUM_SEEDS - 1)))"
             ;;
         --plot)
             ONLY_PLOT=true
@@ -35,7 +37,7 @@ for arg in "$@"; do
 done
 
 if $FULL_SWEEP; then
-    echo "[MODE] Configured for FULL sweep (10 seeds)..."
+    echo "[MODE] Configured for FULL sweep ($NUM_SEEDS seeds)..."
 else
     echo "[MODE] Configured for QUICK reproduction (1 seed)..."
 fi
