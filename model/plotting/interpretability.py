@@ -40,6 +40,37 @@ def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Optimal SOTA Tau mappings (when filtering sweep CSVs for robustness plots)
+# ══════════════════════════════════════════════════════════════════════════════
+
+SOTA_TAUS = {
+    "amortized_irt_sae_bernoulli_pre_8_n_1.csv": 0.0159,
+    "amortized_irt_sae_beta_pre_max_n_max.csv": 0.16,
+    "amortized_irt_sae_beta_n_max.csv": 0.0535,
+    "amortized_irt_pca_bernoulli_n_1.csv": 0.0155,
+    "amortized_irt_pca_bernoulli_pre_8_n_1.csv": 0.0155,
+    "amortized_irt_pca_beta_n_max.csv": 0.054,
+    "amortized_irt_pca_beta_pre_max_n_max.csv": 0.054,
+    "amortized_irt_raw_beta_n_max.csv": 0.029,
+    "amortized_irt_raw_bernoulli_n_1.csv": 0.0151,
+}
+
+def load_filtered_csv(filename):
+    """Loads CSV and filters it to only the SOTA tau value if it contains a tau sweep."""
+    path = os.path.join(RESULT_DIR, filename)
+    if not os.path.exists(path):
+        return None
+        
+    df = pd.read_csv(path)
+    
+    if 'lambda_tau' in df.columns and filename in SOTA_TAUS:
+        target_tau = SOTA_TAUS[filename]
+        # Allow small floating point tolerance
+        df = df[np.isclose(df['lambda_tau'], target_tau, atol=1e-4)]
+        
+    return df
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Plot 1: Dimensionality Stability (K-Consistency)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -54,9 +85,8 @@ def plot_stability_comparison():
     
     all_rows = []
     for label, filename in file_map.items():
-        path = os.path.join(RESULT_DIR, filename)
-        if os.path.exists(path):
-            df = pd.read_csv(path)
+        df = load_filtered_csv(filename)
+        if df is not None:
             for k in df['active_dims']:
                 all_rows.append({'Model': label, 'K': k})
     
@@ -93,9 +123,8 @@ def plot_effectiveness():
     colors = sns.color_palette("husl", 3)
     
     for i, (label, (filename, marker)) in enumerate(file_map.items()):
-        path = os.path.join(RESULT_DIR, filename)
-        if os.path.exists(path):
-            df = pd.read_csv(path)
+        df = load_filtered_csv(filename)
+        if df is not None:
             ax.scatter(df['active_dims'], df['auc_amortized'], 
                        label=label, color=colors[i], marker=marker, s=40, alpha=0.6)
             
@@ -121,11 +150,10 @@ def plot_razors_edge():
     plt.rcParams.update(get_bundle())
     
     # Load PCA Bernoulli N=1 (the most unstable)
-    path = os.path.join(RESULT_DIR, "amortized_irt_pca_bernoulli_n_1.csv")
-    if not os.path.exists(path):
+    df = load_filtered_csv("amortized_irt_pca_bernoulli_n_1.csv")
+    if df is None or len(df) == 0:
         return
         
-    df = pd.read_csv(path)
     df = df.sort_values(by='seed')
     
     fig, ax = plt.subplots(figsize=(3.5, 2.0))
@@ -503,6 +531,59 @@ def plot_2d_projections():
         plt.savefig(os.path.join(FIGURE_DIR, "loading_2d_projections.pdf"), bbox_inches='tight')
     plt.close()
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Plot 5: Tau Sensitivity
+# ══════════════════════════════════════════════════════════════════════════════
+
+def plot_tau_sensitivity():
+    plt.rcParams.update(get_bundle())
+
+    any_plotted = False
+    for filename in os.listdir(RESULT_DIR):
+        if not filename.endswith(".csv"):
+            continue
+            
+        path = os.path.join(RESULT_DIR, filename)
+        try:
+            df = pd.read_csv(path)
+        except Exception:
+            continue
+            
+        if 'lambda_tau' not in df.columns:
+            continue
+            
+        # Group by lambda_tau and take mean across seeds
+        df_grouped = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].mean().reset_index()
+        df_grouped = df_grouped.sort_values(by='lambda_tau')
+        
+        fig, ax1 = plt.subplots(figsize=(4.5, 3.0))
+        
+        # Plot AUC on left axis
+        color = MAIN_BLUE
+        ax1.set_xlabel('Regularization Strength ($\\tau$)')
+        ax1.set_ylabel('Predictive AUC', color=color)
+        ax1.plot(df_grouped['lambda_tau'], df_grouped['auc_amortized'], color=color, marker='o', linestyle='-')
+        ax1.tick_params(axis='y', labelcolor=color)
+        
+        # Plot Active Dims on right axis
+        ax2 = ax1.twinx()
+        color2 = STABLE_GREEN
+        ax2.set_ylabel('Active Dimensions ($K$)', color=color2)
+        ax2.plot(df_grouped['lambda_tau'], df_grouped['active_dims'], color=color2, marker='s', linestyle='--')
+        ax2.tick_params(axis='y', labelcolor=color2)
+        
+        # Align ticks
+        ax1.grid(linestyle=':', alpha=0.6)
+        
+        fig.tight_layout()
+        plt.title(f"Sensitivity: {filename.replace('.csv', '')}")
+        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{filename.replace('.csv', '')}.pdf"), bbox_inches='tight')
+        plt.close()
+        any_plotted = True
+        
+    if any_plotted:
+        print(f"Tau sensitivity plots generated in {FIGURE_DIR}")
+
 def main():
     print("=" * 60)
     print("GENERATING INTERPRETABILITY PLOTS")
@@ -514,6 +595,7 @@ def main():
     plot_loading_heatmap()
     plot_semantic_alignment()
     plot_2d_projections()
+    plot_tau_sensitivity()
     
     print(f"Interpretability plots generated in {FIGURE_DIR}")
     print("=" * 60)

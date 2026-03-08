@@ -33,6 +33,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from huggingface_hub import snapshot_download
+from filelock import FileLock, Timeout
 
 from utils import compute_rmse, evaluate_auc
 
@@ -617,6 +618,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'n_samples': n_files,
         'model_type': model_type,
         'seed': RANDOM_SEED,
+        'lambda_tau': LAMBDA_TAU,
         'rmse_naive': rmse_naive,
         'rmse_rasch': rmse_rasch,
         'rmse_amortized': best_rmse,
@@ -787,14 +789,26 @@ def main():
         save_results.append(r_copy)
     
     df_results = pd.DataFrame(save_results)
-    if os.path.exists(output_path):
-        # Append to existing results to consolidate seeds
-        df_old = pd.read_csv(output_path)
-        # Avoid duplicate (n_samples, seed) entries if re-run
-        df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed'], keep='last')
-        df_combined.to_csv(output_path, index=False)
-    else:
-        df_results.to_csv(output_path, index=False)
+    
+    lock_path = f"{output_path}.lock"
+    lock = FileLock(lock_path, timeout=600) # 10 minute timeout just in case it's highly contested
+    
+    try:
+        with lock:
+            if os.path.exists(output_path):
+                # Handle edge case where file exists but is empty/corrupted
+                try:
+                    df_old = pd.read_csv(output_path)
+                    # Avoid duplicate (n_samples, seed) entries if re-run
+                    df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed', 'lambda_tau'], keep='last')
+                    df_combined.to_csv(output_path, index=False)
+                except pd.errors.EmptyDataError:
+                    # If the file exists but was corrupted/empty, just overwrite it
+                    df_results.to_csv(output_path, index=False)
+            else:
+                df_results.to_csv(output_path, index=False)
+    except Timeout:
+        print(f"\n[WARNING] Could not acquire lock for {output_path} after 10 minutes. Skipping save.")
 
     print("\n" + "=" * 60)
     print("EXPERIMENT COMPLETE")
