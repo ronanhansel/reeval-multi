@@ -1,2 +1,0 @@
-n_samples,model_type,seed,lambda_tau,rmse_naive,rmse_rasch,rmse_amortized,auc_naive,auc_rasch,auc_amortized,active_dims,active_indices,tau_values,embedding_type
-1,beta,42,1.38,0.2541759672313292,0.35250944187491734,0.27226459442775525,0.5,0.5774008157211717,0.7335619824496353,0,[],"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]",pca
