@@ -31,12 +31,9 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.functional as F
 import torch.optim as optim
 from huggingface_hub import snapshot_download
 from filelock import FileLock, Timeout
-import multiprocessing as mp
-from functools import partial
 
 from utils import compute_rmse, evaluate_auc
 
@@ -84,13 +81,10 @@ warnings.filterwarnings('ignore')
 # Device selection
 if torch.cuda.is_available():
     device = torch.device('cuda')
-    num_gpus = torch.cuda.device_count()
 elif torch.backends.mps.is_available():
     device = torch.device('mps')
-    num_gpus = 1
 else:
     device = torch.device('cpu')
-    num_gpus = 1
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -667,111 +661,6 @@ def parse_n_samples(arg, total_files):
     result = [n for n in result if 1 <= n <= total_files]
     return sorted(set(result))
 
-def run_single_config(config, args, all_dfs, global_shared_indices, raw_embs_map, actual_emb_type, n_values):
-    """Worker function for running a single (seed, lambda_tau) configuration."""
-    seed, lambda_tau, worker_id = config
-    
-    # Assign GPU evenly across workers
-    local_device = torch.device(f'cuda:{worker_id % num_gpus}' if torch.cuda.is_available() else 'cpu')
-    
-    # Set independent random seeds
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    import random
-    random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-        
-    global LAMBDA_TAU, RANDOM_SEED
-    LAMBDA_TAU = lambda_tau
-    RANDOM_SEED = seed
-
-    if args.output:
-        output_path = args.output
-    else:
-        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
-        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
-
-    # Prepare data on the local device
-    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
-    # Move tensors to the correct device
-    data['x_j'] = data['x_j'].to(local_device)
-    data['y_oracle'] = data['y_oracle'].to(local_device)
-    data['test_mask_t'] = data['test_mask_t'].to(local_device)
-
-    results = []
-    
-    # Check if this exact run already exists to skip
-    if os.path.exists(output_path):
-        try:
-            df_existing = pd.read_csv(output_path)
-            # Assuming we're looking at the max n_value for the skip logic
-            max_n = max(n_values)
-            if not df_existing.empty and 'seed' in df_existing.columns and 'lambda_tau' in df_existing.columns:
-                matches = df_existing[(df_existing['seed'] == seed) & 
-                                      (np.isclose(df_existing['lambda_tau'], lambda_tau, atol=1e-5)) &
-                                      (df_existing['n_samples'] == max_n)]
-                if not matches.empty:
-                    print(f"[SKIP] worker {worker_id} (GPU {worker_id % num_gpus}): seed={seed}, tau={lambda_tau} already complete in {os.path.basename(output_path)}.")
-                    return
-        except Exception:
-            pass # File lock contention, just run it
-
-    print(f"\n[START] worker {worker_id} (GPU {worker_id % num_gpus}) executing -> seed={seed}, tau={lambda_tau}")
-    for i, n in enumerate(n_values):
-        # We need to temporarily mock the global device so `run_experiment` internals use it
-        global device
-        old_device = device
-        device = local_device
-        
-        try:
-            result = run_experiment(n, all_dfs, global_shared_indices, data,
-                                    model_type=args.model_type, beta_phi=args.beta_phi)
-                                    
-            result['embedding_type'] = actual_emb_type
-            if args.pre_revision != 'none':
-                result['scenario'] = f"Pre-{args.pre_revision}"
-            results.append(result)
-            
-            # Save model state to separate pkl if requested
-            if args.save_weights:
-                weight_path = output_path.replace('.csv', f'_seed_{seed}_weights_best.pkl')
-                torch.save(result['model_state'], weight_path)
-                
-                final_weight_path = output_path.replace('.csv', f'_seed_{seed}_weights_final.pkl')
-                torch.save(result['final_state'], final_weight_path)
-        finally:
-            device = old_device
-            
-    # Save results to CSV (Consolidated)
-    save_results = []
-    for r in results:
-        r_copy = r.copy()
-        if 'model_state' in r_copy: del r_copy['model_state']
-        if 'final_state' in r_copy: del r_copy['final_state']
-        save_results.append(r_copy)
-    
-    df_results = pd.DataFrame(save_results)
-    
-    lock_path = f"{output_path}.lock"
-    lock = FileLock(lock_path, timeout=600)
-    
-    try:
-        with lock:
-            if os.path.exists(output_path):
-                try:
-                    df_old = pd.read_csv(output_path)
-                    df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed', 'lambda_tau'], keep='last')
-                    df_combined.to_csv(output_path, index=False)
-                except pd.errors.EmptyDataError:
-                    df_results.to_csv(output_path, index=False)
-            else:
-                df_results.to_csv(output_path, index=False)
-    except Timeout:
-        print(f"\n[WARNING] Could not acquire lock for {output_path}. Skipping save.")
-
-    print(f"[DONE] worker {worker_id} completed: seed={seed}, tau={lambda_tau}")
 
 def main():
     global LAMBDA_TAU, WD_THETA, WD_W, EPOCHS, SNAPPING_THRESHOLD, RANDOM_SEED
@@ -802,18 +691,19 @@ def main():
         '--output', type=str, default=None,
         help='Output CSV path (default: result/amortized_irt_{embedding_type}_{model_type}.csv)'
     )
-    parser.add_argument('--lambda-tau', type=str, default=str(LAMBDA_TAU), help='Override LAMBDA_TAU (comma separated lists allowed)')
+    parser.add_argument('--lambda-tau', type=float, default=None, help='Override LAMBDA_TAU')
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
     parser.add_argument('--wd-w', type=float, default=None, help='Override WD_W')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
     parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
-    parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
+    parser.add_argument('--seed', type=int, default=RANDOM_SEED, help=f'Random seed (default: {RANDOM_SEED})')
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
-    parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
     args = parser.parse_args()
 
+    if args.lambda_tau is not None:
+        LAMBDA_TAU = args.lambda_tau
     if args.wd_theta is not None:
         WD_THETA = args.wd_theta
     if args.wd_w is not None:
@@ -823,17 +713,22 @@ def main():
     if args.snapping_threshold is not None:
         SNAPPING_THRESHOLD = args.snapping_threshold
 
-    # Parse multi-experiment parameters
-    seeds = [int(s.strip()) for s in str(args.seed).split(',')]
-    taus = [float(t.strip()) for t in str(args.lambda_tau).split(',')]
+    RANDOM_SEED = args.seed
+    torch.manual_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+    import random
+    random.seed(RANDOM_SEED)
 
+    print(f"Using device: {device}")
     print(f"Embedding type: {args.embedding_type}")
     if args.model_type == 'beta':
         print(f"Model type: beta (Beta distribution NLL on P̂, φ={args.beta_phi})")
     else:
         print(f"Model type: bernoulli (Bernoulli NLL on binary Y)")
     
-    # Load data once
+    print(f"Hyperparameters -> LAMBDA_TAU: {LAMBDA_TAU} | WD_THETA: {WD_THETA} | WD_W: {WD_W} | EPOCHS: {EPOCHS} | SNAPPING: {SNAPPING_THRESHOLD} | SEED: {RANDOM_SEED}")
+
+    # Load data
     all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
         embedding_type=args.embedding_type,
         embedding_dim=args.embedding_dim,
@@ -849,34 +744,76 @@ def main():
         n_values = parse_n_samples(args.n_samples, total_files)
         print(f"\nWill run experiments for n = {n_values}")
 
-    # Build queue of configurations mapping to worker IDs
-    configs = []
-    worker_id = 0
-    for tau in taus:
-        for seed in seeds:
-            configs.append((seed, tau, worker_id))
-            worker_id += 1
+    # Prepare experiment data
+    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
 
-    print(f"\nDiscovered {len(configs)} complete configurations to execute across {args.parallel} Python generic workers.\n")
-
-    # Run execution pipeline
-    if args.parallel > 1 and len(configs) > 1:
-        # Prevent PyTorch from hanging with generic spawn context lock
-        mp.set_start_method('spawn', force=True)
-        with mp.Pool(processes=args.parallel) as pool:
-            worker_fn = partial(run_single_config, args=args, all_dfs=all_dfs, 
-                                global_shared_indices=global_shared_indices, 
-                                raw_embs_map=raw_embs_map, actual_emb_type=actual_emb_type, 
-                                n_values=n_values)
-            pool.map(worker_fn, configs)
+    # Prepare output path
+    if args.output:
+        output_path = args.output
     else:
-        # Sequential execution
-        for config in configs:
-            run_single_config(config, args, all_dfs, global_shared_indices, raw_embs_map, actual_emb_type, n_values)
+        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
+        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
+
+    results = []
+    for i, n in enumerate(n_values):
+        print(f"\n[{i+1}/{len(n_values)}] Processing with n={n} iteration(s)...")
+        result = run_experiment(n, all_dfs, global_shared_indices, data,
+                                model_type=args.model_type, beta_phi=args.beta_phi)
+        result['embedding_type'] = actual_emb_type
+        if args.pre_revision != 'none':
+            result['scenario'] = f"Pre-{args.pre_revision}"
+        results.append(result)
+
+        print(f"   -> RMSE | Naive: {result['rmse_naive']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
+              f"Amortized: {result['rmse_amortized']:.4f}")
+        print(f"   -> AUC  | Naive: {result['auc_naive']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
+              f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
+
+        # Save model state to separate pkl if requested
+        if args.save_weights:
+            weight_path = output_path.replace('.csv', f'_seed_{RANDOM_SEED}_weights_best.pkl')
+            torch.save(result['model_state'], weight_path)
+            
+            final_weight_path = output_path.replace('.csv', f'_seed_{RANDOM_SEED}_weights_final.pkl')
+            torch.save(result['final_state'], final_weight_path)
+            print(f"   -> Saved weights to: {weight_path} and {final_weight_path}")
+
+    # Save results to CSV (Consolidated)
+    # Remove large states from results before saving to CSV
+    save_results = []
+    for r in results:
+        r_copy = r.copy()
+        if 'model_state' in r_copy: del r_copy['model_state']
+        if 'final_state' in r_copy: del r_copy['final_state']
+        save_results.append(r_copy)
+    
+    df_results = pd.DataFrame(save_results)
+    
+    lock_path = f"{output_path}.lock"
+    lock = FileLock(lock_path, timeout=600) # 10 minute timeout just in case it's highly contested
+    
+    try:
+        with lock:
+            if os.path.exists(output_path):
+                # Handle edge case where file exists but is empty/corrupted
+                try:
+                    df_old = pd.read_csv(output_path)
+                    # Avoid duplicate (n_samples, seed) entries if re-run
+                    df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed', 'lambda_tau'], keep='last')
+                    df_combined.to_csv(output_path, index=False)
+                except pd.errors.EmptyDataError:
+                    # If the file exists but was corrupted/empty, just overwrite it
+                    df_results.to_csv(output_path, index=False)
+            else:
+                df_results.to_csv(output_path, index=False)
+    except Timeout:
+        print(f"\n[WARNING] Could not acquire lock for {output_path} after 10 minutes. Skipping save.")
 
     print("\n" + "=" * 60)
-    print("EXPERIMENT BATCH COMPLETE")
+    print("EXPERIMENT COMPLETE")
     print("=" * 60)
+    print(f"Results saved to: {output_path}")
 
 
 if __name__ == '__main__':

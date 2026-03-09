@@ -57,8 +57,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-SEEDS_CSV=$(echo $SEEDS | tr ' ' ',')
-
 if $FULL_SWEEP; then
     echo "[MODE] Configured for FULL sweep ($NUM_SEEDS seeds)..."
 else
@@ -146,7 +144,69 @@ fi
 echo ""
 
 # ── Run Function ─────────────────────────────────────────────────────────────
+run_exp() {
+    local emb=$1
+    local n=$2
+    local model=$3
+    local tau=$4
+    local pre=${5:-false}
+    local seed=$6
+    local out_dir=${7:-""}
+    
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $tau --seed $seed"
+    if [[ "$pre" != "false" ]]; then
+        cmd="$cmd --pre-revision $pre"
+    fi
+    if [[ -n "$out_dir" ]]; then
+        mkdir -p "$out_dir"
+        local suffix=""
+        if [[ "$pre" != "false" ]]; then suffix="_pre_$pre"; fi
+        local n_suffix="_n_$n"
+        if [[ "$n" == "max" ]]; then n_suffix="_n_max"; fi
+        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}.csv"
+        
+        # Resume Check: See if this combination of seed & tau already exists
+        if [[ -f "$out_file" ]]; then
+            # We specifically grep for lines that match both lambda_tau and seed.
+            # Format: seed,lambda_tau,... (exact columns depend on pandas export order)
+            # Using awk to check if any row has BOTH the specific seed and tau.
+            # Convert values to float format for safe comparison
+            local exists=$(awk -F',' -v s="$seed" -v t="$tau" '
+                NR>1 {
+                    # Find column indexes on first line if we want to be robust, 
+                    # but simple string match on the row is usually enough for these unique values.
+                    # Or we just check if the line contains both (since seed is int, tau is float).
+                    if ($0 ~ "(^|,)" s "(,|$)" && $0 ~ "(^|,)" t "(,|$)") {
+                        print "1"; exit;
+                    }
+                }
+            ' "$out_file")
+            
+            if [[ "$exists" == "1" ]]; then
+                echo " [SKIP] $emb (N=$n, $model) Tau=$tau Seed=$seed already completed."
+                return 0
+            fi
+        fi
+        
+        cmd="$cmd --output $out_file"
+    fi
+    if [[ "$PARALLEL" -gt 1 ]]; then
+        local gpu_id=$(( RANDOM % NUM_GPUS ))
+        local full_cmd="echo ' -> Running: $emb (N=$n, $model) Tau=$tau Seed=$seed on GPU $gpu_id' && CUDA_VISIBLE_DEVICES=$gpu_id $cmd"
+        echo "$full_cmd" >> "$CMD_FILE"
+    else
+        echo " -> Running: $emb (N=$n, $model) Tau=$tau Seed=$seed"
+        eval "$cmd"
+    fi
+}
+
 # ── Execution ───────────────────────────────────────────────────────────────
+
+CMD_FILE=$(mktemp)
+trap 'rm -f $CMD_FILE' EXIT
+
+NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l || echo 1)
+if [[ $NUM_GPUS -eq 0 ]]; then NUM_GPUS=1; fi
 
 if ! $ONLY_PLOT; then
     run_tau_sweep() {
@@ -162,16 +222,11 @@ if ! $ONLY_PLOT; then
             taus="$SHARED_TAUS"
         fi
         
-        # Convert spaced taus to comma-separated
-        local taus_csv=$(echo $taus | tr ' ' ',')
-        
-        local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $SEEDS_CSV --parallel $PARALLEL"
-        if [[ "$pre" != "false" ]]; then
-            cmd="$cmd --pre-revision $pre"
-        fi
-        
-        echo " -> Starting Multiprocessed Batch: $emb (N=$n, $model) Pre=$pre"
-        eval "$cmd"
+        for tau in $taus; do
+            for seed in $SEEDS; do
+                run_exp $emb $n $model $tau $pre $seed "${RESULT_DIR}"
+            done
+        done
     }
 
     echo "[MODE] Running Experiments..."
@@ -203,6 +258,12 @@ if ! $ONLY_PLOT; then
         run_tau_sweep raw 1 bernoulli 0.0151 8
         run_tau_sweep raw max beta 0.029 max
     fi
+fi
+
+if [[ "$PARALLEL" -gt 1 ]] && [[ -s "$CMD_FILE" ]]; then
+    echo ""
+    echo "[MODE] Executing queued jobs with $PARALLEL parallel workers across $NUM_GPUS GPUs..."
+    cat "$CMD_FILE" | xargs -d '\n' -P "$PARALLEL" -I {} bash -c "{}"
 fi
 
 # ── Generate plots ───────────────────────────────────────────────────────────
