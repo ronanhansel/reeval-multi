@@ -24,7 +24,15 @@ Usage:
 import argparse
 import ast
 import os
+import sys
 import warnings
+
+# Prevent massive CPU utilization and hangs when using Multiprocessing Pools
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
 
 import numpy as np
 import pandas as pd
@@ -34,6 +42,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from huggingface_hub import snapshot_download
 from filelock import FileLock, Timeout
+import multiprocessing as mp
+from functools import partial
 
 from utils import compute_rmse, evaluate_auc
 
@@ -283,12 +293,16 @@ def parse_args():
                         help='Distribution to use for the IRT model.')
     parser.add_argument('--beta-phi', type=float, default=BETA_PHI,
                         help='Precision parameter for Beta distribution.')
-    parser.add_argument('--lambda-tau', type=float, default=None, help='Override LAMBDA_TAU')
+    parser.add_argument('--lambda-tau', type=str, default=str(LAMBDA_TAU), help='Override LAMBDA_TAU (comma separated lists allowed)')
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
     parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
+    parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
+    parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
+    parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
+    parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
     return parser.parse_args()
 
 
@@ -662,8 +676,136 @@ def parse_n_samples(arg, total_files):
     return sorted(set(result))
 
 
+# Global variables for worker processes to avoid pickling overhead
+_WORKER_DFS = None
+_WORKER_INDICES = None
+_WORKER_EMBS_MAP = None
+_WORKER_EMB_TYPE = None
+
+def init_worker(dfs, indices, embs, emb_type):
+    """Initialize worker process with large shared objects to avoid pickling overhead."""
+    global _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
+    _WORKER_DFS = dfs
+    _WORKER_INDICES = indices
+    _WORKER_EMBS_MAP = embs
+    _WORKER_EMB_TYPE = emb_type
+
+def run_single_config(config, args, n_values):
+    """Worker function for running a single (seed, lambda_tau) configuration."""
+    seed, lambda_tau, worker_id = config
+    
+    # Retrieve large objects from global state initialized once per process
+    global _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
+    all_dfs = _WORKER_DFS
+    global_shared_indices = _WORKER_INDICES
+    raw_embs_map = _WORKER_EMBS_MAP
+    actual_emb_type = _WORKER_EMB_TYPE
+    
+    # Assign GPU evenly across workers
+    num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    local_device = torch.device(f'cuda:{worker_id % num_gpus}' if torch.cuda.is_available() and num_gpus > 0 else 'cpu')
+    
+    # Set independent random seeds
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    import random
+    random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        
+    global LAMBDA_TAU, RANDOM_SEED
+    LAMBDA_TAU = lambda_tau
+    RANDOM_SEED = seed
+
+    if args.output:
+        output_path = args.output
+    else:
+        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
+        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
+
+    if os.path.exists(output_path):
+        try:
+            df_existing = pd.read_csv(output_path)
+            max_n = max(n_values)
+            if not df_existing.empty and 'seed' in df_existing.columns and 'lambda_tau' in df_existing.columns:
+                matches = df_existing[(df_existing['seed'] == seed) & 
+                                      (np.isclose(df_existing['lambda_tau'], lambda_tau, atol=1e-5)) &
+                                      (df_existing['n_samples'] == max_n)]
+                if not matches.empty:
+                    # Let the main process handle the skip message if skipped entirely
+                    return
+        except Exception:
+            pass # File lock contention, just run it
+
+    # Prepare data on the local device
+    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
+    # Move tensors to the correct device
+    data['x_j'] = data['x_j'].to(local_device)
+    data['y_oracle'] = data['y_oracle'].to(local_device)
+    data['test_mask_t'] = data['test_mask_t'].to(local_device)
+
+    results = []
+    
+    print(f"\n[START] worker {worker_id} (GPU {worker_id % num_gpus}) executing -> seed={seed}, tau={lambda_tau}")
+    for i, n in enumerate(n_values):
+        # We need to temporarily mock the global device so `run_experiment` internals use it
+        global device
+        old_device = device
+        device = local_device
+        
+        try:
+            result = run_experiment(n, all_dfs, global_shared_indices, data,
+                                    model_type=args.model_type, beta_phi=args.beta_phi)
+                                    
+            result['embedding_type'] = actual_emb_type
+            if args.pre_revision != 'none':
+                result['scenario'] = f"Pre-{args.pre_revision}"
+            results.append(result)
+            
+            # Save model state to separate pkl if requested
+            if args.save_weights:
+                weight_path = output_path.replace('.csv', f'_seed_{seed}_weights_best.pkl')
+                torch.save(result['model_state'], weight_path)
+                
+                final_weight_path = output_path.replace('.csv', f'_seed_{seed}_weights_final.pkl')
+                torch.save(result['final_state'], final_weight_path)
+        finally:
+            device = old_device
+            
+    # Save results to CSV (Consolidated)
+    save_results = []
+    for r in results:
+        r_copy = r.copy()
+        if 'model_state' in r_copy: del r_copy['model_state']
+        if 'final_state' in r_copy: del r_copy['final_state']
+        save_results.append(r_copy)
+    
+    df_results = pd.DataFrame(save_results)
+    
+    lock_path = f"{output_path}.lock"
+    lock = FileLock(lock_path, timeout=600)
+    
+    try:
+        with lock:
+            if os.path.exists(output_path):
+                try:
+                    df_old = pd.read_csv(output_path)
+                    df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed', 'lambda_tau'], keep='last')
+                    df_combined.to_csv(output_path, index=False)
+                except pd.errors.EmptyDataError:
+                    df_results.to_csv(output_path, index=False)
+            else:
+                df_results.to_csv(output_path, index=False)
+    except Timeout:
+        print(f"\n[WARNING] Could not acquire lock for {output_path}. Skipping save.")
+
+    print(f"[DONE] worker {worker_id} completed: seed={seed}, tau={lambda_tau}")
+
+
 def main():
     global LAMBDA_TAU, WD_THETA, WD_W, EPOCHS, SNAPPING_THRESHOLD, RANDOM_SEED
+    import argparse
     parser = argparse.ArgumentParser(description='Amortized IRT Experiment')
     parser.add_argument(
         '--embedding-type', type=str, default='pca',
@@ -680,8 +822,8 @@ def main():
         help='IRT model type: beta (train on P̂) or bernoulli (train on binary Y) (default: beta)'
     )
     parser.add_argument(
-        '--beta-phi', type=float, default=BETA_PHI,
-        help=f'Beta distribution precision parameter φ (default: {BETA_PHI}). Higher = more concentrated.'
+        '--beta-phi', type=float, default=10.0,
+        help='Beta distribution precision parameter φ. Higher = more concentrated.'
     )
     parser.add_argument(
         '--n-samples', type=str, default='all',
@@ -691,19 +833,29 @@ def main():
         '--output', type=str, default=None,
         help='Output CSV path (default: result/amortized_irt_{embedding_type}_{model_type}.csv)'
     )
-    parser.add_argument('--lambda-tau', type=float, default=None, help='Override LAMBDA_TAU')
+    parser.add_argument('--lambda-tau', type=str, default=str(LAMBDA_TAU), help='Override LAMBDA_TAU (comma separated lists allowed)')
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
     parser.add_argument('--wd-w', type=float, default=None, help='Override WD_W')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
     parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
-    parser.add_argument('--seed', type=int, default=RANDOM_SEED, help=f'Random seed (default: {RANDOM_SEED})')
+    parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
+    parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
+    parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
     args = parser.parse_args()
 
-    if args.lambda_tau is not None:
-        LAMBDA_TAU = args.lambda_tau
+    import sys, os
+    import numpy as np
+    import pandas as pd
+    import multiprocessing as mp
+    from functools import partial
+    
+    if args.quiet:
+        original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
     if args.wd_theta is not None:
         WD_THETA = args.wd_theta
     if args.wd_w is not None:
@@ -713,41 +865,23 @@ def main():
     if args.snapping_threshold is not None:
         SNAPPING_THRESHOLD = args.snapping_threshold
 
-    RANDOM_SEED = args.seed
-    torch.manual_seed(RANDOM_SEED)
-    np.random.seed(RANDOM_SEED)
-    import random
-    random.seed(RANDOM_SEED)
+    # Parse multi-experiment parameters
+    seeds = [int(s.strip()) for s in str(args.seed).split(',')]
+    taus = [float(t.strip()) for t in str(args.lambda_tau).split(',')]
 
-    print(f"Using device: {device}")
     print(f"Embedding type: {args.embedding_type}")
     if args.model_type == 'beta':
         print(f"Model type: beta (Beta distribution NLL on P̂, φ={args.beta_phi})")
     else:
         print(f"Model type: bernoulli (Bernoulli NLL on binary Y)")
+        
+    actual_emb_type = args.embedding_type # Guessed initially
     
-    print(f"Hyperparameters -> LAMBDA_TAU: {LAMBDA_TAU} | WD_THETA: {WD_THETA} | WD_W: {WD_W} | EPOCHS: {EPOCHS} | SNAPPING: {SNAPPING_THRESHOLD} | SEED: {RANDOM_SEED}")
-
-    # Load data
-    all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
-        embedding_type=args.embedding_type,
-        embedding_dim=args.embedding_dim,
-        pre_revision=args.pre_revision
-    )
-    total_files = len(all_dfs)
-
-    # Parse n_samples argument
-    if args.pre_revision != 'none':
-        n_values = [1]
-        print(f"\nPre-revision selected. Forcing experiments to n = {n_values}")
-    else:
-        n_values = parse_n_samples(args.n_samples, total_files)
-        print(f"\nWill run experiments for n = {n_values}")
-
-    # Prepare experiment data
-    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
-
-    # Prepare output path
+    # 1. First parse n_samples to know what n_values we are generating
+    # To do this without loading all_dfs, we need total_files. We know it's 54 max usually,
+    # but let's safely approximate it by saying "if all or max, assume we just check existence"
+    # Actually, we can load_data efficiently or just check the OS level CSV if it exists
+    
     if args.output:
         output_path = args.output
     else:
@@ -755,65 +889,85 @@ def main():
         n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
         output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
 
-    results = []
-    for i, n in enumerate(n_values):
-        print(f"\n[{i+1}/{len(n_values)}] Processing with n={n} iteration(s)...")
-        result = run_experiment(n, all_dfs, global_shared_indices, data,
-                                model_type=args.model_type, beta_phi=args.beta_phi)
-        result['embedding_type'] = actual_emb_type
-        if args.pre_revision != 'none':
-            result['scenario'] = f"Pre-{args.pre_revision}"
-        results.append(result)
+    completed_configs = set()
+    if os.path.exists(output_path):
+        try:
+            df_existing = pd.read_csv(output_path)
+            if not df_existing.empty and 'seed' in df_existing.columns and 'lambda_tau' in df_existing.columns and 'n_samples' in df_existing.columns:
+                # Approximate completion: if it's there with any n_samples, check if we need to run more?
+                # The user sweeps over max_n. Let's just store what n_samples have completed.
+                # Actually, just parse n_values properly.
+                pass
+        except Exception:
+            pass
 
-        print(f"   -> RMSE | Naive: {result['rmse_naive']:.4f} | Rasch: {result['rmse_rasch']:.4f} | "
-              f"Amortized: {result['rmse_amortized']:.4f}")
-        print(f"   -> AUC  | Naive: {result['auc_naive']:.4f} | Rasch: {result['auc_rasch']:.4f} | "
-              f"Amortized: {result['auc_amortized']:.4f} | Active dims: {result['active_dims']}")
+    # We MUST load data to get total_files for parse_n_samples
+    all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
+        embedding_type=args.embedding_type,
+        embedding_dim=args.embedding_dim,
+        pre_revision=args.pre_revision
+    )
+    total_files = len(all_dfs)
+    
+    if args.pre_revision != 'none':
+        n_values = [1]
+    else:
+        n_values = parse_n_samples(args.n_samples, total_files)
 
-        # Save model state to separate pkl if requested
-        if args.save_weights:
-            weight_path = output_path.replace('.csv', f'_seed_{RANDOM_SEED}_weights_best.pkl')
-            torch.save(result['model_state'], weight_path)
-            
-            final_weight_path = output_path.replace('.csv', f'_seed_{RANDOM_SEED}_weights_final.pkl')
-            torch.save(result['final_state'], final_weight_path)
-            print(f"   -> Saved weights to: {weight_path} and {final_weight_path}")
+    max_n = max(n_values)
+    
+    # accurately check completion now
+    if os.path.exists(output_path):
+        try:
+            df_existing = pd.read_csv(output_path)
+            if not df_existing.empty and 'seed' in df_existing.columns and 'lambda_tau' in df_existing.columns and 'n_samples' in df_existing.columns:
+                completed_rows = df_existing[df_existing['n_samples'] == max_n]
+                for _, row in completed_rows.iterrows():
+                    completed_configs.add((int(row['seed']), float(row['lambda_tau'])))
+        except Exception:
+            pass
 
-    # Save results to CSV (Consolidated)
-    # Remove large states from results before saving to CSV
-    save_results = []
-    for r in results:
-        r_copy = r.copy()
-        if 'model_state' in r_copy: del r_copy['model_state']
-        if 'final_state' in r_copy: del r_copy['final_state']
-        save_results.append(r_copy)
-    
-    df_results = pd.DataFrame(save_results)
-    
-    lock_path = f"{output_path}.lock"
-    lock = FileLock(lock_path, timeout=600) # 10 minute timeout just in case it's highly contested
-    
-    try:
-        with lock:
-            if os.path.exists(output_path):
-                # Handle edge case where file exists but is empty/corrupted
-                try:
-                    df_old = pd.read_csv(output_path)
-                    # Avoid duplicate (n_samples, seed) entries if re-run
-                    df_combined = pd.concat([df_old, df_results]).drop_duplicates(subset=['n_samples', 'seed', 'lambda_tau'], keep='last')
-                    df_combined.to_csv(output_path, index=False)
-                except pd.errors.EmptyDataError:
-                    # If the file exists but was corrupted/empty, just overwrite it
-                    df_results.to_csv(output_path, index=False)
-            else:
-                df_results.to_csv(output_path, index=False)
-    except Timeout:
-        print(f"\n[WARNING] Could not acquire lock for {output_path} after 10 minutes. Skipping save.")
+    # Build queue of configurations mapping to worker IDs
+    configs = []
+    worker_id = 0
+    for tau in taus:
+        for seed in seeds:
+            # check completed
+            isCompleted = False
+            for (c_seed, c_tau) in completed_configs:
+                if c_seed == seed and np.isclose(c_tau, tau, atol=1e-5):
+                    isCompleted = True
+                    break
+                    
+            if isCompleted:
+                print(f"[SKIP] Quick-skip: seed={seed}, tau={tau} already complete in {os.path.basename(output_path)}.")
+                continue
+
+            configs.append((seed, tau, worker_id))
+            worker_id += 1
+
+    if len(configs) == 0:
+        print("\nAll configurations already completed! Skipping PyTorch init and multiprocessing.\n")
+        return
+
+    print(f"\nDiscovered {len(configs)} configurations to execute across {args.parallel} Python generic workers.\n")
+
+    # Run execution pipeline
+    if args.parallel > 1 and len(configs) > 1:
+        # Prevent PyTorch from hanging with generic spawn context lock
+        mp.set_start_method('spawn', force=True)
+        with mp.Pool(processes=args.parallel, initializer=init_worker, initargs=(all_dfs, global_shared_indices, raw_embs_map, actual_emb_type)) as pool:
+            worker_fn = partial(run_single_config, args=args, n_values=n_values)
+            pool.map(worker_fn, configs)
+    else:
+        # Sequential execution
+        init_worker(all_dfs, global_shared_indices, raw_embs_map, actual_emb_type)
+        for config in configs:
+            run_single_config(config, args, n_values)
 
     print("\n" + "=" * 60)
-    print("EXPERIMENT COMPLETE")
+    print("EXPERIMENT BATCH COMPLETE")
     print("=" * 60)
-    print(f"Results saved to: {output_path}")
 
 
 if __name__ == '__main__':
