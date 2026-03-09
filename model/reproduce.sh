@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
             CLEAN_RESULTS=true
             shift
             ;;
-        --override)
+        --continue)
             OVERRIDE_RESULTS=true
             shift
             ;;
@@ -114,10 +114,10 @@ if $ONLY_PLOT; then
 else
     if ! $CLEAN_RESULTS && ! $OVERRIDE_RESULTS; then
         if [ -d "${RESULT_DIR}" ] && [ "$(ls -A ${RESULT_DIR})" ]; then
-            read -p "[WARNING] Output directory (${RESULT_DIR}) is not empty. Do you want to [c]lean it, or [o]verride/continue? (c/o): " choice
+            read -p "[WARNING] Output directory (${RESULT_DIR}) is not empty. Do you want to [o]verwrite, or [c]ontinue? (o/c): " choice
             case "$choice" in 
-              c|C|clean|Clean ) CLEAN_RESULTS=true ;;
-              o|O|override|Override ) OVERRIDE_RESULTS=true ;;
+              o|O|overwrite|Overwrite ) CLEAN_RESULTS=true ;;
+              c|C|continue|Continue ) OVERRIDE_RESULTS=true ;;
               * ) echo "Invalid choice. Exiting."; exit 1 ;;
             esac
         fi

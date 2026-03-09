@@ -183,7 +183,7 @@ def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
 
 
 def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle,
-                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS, lambda_tau=LAMBDA_TAU):
+                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=False):
     """Train amortized IRT model with ARD sparsity regularization.
 
     Args:
@@ -269,11 +269,12 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
                 best_rmse = min(best_rmse, curr_rmse)
                 
                 tau_vals = model.get_tau()
-                print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f}")
-                
-                active_indices = torch.where(tau_vals > SNAPPING_THRESHOLD)[0].cpu().numpy()
-                print(f"  Active Dims ({len(active_indices)}): Tau Mean={tau_vals.mean().item():.4f}, Max={tau_vals.max().item():.4f}")
-                print("-" * 40)
+                if not quiet:
+                    print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f}")
+                    
+                    active_indices = torch.where(tau_vals > SNAPPING_THRESHOLD)[0].cpu().numpy()
+                    print(f"  Active Dims ({len(active_indices)}): Tau Mean={tau_vals.mean().item():.4f}, Max={tau_vals.max().item():.4f}")
+                    print("-" * 40)
 
     final_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
     return best_rmse, best_state, final_state
@@ -540,7 +541,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
-                   beta_phi=BETA_PHI):
+                   beta_phi=BETA_PHI, quiet=False):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -563,7 +564,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     # Prepare training data from n_files samples
     if n_files < len(all_dfs):
         sampled_indices = np.random.choice(len(all_dfs), n_files, replace=False)
-        print(f"Sampled iterations: {sampled_indices}")
+        if not quiet:
+            print(f"Sampled iterations: {sampled_indices}")
         current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in sampled_indices]
     else:
         current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in range(n_files)]
@@ -611,7 +613,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
     best_rmse, best_state, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                      model_type=model_type, beta_phi=beta_phi,
-                                     epochs=EPOCHS, lambda_tau=LAMBDA_TAU)
+                                     epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet)
 
     model.eval()
     with torch.no_grad():
@@ -747,7 +749,9 @@ def run_single_config(config, args, n_values):
 
     results = []
     
-    print(f"\n[START] worker {worker_id} (GPU {worker_id % num_gpus}) executing -> seed={seed}, tau={lambda_tau}")
+    quiet = args.quiet
+    if not quiet:
+        print(f"\n[START] worker {worker_id} (GPU {worker_id % num_gpus}) executing -> seed={seed}, tau={lambda_tau}")
     for i, n in enumerate(n_values):
         # We need to temporarily mock the global device so `run_experiment` internals use it
         global device
@@ -756,7 +760,7 @@ def run_single_config(config, args, n_values):
         
         try:
             result = run_experiment(n, all_dfs, global_shared_indices, data,
-                                    model_type=args.model_type, beta_phi=args.beta_phi)
+                                    model_type=args.model_type, beta_phi=args.beta_phi, quiet=quiet)
                                     
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -800,7 +804,7 @@ def run_single_config(config, args, n_values):
     except Timeout:
         print(f"\n[WARNING] Could not acquire lock for {output_path}. Skipping save.")
 
-    print(f"[DONE] worker {worker_id} completed: seed={seed}, tau={lambda_tau}")
+    print(f"[DONE] worker {worker_id} completed: seed={seed}, tau={lambda_tau} -> saved to {os.path.basename(output_path)}")
 
 
 def main():
