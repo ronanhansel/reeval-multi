@@ -570,6 +570,9 @@ def plot_tau_sensitivity():
         df['active_dims'] = pd.to_numeric(df['active_dims'], errors='coerce')
         df = df.dropna(subset=['lambda_tau', 'auc_amortized', 'active_dims'])
         
+        # Clip data to tau=0.10 so the line stops early
+        df = df[df['lambda_tau'] <= 0.10]
+        
         # Group by lambda_tau and get mean and 95% Confidence Interval (1.96 * SEM)
         df_mean = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].mean().reset_index()
         df_sem = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].sem().reset_index()
@@ -579,12 +582,16 @@ def plot_tau_sensitivity():
         
         taus = df_mean['lambda_tau'].values
         base_name = filename.replace('.csv', '')
+        
+        # Plot up to tau=0.1 with a small padding
+        x_limit = 0.105
 
-        # 1. Plot AUC
-        fig, ax1 = plt.subplots(figsize=(3.5, 2.5))
+        fig, ax1 = plt.subplots(figsize=(4.5, 3.0))
+        
+        # Plot AUC on left axis
         color = MAIN_BLUE
         ax1.set_xlabel('Regularization Strength ($\\tau$)')
-        ax1.set_xlim(0.00, 0.26)
+        ax1.set_xlim(0.00, x_limit)
         ax1.set_ylabel('Predictive AUC', color=color)
         ax1.set_ylim(0.58, 0.82)
         
@@ -594,32 +601,27 @@ def plot_tau_sensitivity():
         ax1.plot(taus, auc_means, color=color, linestyle='-', label='AUC', linewidth=1)
         ax1.fill_between(taus, auc_means - auc_95ci, auc_means + auc_95ci, color=color, alpha=0.25, zorder=1)
         ax1.tick_params(axis='y', labelcolor=color)
-        ax1.grid(linestyle=':', alpha=0.6)
         
-        plt.title(f"AUC Sensitivity: {base_name}")
-        fig.tight_layout()
-        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{base_name}_auc.pdf"), bbox_inches='tight')
-        plt.close()
-
-        # 2. Plot Active Dimensions
-        fig, ax2 = plt.subplots(figsize=(3.5, 2.5))
+        # Plot Active Dims on right axis
+        ax2 = ax1.twinx()
         color2 = STABLE_GREEN
-        ax2.set_xlabel('Regularization Strength ($\\tau$)')
-        ax2.set_xlim(0.00, 0.26)
         ax2.set_ylabel('Active Dimensions ($K$)', color=color2)
         ax2.set_ylim(-1.5, 31.5)
         
         k_means = df_mean['active_dims'].values
         k_95ci = df_sem['active_dims'].values * 1.96
         
-        ax2.plot(taus, k_means, color=color2, linestyle='-', label='Dims (K)', linewidth=1)
+        ax2.plot(taus, k_means, color=color2, linestyle='-.', label='Dims (K)', linewidth=1)
         ax2.fill_between(taus, k_means - k_95ci, k_means + k_95ci, color=color2, alpha=0.3, zorder=1)
         ax2.tick_params(axis='y', labelcolor=color2)
-        ax2.grid(linestyle=':', alpha=0.6)
         
-        plt.title(f"K Sensitivity: {base_name}")
+        # Align ticks
+        ax1.grid(linestyle=':', alpha=0.6)
+        
+        # Move titles and borders slightly to prevent overlap
         fig.tight_layout()
-        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{base_name}_dims.pdf"), bbox_inches='tight')
+        plt.title(f"Sensitivity: {base_name}")
+        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{base_name}.pdf"), bbox_inches='tight')
         plt.close()
         
         any_plotted = True
