@@ -266,6 +266,28 @@ if ! $ONLY_PLOT; then
 
         # Setup 6: No TAU & No Embeddings - Bernoulli N=1
         run_exp ones 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+
+        # Setup 7: No TAU (w/ SAE, PCA, RAW) - Pre-max N=max
+        run_exp sae max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+        run_exp pca max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+        run_exp raw max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+
+        # Setup 8: No Embeddings (w/ TAU search) - Pre-max N=max
+        run_exp ones max beta "$SHARED_TAUS" max "$SEEDS" "${RESULT_DIR}" false
+
+        # Setup 9: No TAU & No Embeddings - Pre-max N=max
+        run_exp ones max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+
+        # Setup 10: No TAU (w/ SAE, PCA, RAW) - Pre-8 N=1
+        run_exp sae 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
+        run_exp pca 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
+        run_exp raw 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
+
+        # Setup 11: No Embeddings (w/ TAU search) - Pre-8 N=1
+        run_exp ones 1 bernoulli "$SHARED_TAUS" 8 "$SEEDS" "${RESULT_DIR}" false
+
+        # Setup 12: No TAU & No Embeddings - Pre-8 N=1
+        run_exp ones 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
     fi
 fi
 

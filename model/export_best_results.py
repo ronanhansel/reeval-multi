@@ -115,6 +115,20 @@ configs = [
     ('amortized_irt_raw_bernoulli_n_1_notau.csv', 'RAW Post (N=1, No-TAU)'),
     ('amortized_irt_ones_bernoulli_n_1.csv', 'ONES Post (N=1)'),
     ('amortized_irt_ones_bernoulli_n_1_notau.csv', 'ONES Post (N=1, No-TAU)'),
+
+    # Ablations (Pre Revision N=max)
+    ('amortized_irt_sae_beta_pre_max_n_max_notau.csv', 'SAE Pre-max (N=max, No-TAU)'),
+    ('amortized_irt_pca_beta_pre_max_n_max_notau.csv', 'PCA Pre-max (N=max, No-TAU)'),
+    ('amortized_irt_raw_beta_pre_max_n_max_notau.csv', 'RAW Pre-max (N=max, No-TAU)'),
+    ('amortized_irt_ones_beta_pre_max_n_max.csv', 'ONES Pre-max (N=max)'),
+    ('amortized_irt_ones_beta_pre_max_n_max_notau.csv', 'ONES Pre-max (N=max, No-TAU)'),
+
+    # Ablations (Pre Revision Pre-8 N=1)
+    ('amortized_irt_sae_bernoulli_pre_8_n_1_notau.csv', 'SAE Pre-8 (N=1, No-TAU)'),
+    ('amortized_irt_pca_bernoulli_pre_8_n_1_notau.csv', 'PCA Pre-8 (N=1, No-TAU)'),
+    ('amortized_irt_raw_bernoulli_pre_8_n_1_notau.csv', 'RAW Pre-8 (N=1, No-TAU)'),
+    ('amortized_irt_ones_bernoulli_pre_8_n_1.csv', 'ONES Pre-8 (N=1)'),
+    ('amortized_irt_ones_bernoulli_pre_8_n_1_notau.csv', 'ONES Pre-8 (N=1, No-TAU)'),
 ]
 
 all_results = []
