@@ -228,8 +228,13 @@ if ! $ONLY_PLOT; then
     
     # 4. Pre-Revision Checks (Full Sweep only)
     if $FULL_SWEEP; then
+        # SAE (Symmetric Sweep)
         run_tau_sweep sae 1 bernoulli 0.0159 8
+        run_tau_sweep sae 1 bernoulli 0.0159 max
         run_tau_sweep sae max beta 0.16 max
+        run_tau_sweep sae max beta 0.16 8
+        
+        # PCA/RAW (Main stage only for baseline)
         run_tau_sweep pca 1 bernoulli 0.0155 8
         run_tau_sweep pca max beta 0.054 max
         run_tau_sweep raw 1 bernoulli 0.0151 8
