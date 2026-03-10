@@ -1,0 +1,140 @@
+import pandas as pd
+import os
+import numpy as np
+
+RESULT_DIR = '/Users/ronan/Developer/agent-eval/model/result'
+OUTPUT_CSV = os.path.join(RESULT_DIR, 'comprehensive_results.csv')
+OUTPUT_MD = os.path.join(RESULT_DIR, 'comprehensive_results.md')
+
+def format_res(mean, sem):
+    if sem == 0 or np.isnan(sem):
+        return f"{mean:.3f}"
+    return f"{mean:.3f}±{sem:.3f}"
+
+def get_best_results(filename, label_prefix):
+    path = os.path.join(RESULT_DIR, filename)
+    if not os.path.exists(path):
+        print(f"Warning: {filename} not found.")
+        return []
+    
+    try:
+        df = pd.read_csv(path, on_bad_lines='skip')
+        df.columns = df.columns.str.strip()
+        
+        # Coerce numeric
+        cols_to_fix = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'auc_rasch', 'rmse_rasch', 'rmse_naive']
+        for col in cols_to_fix:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        df = df.dropna(subset=['auc_amortized', 'lambda_tau'])
+    except Exception as e:
+        print(f"Error reading {filename}: {e}")
+        return []
+
+    # 1. Models (SAE/PCA/RAW)
+    # Group by tau to find the best one based on mean AUC
+    tau_stats = df.groupby('lambda_tau')['auc_amortized'].mean()
+    best_tau = tau_stats.idxmax()
+    
+    best_df = df[df['lambda_tau'] == best_tau]
+    
+    auc_mean = best_df['auc_amortized'].mean()
+    auc_se = best_df['auc_amortized'].sem()
+    
+    rmse_mean = best_df['rmse_amortized'].mean()
+    rmse_se = best_df['rmse_amortized'].sem()
+    
+    results = [{
+        'Model Configuration': label_prefix,
+        'AUC': format_res(auc_mean, auc_se),
+        'RMSE': format_res(rmse_mean, rmse_se)
+    }]
+    
+    # 2. Extract Baselines
+    unique_seeds = df.drop_duplicates(subset=['seed'])
+    
+    # Determine the specific baseline label to avoid collisions
+    # Example label_prefix: "SAE Post (N=max)" -> "Post (N=max)"
+    # Example label_prefix: "SAE Pre-max (N=max)" -> "Pre-max (N=max)"
+    condition = label_prefix.split(' ', 1)[1] if ' ' in label_prefix else label_prefix
+    
+    # Rasch
+    if 'auc_rasch' in df.columns:
+        rasch_auc_mean = unique_seeds['auc_rasch'].mean()
+        rasch_auc_se = unique_seeds['auc_rasch'].sem()
+        rasch_rmse_mean = unique_seeds['rmse_rasch'].mean()
+        rasch_rmse_se = unique_seeds['rmse_rasch'].sem()
+        
+        results.append({
+            'Model Configuration': f"Rasch IRT ({condition} Baseline)",
+            'AUC': format_res(rasch_auc_mean, rasch_auc_se),
+            'RMSE': format_res(rasch_rmse_mean, rasch_rmse_se)
+        })
+
+    # Naive
+    if 'rmse_naive' in df.columns:
+        rmse_naive_mean = unique_seeds['rmse_naive'].mean()
+        rmse_naive_se = unique_seeds['rmse_naive'].sem()
+        results.append({
+            'Model Configuration': f"Naive ({condition} Baseline)",
+            'AUC': "0.500",
+            'RMSE': format_res(rmse_naive_mean, rmse_naive_se)
+        })
+
+    return results
+
+# Mapping table
+configs = [
+    # Post Revision
+    ('amortized_irt_sae_beta_n_max.csv', 'SAE Post (N=max)'),
+    ('amortized_irt_pca_beta_n_max.csv', 'PCA Post (N=max)'),
+    ('amortized_irt_raw_beta_n_max.csv', 'RAW Post (N=max)'),
+    ('amortized_irt_sae_bernoulli_n_1.csv', 'SAE Post (N=1)'),
+    ('amortized_irt_pca_bernoulli_n_1.csv', 'PCA Post (N=1)'),
+    ('amortized_irt_raw_bernoulli_n_1.csv', 'RAW Post (N=1)'),
+
+    # Pre Revision
+    ('amortized_irt_sae_beta_pre_max_n_max.csv', 'SAE Pre-max (N=max)'),
+    ('amortized_irt_pca_beta_pre_max_n_max.csv', 'PCA Pre-max (N=max)'),
+    ('amortized_irt_raw_beta_pre_max_n_max.csv', 'RAW Pre-max (N=max)'),
+    ('amortized_irt_sae_bernoulli_pre_8_n_1.csv', 'SAE Pre-8 (N=1)'),
+    ('amortized_irt_pca_bernoulli_pre_8_n_1.csv', 'PCA Pre-8 (N=1)'),
+    ('amortized_irt_raw_bernoulli_pre_8_n_1.csv', 'RAW Pre-8 (N=1)'),
+]
+
+all_results = []
+for filename, label in configs:
+    all_results.extend(get_best_results(filename, label))
+
+# Convert to DF and drop duplicates (baselines will no longer collide incorrectly)
+final_df = pd.DataFrame(all_results).drop_duplicates(subset=['Model Configuration'])
+
+# Better sorting for the CSV/MD
+def sort_key(label):
+    if 'Naive' in label: return 0
+    if 'Rasch' in label: return 1
+    if 'SAE' in label: return 2
+    if 'PCA' in label: return 3
+    if 'RAW' in label: return 4
+    return 5
+
+# Priority for Pre/Post and Max/8
+def cond_key(label):
+    score = 0
+    if "Pre-max" in label: score += 10
+    if "Pre-8" in label: score += 20
+    if "Post (N=1)" in label: score += 30
+    if "Post (N=max)" in label: score += 40
+    return score
+
+final_df['sort_order'] = final_df['Model Configuration'].apply(sort_key)
+final_df['cond_order'] = final_df['Model Configuration'].apply(cond_key)
+final_df = final_df.sort_values(['cond_order', 'sort_order']).drop(columns=['sort_order', 'cond_order'])
+
+# Save
+final_df.to_csv(OUTPUT_CSV, index=False)
+with open(OUTPUT_MD, 'w') as f:
+    f.write(final_df.to_markdown(index=False))
+
+print(f"Exported all results to {OUTPUT_CSV}")

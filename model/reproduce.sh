@@ -157,6 +157,7 @@ run_exp() {
     local pre=${5:-false}
     local seeds=$6
     local out_dir=${7:-""}
+    local no_tau=${8:-false}
     
     # Replace spaces with commas for Python arg parsing
     local taus_csv=${taus// /,}
@@ -165,6 +166,9 @@ run_exp() {
     local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
+    fi
+    if [[ "$no_tau" == "true" ]]; then
+        cmd="$cmd --no-tau"
     fi
     if $QUIET; then
         cmd="$cmd --quiet"
@@ -175,7 +179,9 @@ run_exp() {
         if [[ "$pre" != "false" ]]; then suffix="_pre_$pre"; fi
         local n_suffix="_n_$n"
         if [[ "$n" == "max" ]]; then n_suffix="_n_max"; fi
-        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}.csv"
+        local notau_suffix=""
+        if [[ "$no_tau" == "true" ]]; then notau_suffix="_notau"; fi
+        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}${notau_suffix}.csv"
         
         cmd="$cmd --output $out_file"
     fi
@@ -239,6 +245,16 @@ if ! $ONLY_PLOT; then
         run_tau_sweep pca max beta 0.054 max
         run_tau_sweep raw 1 bernoulli 0.0151 8
         run_tau_sweep raw max beta 0.029 max
+        
+        # 5. Ablation Studies (Full Sweep only)
+        # Setup 1: No TAU (w/ SAE, PCA, RAW embeddings)
+        run_exp sae max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+        run_exp pca max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+        run_exp raw max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+        # Setup 2: No Embeddings (w/ TAU search)
+        run_exp ones max beta "$SHARED_TAUS" false "$SEEDS" "${RESULT_DIR}" false
+        # Setup 3: No TAU & No Embeddings
+        run_exp ones max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
     fi
 fi
 

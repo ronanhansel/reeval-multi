@@ -41,8 +41,15 @@ def load_aggregated_results(embedding_type, n_samples='max', model_type='beta'):
     path = os.path.join(RESULT_DIR, fname)
     if not os.path.exists(path): return None
 
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, on_bad_lines='skip')
     metrics = ['rmse_naive', 'rmse_rasch', 'rmse_amortized', 'auc_naive', 'auc_rasch', 'auc_amortized']
+    
+    # Coerce to numeric and drop rows with corrupted data
+    for col in metrics:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = df.dropna(subset=metrics)
+    
+    if df.empty: return None
     agg = df.groupby('n_samples')[metrics].agg(['mean', 'sem']).reset_index()
     agg.columns = [f"{col[0]}_{col[1]}" if col[1] else col[0] for col in agg.columns]
     return agg.fillna(0)
@@ -66,17 +73,20 @@ def plot_remediation_summary():
     # Baseline from Post_max
     base_path = os.path.join(RESULT_DIR, configs['Post_max'])
     if not os.path.exists(base_path): return
-    base_df = pd.read_csv(base_path)
+    base_df = pd.read_csv(base_path, on_bad_lines='skip')
     
     res = {
         'Naive': {'a_m': base_df['auc_naive'].mean(), 'a_s': 0, 'r_m': base_df['rmse_naive'].mean(), 'r_s': 0},
         'Rasch': {'a_m': base_df['auc_rasch'].mean(), 'a_s': 0, 'r_m': base_df['rmse_rasch'].mean(), 'r_s': 0}
     }
-
     for label, fname in configs.items():
         path = os.path.join(RESULT_DIR, fname)
         if os.path.exists(path):
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, on_bad_lines='skip')
+            df['auc_amortized'] = pd.to_numeric(df['auc_amortized'], errors='coerce')
+            df = df.dropna(subset=['auc_amortized'])
+            if df.empty: continue
+            
             # Use fillna(0) because .std() on a single row returns NaN
             a_mean = df['auc_amortized'].mean()
             a_se = df['auc_amortized'].std() / np.sqrt(len(df)) if len(df) > 1 else 0.0
@@ -190,7 +200,10 @@ def generate_comprehensive_table():
         if not os.path.exists(path):
             continue
             
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, on_bad_lines='skip')
+        for col in ['auc_amortized', 'auc_naive', 'auc_rasch', 'rmse_amortized', 'rmse_naive', 'rmse_rasch']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
         if 'Baseline' in label:
             metric_prefix = 'auc_naive' if 'Naive' in label else 'auc_rasch'

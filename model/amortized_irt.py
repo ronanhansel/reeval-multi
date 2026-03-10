@@ -109,10 +109,11 @@ class AmortizedIRTModel(nn.Module):
     Tau parameters enable automatic dimensionality discovery through sparsity.
     """
 
-    def __init__(self, N, J, K, d, x_j_emb, dropout=0.7):
+    def __init__(self, N, J, K, d, x_j_emb, dropout=0.7, no_tau=False):
         super().__init__()
         self.register_buffer('x_j', x_j_emb)  # Pre-computed embeddings (J x d)
         self.dropout = dropout
+        self.no_tau = no_tau
 
         # User (model) parameters
         self.theta = nn.Parameter(torch.randn(N, K) * 0.01)  # Latent abilities
@@ -128,6 +129,8 @@ class AmortizedIRTModel(nn.Module):
 
     def get_tau(self):
         """Get non-negative tau values (ReLU ensures exact sparsity)."""
+        if getattr(self, 'no_tau', False):
+            return torch.ones_like(self.tau_raw)
         return F.relu(self.tau_raw)
 
     def forward(self):
@@ -284,8 +287,9 @@ def parse_args():
     import argparse
     parser = argparse.add_argument_group("Experiment Settings")
     parser = argparse.ArgumentParser(description="Run Amortized IRT experiments.")
-    parser.add_argument('--embedding-type', type=str, choices=['raw', 'pca', 'sae'], default='sae',
+    parser.add_argument('--embedding-type', type=str, choices=['raw', 'pca', 'sae', 'ones'], default='sae',
                         help='Type of embeddings to use.')
+    parser.add_argument('--no-tau', action='store_true', help='Ablation: Disable tau sparsity mechanism.')
     parser.add_argument('--embedding-dim', type=int, default=48,
                         help='Dimension for pca or sae embeddings.')
     parser.add_argument('--n-samples', type=str, default='1,5,10,15,32,all',
@@ -415,42 +419,48 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         global_shared_indices = sorted(list(set(all_dfs[0].index)))
 
     # Load embeddings based on type
+    emb_file = None
     if embedding_type == 'raw':
         emb_file = raw_emb_file
     elif embedding_type == 'pca':
         emb_file = os.path.join(processed_emb_dir, f'embeddings_pca_{embedding_dim}.pkl')
     elif embedding_type == 'sae':
         emb_file = os.path.join(processed_emb_dir, f'embeddings_sae_{embedding_dim}.pkl')
+    elif embedding_type == 'ones':
+        emb_file = None
     else:
         raise ValueError(f"Unknown embedding type: {embedding_type}")
 
     # Fall back to raw if processed embeddings don't exist
-    if not os.path.exists(emb_file):
+    if emb_file is not None and not os.path.exists(emb_file):
         print(f"Warning: {emb_file} not found. Falling back to raw embeddings.")
         print("Run 'python generate_embeddings.py' to generate processed embeddings.")
         emb_file = raw_emb_file
         embedding_type = 'raw'
 
-    print(f"Loading {embedding_type} embeddings from {emb_file}...")
-    emb_df = pd.read_pickle(emb_file)
-
-    # Build embedding map
-    raw_embs_map = {}
-    id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
-
-    for _, r in emb_df.iterrows():
-        task_id = str(r[id_col])
-        raw_embs_map[task_id] = r['embedding']
-
-        # Handle colbench naming variations
-        if task_id.startswith('colbench_backend_programming'):
-            suffix = task_id.split('.')[-1]
-            raw_embs_map[f'colbench.{suffix}'] = r['embedding']
+    if embedding_type == 'ones':
+        raw_embs_map = {}
+    else:
+        print(f"Loading {embedding_type} embeddings from {emb_file}...")
+        emb_df = pd.read_pickle(emb_file)
+    
+        # Build embedding map
+        raw_embs_map = {}
+        id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
+    
+        for _, r in emb_df.iterrows():
+            task_id = str(r[id_col])
+            raw_embs_map[task_id] = r['embedding']
+    
+            # Handle colbench naming variations
+            if task_id.startswith('colbench_backend_programming'):
+                suffix = task_id.split('.')[-1]
+                raw_embs_map[f'colbench.{suffix}'] = r['embedding']
 
     return all_dfs, global_shared_indices, raw_embs_map, embedding_type
 
 
-def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
+def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca'):
     """Prepare oracle ground truth, train/test splits, and embedding tensors."""
     print("=" * 60)
     print("PREPARING EXPERIMENT DATA")
@@ -498,24 +508,27 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
 
     # Align embeddings with oracle columns
     task_ids = oracle_df.columns.tolist()
-    embeddings = []
-    for task_id in task_ids:
-        emb = raw_embs_map.get(str(task_id))
-        if emb is None and task_id.startswith('colbench.'):
-            number = task_id.split('.')[-1]
-            emb = raw_embs_map.get(f'colbench_backend_programming.{number}')
-        if emb is None:
-            # Use zeros for missing embeddings
-            sample_emb = next(iter(raw_embs_map.values()))
-            emb = np.zeros(len(sample_emb) if hasattr(sample_emb, '__len__') else 4096)
-        elif isinstance(emb, str):
-            emb = ast.literal_eval(emb)
-        embeddings.append(np.array(emb, dtype=np.float32))
+    if embedding_type == 'ones':
+        embeddings = np.ones((len(task_ids), 1), dtype=np.float32)
+    else:
+        embeddings = []
+        for task_id in task_ids:
+            emb = raw_embs_map.get(str(task_id))
+            if emb is None and task_id.startswith('colbench.'):
+                number = task_id.split('.')[-1]
+                emb = raw_embs_map.get(f'colbench_backend_programming.{number}')
+            if emb is None:
+                # Use zeros for missing embeddings
+                sample_emb = next(iter(raw_embs_map.values())) if raw_embs_map else [0.0]
+                emb = np.zeros(len(sample_emb) if hasattr(sample_emb, '__len__') else 4096)
+            elif isinstance(emb, str):
+                emb = ast.literal_eval(emb)
+            embeddings.append(np.array(emb, dtype=np.float32))
 
-    embeddings = np.stack(embeddings)
+        embeddings = np.stack(embeddings)
+        # Normalize embeddings
+        embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
 
-    # Normalize embeddings
-    embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
     x_j = torch.tensor(embeddings, dtype=torch.float32).to(device)
 
     print(f"Embeddings shape: {x_j.shape}")
@@ -541,7 +554,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
-                   beta_phi=BETA_PHI, quiet=False):
+                   beta_phi=BETA_PHI, no_tau=False, quiet=False):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -610,7 +623,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     auc_rasch = evaluate_auc(p_rasch, y_oracle, test_mask_t)
 
     # 3. Amortized IRT (our method)
-    model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5).to(device)
+    model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
     best_rmse, best_state, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                      model_type=model_type, beta_phi=beta_phi,
                                      epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet)
@@ -741,7 +754,7 @@ def run_single_config(config, args, n_values):
             pass # File lock contention, just run it
 
     # Prepare data on the local device
-    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map)
+    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type=actual_emb_type)
     # Move tensors to the correct device
     data['x_j'] = data['x_j'].to(local_device)
     data['y_oracle'] = data['y_oracle'].to(local_device)
@@ -760,7 +773,7 @@ def run_single_config(config, args, n_values):
         
         try:
             result = run_experiment(n, all_dfs, global_shared_indices, data,
-                                    model_type=args.model_type, beta_phi=args.beta_phi, quiet=quiet)
+                                    model_type=args.model_type, beta_phi=args.beta_phi, no_tau=args.no_tau, quiet=quiet)
                                     
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -813,7 +826,7 @@ def main():
     parser = argparse.ArgumentParser(description='Amortized IRT Experiment')
     parser.add_argument(
         '--embedding-type', type=str, default='pca',
-        choices=['raw', 'pca', 'sae'],
+        choices=['raw', 'pca', 'sae', 'ones'],
         help='Type of embeddings to use (default: pca)'
     )
     parser.add_argument(
@@ -837,6 +850,7 @@ def main():
         '--output', type=str, default=None,
         help='Output CSV path (default: result/amortized_irt_{embedding_type}_{model_type}.csv)'
     )
+    parser.add_argument('--no-tau', action='store_true', help='Ablation: Disable tau sparsity mechanism.')
     parser.add_argument('--lambda-tau', type=str, default=str(LAMBDA_TAU), help='Override LAMBDA_TAU (comma separated lists allowed)')
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
     parser.add_argument('--wd-w', type=float, default=None, help='Override WD_W')

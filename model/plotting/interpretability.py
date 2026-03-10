@@ -95,7 +95,6 @@ def plot_stability_comparison():
     plt.rcParams.update(get_bundle())
     
     file_map = {
-        'Pre-Rev (N=1)': "amortized_irt_sae_bernoulli_pre_8_n_1.csv",
         'Pre-Rev (Best)': "amortized_irt_sae_beta_pre_max_n_max.csv",
         'Post-Rev (N=max)': "amortized_irt_sae_beta_n_max.csv"
     }
@@ -238,7 +237,7 @@ def plot_loading_heatmap():
         ('Post-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
     ]
     
-    fig, axes = plt.subplots(1, 2, figsize=(5.5, 2.0), sharey=True, constrained_layout=False)
+    fig, axes = plt.subplots(1, 2, figsize=(4.5, 1.5), sharey=True, constrained_layout=False)
     
     any_plotted = False
     
@@ -451,111 +450,110 @@ def plot_semantic_alignment():
 def plot_tau_sensitivity():
     plt.rcParams.update(get_bundle())
     
-    # Define comparison sets
-    # suffix, configs, locs
+    # Legend order: Bernoulli Pre, Beta Pre, Bernoulli Post, Beta Post
     comparison_sets = [
         ('max_merged', [
-            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_max_n_1.csv', '-', ORANGE),
-            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_max_n_max.csv', '-', RED),
-            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '-', GREEN),
-            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', BLUE),
-        ], {'auc': 'lower right', 'rmse': 'upper left', 'dims': 'lower left'}),
+            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_max_n_1.csv', '--', 'salmon'),
+            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_max_n_max.csv', '-', 'tab:red'),
+            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '--', 'skyblue'),
+            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
+        ]),
         ('n8_merged', [
-            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_8_n_1.csv', '-', ORANGE),
-            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_8_n_max.csv', '-', RED),
-            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '-', GREEN),
-            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', BLUE),
-        ], {'auc': 'lower right', 'rmse': 'upper left', 'dims': 'lower left'})
+            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_8_n_1.csv', '--', 'salmon'),
+            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_8_n_max.csv', '-', 'tab:red'),
+            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '--', 'skyblue'),
+            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
+        ])
     ]
 
-    x_start = 0.001
-    x_limit = 1100.0
-    lim_tau = 1000.0
+    scales = [
+        ('linear', 0.0, 0.1, 0.102, 'linear'),
+        ('log_appendix', 0.001, 1000.0, 1000.0, 'log')
+    ]
     
-    for suffix, configs, locs in comparison_sets:
-        data = []
-        for label, filename, ls, color in configs:
-            path = os.path.join(RESULT_DIR, filename)
-            if not os.path.exists(path):
-                print(f"Warning: Data file not found: {path}")
-                continue
-            
-            try:
-                df = pd.read_csv(path, on_bad_lines='skip')
-                df.columns = df.columns.str.strip()
-            except Exception as e:
-                print(f"Error reading {filename}: {e}")
-                continue
-                
-            required_cols = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'active_dims']
-            for col in required_cols:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                else:
-                    print(f"Warning: Column {col} missing in {filename}")
-            
-            df = df.dropna(subset=required_cols)
-            df = df[df['lambda_tau'] <= lim_tau]
-            
-            if df.empty:
-                print(f"Warning: No data for {label} after filtering.")
-                continue
-
-            df_mean = df.groupby('lambda_tau')[['auc_amortized', 'rmse_amortized', 'active_dims']].mean().reset_index()
-            df_sem = df.groupby('lambda_tau')[['auc_amortized', 'rmse_amortized', 'active_dims']].sem().reset_index()
-            
-            data.append({
-                'label': label,
-                'color': color,
-                'ls': ls,
-                'mean': df_mean.sort_values('lambda_tau'),
-                'sem': df_sem.sort_values('lambda_tau')
-            })
-
-        if not data:
-            continue
-
-        # Create 3-column consolidated plot
-        fig, axes = plt.subplots(1, 3, figsize=(10, 3.2), constrained_layout=True)
+    for scale_name, x_start, x_data_limit, x_axis_limit, x_scale in scales:
+        is_appendix = (scale_name == 'log_appendix')
         
-        metrics = [
-            ('auc_amortized', 'Predictive AUC', (0.58, 0.82)),
-            ('rmse_amortized', 'RMSE', (0.20, 0.55)),
-            ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
-        ]
-
-        for i, (col, title, ylim) in enumerate(metrics):
-            ax = axes[i]
-            for d in data:
-                lw = 1.2
-                alpha = 1.0
-                taus = d['mean']['lambda_tau'].values
-                means = gaussian_filter1d(d['mean'][col].values, sigma=1.5)
-                ci = gaussian_filter1d(d['sem'][col].values * 1.96, sigma=1.5)
+        for suffix, configs in comparison_sets:
+            data = []
+            for label, filename, ls, color in configs:
+                path_data = os.path.join(RESULT_DIR, filename)
+                if not os.path.exists(path_data): continue
                 
-                ax.plot(taus, means, color=d['color'], label=d['label'], linewidth=lw, linestyle=d['ls'], alpha=alpha)
-                ax.fill_between(taus, means - ci, means + ci, color=d['color'], alpha=0.12 * alpha)
+                try:
+                    df = pd.read_csv(path_data, on_bad_lines='skip')
+                    df.columns = df.columns.str.strip()
+                    
+                    required_cols = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'active_dims']
+                    for col in required_cols:
+                        if col in df.columns:
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    df = df.dropna(subset=['lambda_tau', 'auc_amortized', 'active_dims'])
+                    df = df[df['lambda_tau'] <= x_data_limit]
+                    if df.empty: continue
+
+                    cols_to_agg = ['auc_amortized', 'active_dims']
+                    if 'rmse_amortized' in df.columns:
+                        cols_to_agg.append('rmse_amortized')
+
+                    df_mean = df.groupby('lambda_tau')[cols_to_agg].mean().reset_index()
+                    df_sem = df.groupby('lambda_tau')[cols_to_agg].sem().reset_index().fillna(0)
+                    
+                    data.append({
+                        'label': label, 'color': color, 'ls': ls,
+                        'mean': df_mean.sort_values('lambda_tau'),
+                        'sem': df_sem.sort_values('lambda_tau')
+                    })
+                except Exception: continue
+
+            if not data: continue
+
+            # Determine layout: Appendix gets RMSE, Paper (linear) does not
+            if is_appendix:
+                fig, axes = plt.subplots(1, 3, figsize=(10, 3.2), constrained_layout=True)
+                metrics = [
+                    ('auc_amortized', 'AUC', (0.58, 0.82)),
+                    ('rmse_amortized', 'RMSE', (0.20, 0.55)),
+                    ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
+                ]
+            else:
+                fig, axes = plt.subplots(1, 2, figsize=(5, 2), constrained_layout=True)
+                metrics = [
+                    ('auc_amortized', 'AUC', (0.58, 0.82)),
+                    ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
+                ]
+
+            for i, (col, title, ylim) in enumerate(metrics):
+                ax = axes[i]
+                for d in data:
+                    if col not in d['mean'].columns: continue
+                    taus = d['mean']['lambda_tau'].values
+                    means = gaussian_filter1d(d['mean'][col].values, sigma=1.5)
+                    error_band = gaussian_filter1d(d['sem'][col].values, sigma=1.5)
+                    ax.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
+                    ax.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
+                
+                ax.set_title(title, fontsize=9)
+                ax.set_xscale(x_scale)
+                ax.set_xlim(x_start, x_axis_limit)
+                ax.set_ylim(ylim)
+                ax.grid(linestyle=':', alpha=0.8, which='both')
+                ax.tick_params(labelsize=8)
+
+            fig.supxlabel(r'Regularization Strength ($\tau$)', fontsize=9)
+
+            handles, labels = axes[0].get_legend_handles_labels()
+            if is_appendix:
+                fig.legend(handles, labels, loc='lower center', ncol=4, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.09))
+            else:
+                fig.legend(handles, labels, loc='lower center', ncol=2, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.2))
             
-            ax.set_title(title, fontsize=8)
-            ax.set_xscale('log')
-            ax.set_xlim(x_start, x_limit)
-            ax.set_ylim(ylim)
-            ax.grid(linestyle=':', alpha=0.6, which='both')
-            ax.tick_params(labelsize=7)
+            fname = f"tau_sensitivity_{suffix.split('_')[0]}_{scale_name}.pdf"
+            plt.savefig(os.path.join(FIGURE_DIR, fname), bbox_inches='tight')
+            plt.close()
 
-        # Shared titles
-        fig.supxlabel('Regularization Strength ($\\tau$)', fontsize=8)
-        fig.supylabel('Performance & Interpretability Metrics', fontsize=8)
-
-        # Single central legend at the bottom
-        handles, labels = axes[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc='lower center', ncol=4, frameon=False, fontsize=7, bbox_to_anchor=(0.5, -0.09))
-        
-        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{suffix.split('_')[0]}_consolidated.pdf"), bbox_inches='tight')
-        plt.close()
-
-    print(f"Consolidated tau sensitivity plots generated in {FIGURE_DIR}")
-
+    print(f"Dual-layout sensitivity plots (Paper: 2-panel, Appendix: 3-panel) generated in {FIGURE_DIR}")
 def plot_dimensionality_bar():
     """Create a side-by-side bar chart comparison of K for key model stages."""
     plt.rcParams.update(get_bundle())
@@ -563,9 +561,7 @@ def plot_dimensionality_bar():
     # Configuration for the specific bars
     # Label, Filename, Target Tau
     configs = [
-        ('Pre_8 (Bern)', 'amortized_irt_sae_bernoulli_pre_8_n_1.csv', 0.0159),
         ('Pre_8 (Beta)', 'amortized_irt_sae_beta_pre_8_n_max.csv', 0.16),
-        ('Post_1', 'amortized_irt_sae_bernoulli_n_1.csv', 0.0160),
         ('Post_max', 'amortized_irt_sae_beta_n_max.csv', 0.0535)
     ]
     
@@ -603,7 +599,7 @@ def plot_dimensionality_bar():
     
     ax.set_ylabel('Active Dimensions ($K$)')
     ax.set_ylim(0, 32)
-    ax.grid(axis='y', linestyle=':', alpha=0.6)
+    ax.grid(axis='y', linestyle=':', alpha=0.8)
     
     # Polish axes
     ax.spines['top'].set_visible(False)
