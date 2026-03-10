@@ -12,6 +12,7 @@ import pickle
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from scipy.stats import entropy
+from scipy.ndimage import gaussian_filter1d
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -31,10 +32,14 @@ os.makedirs(FIGURE_DIR, exist_ok=True)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-# Colors
-MAIN_BLUE = '#1f77b4'
-STABLE_GREEN = '#2ca02c'
-UNSTABLE_RED = '#d62728'
+# Colors (R, G, B)
+BLUE = (0.12, 0.47, 0.71)
+LIGHT_BLUE = (0.45, 0.62, 0.78)
+GREEN = (0.17, 0.63, 0.17)
+LIGHT_GREEN = (0.53, 0.75, 0.42)
+RED = (0.84, 0.15, 0.16)
+LIGHT_RED = (0.92, 0.48, 0.48)
+ORANGE = (1.0, 0.5, 0.05)
 
 def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
@@ -113,81 +118,14 @@ def plot_stability_comparison():
     sns.boxplot(data=df_plot, x='Model', y='K', color='#f0f0f0', width=0.5, ax=ax, showfliers=False)
     sns.stripplot(data=df_plot, x='Model', y='K', palette='viridis', alpha=0.7, size=6, ax=ax, jitter=True)
     
+    # Calculate seeds for title
+    seed_counts = df_plot.groupby('Model').size().unique()
+    seed_str = f"{seed_counts[0]}" if len(seed_counts) == 1 else f"{seed_counts.min()}-{seed_counts.max()}"
+    
     ax.set_ylabel("Active Dimensions ($K$)")
     ax.set_ylim(-1, 31)
-    ax.set_title("Dimensionality Stability (10 Seeds)")
     
     plt.savefig(os.path.join(FIGURE_DIR, "k_stability_distribution.pdf"), bbox_inches='tight')
-    plt.close()
-
-def plot_effectiveness():
-    """Scatter plot showing accuracy vs complexity (AUC vs K)."""
-    plt.rcParams.update(get_bundle())
-    
-    file_map = {
-        'Pre-Rev (N=1)': ("amortized_irt_sae_bernoulli_pre_8_n_1.csv", 'o'),
-        'Pre-Rev (Saturated)': ("amortized_irt_sae_beta_pre_max_n_max.csv", 'x'),
-        'Post-Rev (Fixed)': ("amortized_irt_sae_beta_n_max.csv", 's')
-    }
-    
-    fig, ax = plt.subplots(figsize=(4.0, 3.5))
-    
-    colors = sns.color_palette("husl", 3)
-    
-    for i, (label, (filename, marker)) in enumerate(file_map.items()):
-        df = load_filtered_csv(filename)
-        if df is not None:
-            ax.scatter(df['active_dims'], df['auc_amortized'], 
-                       label=label, color=colors[i], marker=marker, s=40, alpha=0.6)
-            
-            # Draw a crosshair for the mean
-            mean_k = df['active_dims'].mean()
-            mean_auc = df['auc_amortized'].mean()
-            ax.plot(mean_k, mean_auc, marker='+', markersize=15, color=colors[i], markeredgewidth=3)
-
-    ax.set_xlabel("Active Dimensions ($K$)")
-    ax.set_ylabel("Predictive AUC")
-    ax.set_title("Effectiveness: Accuracy vs Complexity")
-    ax.legend(fontsize=8, loc='lower right')
-    ax.grid(linestyle=':', alpha=0.5)
-    
-    plt.savefig(os.path.join(FIGURE_DIR, "effectiveness_auc_vs_k.pdf"), bbox_inches='tight')
-    plt.close()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Plot 2: Razor's Edge (Phase Transition)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def plot_razors_edge():
-    plt.rcParams.update(get_bundle())
-    
-    # Load PCA Bernoulli N=1 (the most unstable)
-    df = load_filtered_csv("amortized_irt_pca_bernoulli_n_1.csv")
-    if df is None or len(df) == 0:
-        return
-        
-    df = df.sort_values(by='seed')
-    
-    fig, ax = plt.subplots(figsize=(3.5, 2.0))
-    
-    # Scatter plot of seeds vs K
-    seeds = range(len(df))
-    k_vals = df['active_dims']
-    
-    ax.scatter(seeds, k_vals, color=UNSTABLE_RED, s=50, edgecolors='black', zorder=3)
-    ax.plot(seeds, k_vals, color=UNSTABLE_RED, linestyle='--', alpha=0.4, zorder=2)
-    
-    ax.set_xlabel("Random Seed Rank")
-    ax.set_ylabel("Active Dims ($K$)")
-    ax.set_title("The Bernoulli $N=1$ 'Razor's Edge'")
-    ax.set_yticks([0, 15, 30])
-    ax.grid(axis='y', linestyle=':', alpha=0.6)
-    
-    # Annotate collapse vs saturation
-    ax.text(len(df)//4, 2, "Collapse", color=UNSTABLE_RED, fontweight='bold', ha='center')
-    ax.text(len(df)//4, 27, "Saturation", color=UNSTABLE_RED, fontweight='bold', ha='center')
-    
-    plt.savefig(os.path.join(FIGURE_DIR, "razors_edge_instability.pdf"), bbox_inches='tight')
     plt.close()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -300,7 +238,7 @@ def plot_loading_heatmap():
         ('Post-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
     ]
     
-    fig, axes = plt.subplots(1, 2, figsize=(4.5, 2.0), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(5.5, 2.0), sharey=True, constrained_layout=False)
     
     any_plotted = False
     
@@ -312,12 +250,14 @@ def plot_loading_heatmap():
     }
     
     # Enforce left-to-right sorting independently of alphabet
-    ordered_benchmarks = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
+    ordered_benchmarks = ['colbench_backend_programming', 'scienceagentbench', 'corebench_hard', 'scicode']
     b_order = {b: i for i, b in enumerate(ordered_benchmarks)}
     
-    # 1. Load all data first to find the common exact intersection of tasks
+    # 1. Load all data and find global max for symmetric colorbar
     loaded_data = []
     common_tids = None
+    max_val = 0.0
+    
     for i, (label, w_path, pre_rev) in enumerate(configs):
         if not os.path.exists(w_path): 
             loaded_data.append(None)
@@ -328,6 +268,8 @@ def plot_loading_heatmap():
             continue
             
         loaded_data.append((A, tids))
+        max_val = max(max_val, np.abs(A).max())
+        
         if common_tids is None:
             common_tids = set(tids)
         else:
@@ -345,7 +287,7 @@ def plot_loading_heatmap():
         any_plotted = True
         
         # Filter for active dims only
-        active = np.where(np.abs(A).max(axis=0) > 0.001)[0]
+        active = np.where(np.abs(A).max(axis=0) > 0.005)[0]
         if len(active) == 0: active = np.arange(A.shape[1])
         A_sub = A[:, active]
         
@@ -361,10 +303,32 @@ def plot_loading_heatmap():
         A_sorted = A_intersect[sort_idx]
         sorted_benchmarks = np.array(benchmarks)[sort_idx]
         
-        sns.heatmap(A_sorted.T, ax=axes[i], cmap='RdBu_r', center=0, cbar=False if i==0 else True)
-        axes[i].set_title(label, fontsize=11)
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(axes[i])
+        cax = divider.append_axes("right", size="3%", pad=0.05)
+        
+        v_limit = 1.0 if 'Pre' in label else 0.05
+        ticks = [-0.8, -0.4, 0.0, 0.4, 0.8] if 'Pre' in label else [-0.04, -0.02, 0.00, 0.02, 0.04]
+        cbar_fmt = '%.1f' if 'Pre' in label else '%.2f'
+        
+        hm = sns.heatmap(A_sorted.T, ax=axes[i], cmap='RdBu_r', center=0, 
+                        vmin=-v_limit, vmax=v_limit,
+                        cbar=True, cbar_ax=cax,
+                        cbar_kws={'ticks': ticks, 'format': cbar_fmt})
+        
+        # Shrink tick marks
+        axes[i].tick_params(axis='both', which='both', length=2, width=0.5)
+        
+        # Shrink colorbar tick marks
+        cax.tick_params(axis='both', which='both', length=2, width=0.5)
+        
+        # Remove redundant labels for the second plot
+        if i == 1:
+            axes[i].tick_params(left=False, labelleft=False)
+            
+        axes[i].set_xlabel(label, fontsize=7)
         if i == 0:
-            axes[i].set_ylabel("Active Latent Dims ($K$)", fontsize=9)
+            axes[i].set_ylabel("Active Latent Dims ($K$)", fontsize=7)
             
         # Add vertical black lines and custom x-ticks at cluster centers
         unique_b = []
@@ -383,11 +347,12 @@ def plot_loading_heatmap():
             centers.append(boundaries[-2] + count / 2.0)
             
         for b_idx in boundaries[1:-1]:
-            axes[i].axvline(x=b_idx, color='black', linewidth=0.5, linestyle='--')
+            axes[i].axvline(x=b_idx, color='black', linewidth=0.3, linestyle='--')
             
         axes[i].set_xticks([])
     
     if any_plotted:
+        fig.subplots_adjust(wspace=0.15)
         plt.savefig(os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf"), bbox_inches='tight')
     plt.close()
 
@@ -479,155 +444,175 @@ def plot_semantic_alignment():
             f.write(report_content)
         print(f"Detailed report saved to {report_path}")
 
-def plot_2d_projections():
-    plt.rcParams.update(get_bundle())
-    
-    configs = [
-        ('Pre-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_pre_max_n_max_seed_42_weights_final.pkl"), 'max'),
-        ('Post-Revision', os.path.join(RESULT_DIR, "amortized_irt_sae_beta_n_max_seed_42_weights_final.pkl"), 'none')
-    ]
-    
-    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.0))
-    
-    any_plotted = False
-    for i, (label, w_path, pre_rev) in enumerate(configs):
-        if not os.path.exists(w_path): continue
-        A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
-        if A is None: continue
-            
-        any_plotted = True
-        # Filter for active dims
-        active = np.where(np.abs(A).max(axis=0) > 1e-6)[0]
-        if len(active) < 2:
-            print(f"Warning: {label} has < 2 active dims. Using all {A.shape[1]}.")
-            A_sub = A
-        else:
-            A_sub = A[:, active]
-            
-        print(f"Projecting {label} with {A_sub.shape[1]} active dims...")
-        
-        # Run t-SNE
-        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(tids)-1))
-        X_2d = tsne.fit_transform(A_sub)
-        
-        # Map benchmarks to cleaner names for legend
-        bench_map = {
-            'colbench_backend_programming': 'ColBench',
-            'corebench_hard': 'CoreBench',
-            'scienceagentbench': 'SAB',
-            'scicode': 'SciCode'
-        }
-        
-        # Color by benchmark
-        benchmarks = [t.split('.')[0] for t in tids]
-        unique_b = sorted(list(set(benchmarks)))
-        palette = sns.color_palette("husl", len(unique_b))
-        
-        # Calculate Quantitative Clarity (Silhouette Score)
-        if len(unique_b) > 1:
-            score = silhouette_score(X_2d, benchmarks)
-            print(f"| {label} | Benchmark Separation (Silhouette): {score:.4f} |")
-        
-        for b, color in zip(unique_b, palette):
-            mask = [bench == b for bench in benchmarks]
-            label_name = bench_map.get(b, b)
-            axes[i].scatter(X_2d[mask, 0], X_2d[mask, 1], label=label_name, color=color, s=15, alpha=0.7, edgecolors='none')
-            
-        axes[i].set_title(f"{label} (K={A_sub.shape[1]})", fontsize=11)
-        axes[i].set_xticks([])
-        axes[i].set_yticks([])
-        if i == 1:
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8, frameon=True)
-            
-    if any_plotted:
-        plt.savefig(os.path.join(FIGURE_DIR, "loading_2d_projections.pdf"), bbox_inches='tight')
-    plt.close()
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Plot 5: Tau Sensitivity
 # ══════════════════════════════════════════════════════════════════════════════
 
 def plot_tau_sensitivity():
     plt.rcParams.update(get_bundle())
+    
+    # Define comparison sets
+    # suffix, configs, locs
+    comparison_sets = [
+        ('max_merged', [
+            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_max_n_1.csv', '-', ORANGE),
+            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_max_n_max.csv', '-', RED),
+            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '-', GREEN),
+            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', BLUE),
+        ], {'auc': 'lower right', 'rmse': 'upper left', 'dims': 'lower left'}),
+        ('n8_merged', [
+            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_8_n_1.csv', '-', ORANGE),
+            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_8_n_max.csv', '-', RED),
+            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '-', GREEN),
+            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', BLUE),
+        ], {'auc': 'lower right', 'rmse': 'upper left', 'dims': 'lower left'})
+    ]
 
-    any_plotted = False
-    for filename in os.listdir(RESULT_DIR):
-        if not filename.endswith(".csv"):
-            continue
+    x_limit = 10.5
+    lim_tau = 10.0
+    
+    for suffix, configs, locs in comparison_sets:
+        data = []
+        for label, filename, ls, color in configs:
+            path = os.path.join(RESULT_DIR, filename)
+            if not os.path.exists(path):
+                print(f"Warning: Data file not found: {path}")
+                continue
             
-        path = os.path.join(RESULT_DIR, filename)
-        try:
-            df = pd.read_csv(path, on_bad_lines='skip')
-        except Exception:
-            continue
+            try:
+                df = pd.read_csv(path, on_bad_lines='skip')
+                df.columns = df.columns.str.strip()
+            except Exception as e:
+                print(f"Error reading {filename}: {e}")
+                continue
+                
+            required_cols = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'active_dims']
+            for col in required_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                else:
+                    print(f"Warning: Column {col} missing in {filename}")
             
-        if 'lambda_tau' not in df.columns:
-            continue
+            df = df.dropna(subset=required_cols)
+            df = df[df['lambda_tau'] <= lim_tau]
             
-        # Coerce to numeric to handle any corrupted rows from concurrent writes
-        df['lambda_tau'] = pd.to_numeric(df['lambda_tau'], errors='coerce')
-        df['auc_amortized'] = pd.to_numeric(df['auc_amortized'], errors='coerce')
-        df['active_dims'] = pd.to_numeric(df['active_dims'], errors='coerce')
-        df = df.dropna(subset=['lambda_tau', 'auc_amortized', 'active_dims'])
-        
-        # Clip data to tau=0.10 so the line stops early
-        df = df[df['lambda_tau'] <= 0.10]
-        
-        # Group by lambda_tau and get mean and 95% Confidence Interval (1.96 * SEM)
-        df_mean = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].mean().reset_index()
-        df_sem = df.groupby('lambda_tau')[['auc_amortized', 'active_dims']].sem().reset_index()
-        
-        df_mean = df_mean.sort_values(by='lambda_tau')
-        df_sem = df_sem.sort_values(by='lambda_tau')
-        
-        taus = df_mean['lambda_tau'].values
-        base_name = filename.replace('.csv', '')
-        
-        # Plot up to tau=0.1 with a small padding
-        x_limit = 0.105
+            if df.empty:
+                print(f"Warning: No data for {label} after filtering.")
+                continue
 
-        fig, ax1 = plt.subplots(figsize=(4.5, 3.0))
+            df_mean = df.groupby('lambda_tau')[['auc_amortized', 'rmse_amortized', 'active_dims']].mean().reset_index()
+            df_sem = df.groupby('lambda_tau')[['auc_amortized', 'rmse_amortized', 'active_dims']].sem().reset_index()
+            
+            data.append({
+                'label': label,
+                'color': color,
+                'ls': ls,
+                'mean': df_mean.sort_values('lambda_tau'),
+                'sem': df_sem.sort_values('lambda_tau')
+            })
+
+        if not data:
+            continue
+
+        # Create 3-column consolidated plot
+        fig, axes = plt.subplots(1, 3, figsize=(10, 3.2), constrained_layout=True)
         
-        # Plot AUC on left axis
-        color = MAIN_BLUE
-        ax1.set_xlabel('Regularization Strength ($\\tau$)')
-        ax1.set_xlim(0.00, x_limit)
-        ax1.set_ylabel('Predictive AUC', color=color)
-        ax1.set_ylim(0.58, 0.82)
+        metrics = [
+            ('auc_amortized', 'Predictive AUC', (0.58, 0.82)),
+            ('rmse_amortized', 'RMSE', (0.20, 0.55)),
+            ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
+        ]
+
+        for i, (col, title, ylim) in enumerate(metrics):
+            ax = axes[i]
+            for d in data:
+                lw = 1.2
+                alpha = 1.0
+                taus = d['mean']['lambda_tau'].values
+                means = gaussian_filter1d(d['mean'][col].values, sigma=1.5)
+                ci = gaussian_filter1d(d['sem'][col].values * 1.96, sigma=1.5)
+                
+                ax.plot(taus, means, color=d['color'], label=d['label'], linewidth=lw, linestyle=d['ls'], alpha=alpha)
+                ax.fill_between(taus, means - ci, means + ci, color=d['color'], alpha=0.12 * alpha)
+            
+            ax.set_title(title, fontsize=8)
+            ax.set_xlim(0, x_limit)
+            ax.set_ylim(ylim)
+            ax.grid(linestyle=':', alpha=0.6)
+            ax.tick_params(labelsize=7)
+
+        # Shared titles
+        fig.supxlabel('Regularization Strength ($\\tau$)', fontsize=8)
+        fig.supylabel('Performance & Interpretability Metrics', fontsize=8)
+
+        # Single central legend at the bottom
+        handles, labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='lower center', ncol=4, frameon=False, fontsize=7, bbox_to_anchor=(0.5, -0.09))
         
-        auc_means = df_mean['auc_amortized'].values
-        auc_95ci = df_sem['auc_amortized'].values * 1.96
-        
-        ax1.plot(taus, auc_means, color=color, linestyle='-', label='AUC', linewidth=1)
-        ax1.fill_between(taus, auc_means - auc_95ci, auc_means + auc_95ci, color=color, alpha=0.25, zorder=1)
-        ax1.tick_params(axis='y', labelcolor=color)
-        
-        # Plot Active Dims on right axis
-        ax2 = ax1.twinx()
-        color2 = STABLE_GREEN
-        ax2.set_ylabel('Active Dimensions ($K$)', color=color2)
-        ax2.set_ylim(-1.5, 31.5)
-        
-        k_means = df_mean['active_dims'].values
-        k_95ci = df_sem['active_dims'].values * 1.96
-        
-        ax2.plot(taus, k_means, color=color2, linestyle='-.', label='Dims (K)', linewidth=1)
-        ax2.fill_between(taus, k_means - k_95ci, k_means + k_95ci, color=color2, alpha=0.3, zorder=1)
-        ax2.tick_params(axis='y', labelcolor=color2)
-        
-        # Align ticks
-        ax1.grid(linestyle=':', alpha=0.6)
-        
-        # Move titles and borders slightly to prevent overlap
-        fig.tight_layout()
-        plt.title(f"Sensitivity: {base_name}")
-        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{base_name}.pdf"), bbox_inches='tight')
+        plt.savefig(os.path.join(FIGURE_DIR, f"tau_sensitivity_{suffix.split('_')[0]}_consolidated.pdf"), bbox_inches='tight')
         plt.close()
+
+    print(f"Consolidated tau sensitivity plots generated in {FIGURE_DIR}")
+
+def plot_dimensionality_bar():
+    """Create a side-by-side bar chart comparison of K for key model stages."""
+    plt.rcParams.update(get_bundle())
+    
+    # Configuration for the specific bars
+    # Label, Filename, Target Tau
+    configs = [
+        ('Pre_8 (Bern)', 'amortized_irt_sae_bernoulli_pre_8_n_1.csv', 0.0159),
+        ('Pre_8 (Beta)', 'amortized_irt_sae_beta_pre_8_n_max.csv', 0.16),
+        ('Post_1', 'amortized_irt_sae_bernoulli_n_1.csv', 0.0160),
+        ('Post_max', 'amortized_irt_sae_beta_n_max.csv', 0.0535)
+    ]
+    
+    names = []
+    means = []
+    errors = []
+    
+    for label, filename, target_tau in configs:
+        path = os.path.join(RESULT_DIR, filename)
+        if not os.path.exists(path):
+            continue
+            
+        df = pd.read_csv(path, on_bad_lines='skip')
+        df['lambda_tau'] = pd.to_numeric(df['lambda_tau'], errors='coerce')
+        df['active_dims'] = pd.to_numeric(df['active_dims'], errors='coerce')
+        df = df.dropna(subset=['lambda_tau', 'active_dims'])
         
-        any_plotted = True
+        # Filter for the specific tau
+        df_target = df[np.isclose(df['lambda_tau'], target_tau, atol=1e-4)]
         
-    if any_plotted:
-        print(f"Tau sensitivity plots generated in {FIGURE_DIR}")
+        if len(df_target) > 0:
+            # Group by seed to get distribution across seeds
+            seed_means = df_target.groupby('seed')['active_dims'].mean()
+            names.append(label)
+            means.append(seed_means.mean())
+            errors.append(seed_means.sem()) # Use SEM for error bars
+            
+    if not names:
+        return
+        
+    fig, ax = plt.subplots(figsize=(4.0, 3.2))
+    
+    # Create the bar plot
+    bars = ax.bar(names, means, yerr=errors, color=BLUE, alpha=0.8, capsize=3, ecolor='black', error_kw={'lw': 0.5, 'capthick': 0.5, 'capsize': 2})
+    
+    ax.set_ylabel('Active Dimensions ($K$)')
+    ax.set_ylim(0, 32)
+    ax.grid(axis='y', linestyle=':', alpha=0.6)
+    
+    # Polish axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    fig.tight_layout()
+    plt.savefig(os.path.join(FIGURE_DIR, "dimensionality_bar_comparison.pdf"), bbox_inches='tight')
+    plt.close()
+    
+    print(f"Dimensionality bar comparison generated: {os.path.join(FIGURE_DIR, 'dimensionality_bar_comparison.pdf')}")
+
 
 def main():
     print("=" * 60)
@@ -635,11 +620,9 @@ def main():
     print("=" * 60)
     
     plot_stability_comparison()
-    plot_effectiveness()
-    plot_razors_edge()
+    plot_dimensionality_bar()
     plot_loading_heatmap()
     plot_semantic_alignment()
-    plot_2d_projections()
     plot_tau_sensitivity()
     
     print(f"Interpretability plots generated in {FIGURE_DIR}")
