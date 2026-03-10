@@ -468,8 +468,9 @@ def plot_tau_sensitivity():
         ], {'auc': 'lower right', 'rmse': 'upper left', 'dims': 'lower left'})
     ]
 
-    x_limit = 10.5
-    lim_tau = 10.0
+    x_start = 0.001
+    x_limit = 1100.0
+    lim_tau = 1000.0
     
     for suffix, configs, locs in comparison_sets:
         data = []
@@ -536,9 +537,10 @@ def plot_tau_sensitivity():
                 ax.fill_between(taus, means - ci, means + ci, color=d['color'], alpha=0.12 * alpha)
             
             ax.set_title(title, fontsize=8)
-            ax.set_xlim(0, x_limit)
+            ax.set_xscale('log')
+            ax.set_xlim(x_start, x_limit)
             ax.set_ylim(ylim)
-            ax.grid(linestyle=':', alpha=0.6)
+            ax.grid(linestyle=':', alpha=0.6, which='both')
             ax.tick_params(labelsize=7)
 
         # Shared titles
