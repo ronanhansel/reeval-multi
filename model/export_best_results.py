@@ -101,6 +101,20 @@ configs = [
     ('amortized_irt_sae_bernoulli_pre_8_n_1.csv', 'SAE Pre-8 (N=1)'),
     ('amortized_irt_pca_bernoulli_pre_8_n_1.csv', 'PCA Pre-8 (N=1)'),
     ('amortized_irt_raw_bernoulli_pre_8_n_1.csv', 'RAW Pre-8 (N=1)'),
+    
+    # Ablations (Post Revision)
+    ('amortized_irt_sae_beta_n_max_notau.csv', 'SAE Post (N=max, No-TAU)'),
+    ('amortized_irt_pca_beta_n_max_notau.csv', 'PCA Post (N=max, No-TAU)'),
+    ('amortized_irt_raw_beta_n_max_notau.csv', 'RAW Post (N=max, No-TAU)'),
+    ('amortized_irt_ones_beta_n_max.csv', 'ONES Post (N=max)'),
+    ('amortized_irt_ones_beta_n_max_notau.csv', 'ONES Post (N=max, No-TAU)'),
+    
+    # Ablations (Post Revision Bernoulli N=1)
+    ('amortized_irt_sae_bernoulli_n_1_notau.csv', 'SAE Post (N=1, No-TAU)'),
+    ('amortized_irt_pca_bernoulli_n_1_notau.csv', 'PCA Post (N=1, No-TAU)'),
+    ('amortized_irt_raw_bernoulli_n_1_notau.csv', 'RAW Post (N=1, No-TAU)'),
+    ('amortized_irt_ones_bernoulli_n_1.csv', 'ONES Post (N=1)'),
+    ('amortized_irt_ones_bernoulli_n_1_notau.csv', 'ONES Post (N=1, No-TAU)'),
 ]
 
 all_results = []
@@ -117,7 +131,8 @@ def sort_key(label):
     if 'SAE' in label: return 2
     if 'PCA' in label: return 3
     if 'RAW' in label: return 4
-    return 5
+    if 'ONES' in label: return 5
+    return 6
 
 # Priority for Pre/Post and Max/8
 def cond_key(label):
