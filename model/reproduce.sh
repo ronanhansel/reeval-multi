@@ -242,9 +242,14 @@ if ! $ONLY_PLOT; then
         
         # PCA/RAW (Main stage only for baseline)
         run_tau_sweep pca 1 bernoulli 0.0155 8
+        run_tau_sweep pca 1 bernoulli 0.0155 max
         run_tau_sweep pca max beta 0.054 max
+        run_tau_sweep pca max beta 0.054 8
+
         run_tau_sweep raw 1 bernoulli 0.0151 8
+        run_tau_sweep raw 1 bernoulli 0.0151 max
         run_tau_sweep raw max beta 0.029 max
+        run_tau_sweep raw max beta 0.029 8
         
         # 5. Ablation Studies (Full Sweep only)
         # Setup 1: No TAU (w/ SAE, PCA, RAW embeddings)
