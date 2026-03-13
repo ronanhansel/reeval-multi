@@ -885,7 +885,7 @@ def main():
     parser.add_argument('--wd-w', type=float, default=None, help='Override WD_W')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
-    parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
+    parser.add_argument('--pre-revision', type=str, choices=['none', '32', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
     parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
