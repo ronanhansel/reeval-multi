@@ -42,11 +42,11 @@ def get_bundle():
 # ══════════════════════════════════════════════════════════════════════════════
 
 SOTA_TAUS = {
-    "amortized_irt_sae_bernoulli_pre_8_n_1.csv": 0.0159,
+    "amortized_irt_sae_bernoulli_pre_32_n_1.csv": 0.0159,
     "amortized_irt_sae_beta_pre_max_n_max.csv": 0.16,
     "amortized_irt_sae_beta_n_max.csv": 0.0535,
     "amortized_irt_pca_bernoulli_n_1.csv": 0.0155,
-    "amortized_irt_pca_bernoulli_pre_8_n_1.csv": 0.0155,
+    "amortized_irt_pca_bernoulli_pre_32_n_1.csv": 0.0155,
     "amortized_irt_pca_beta_n_max.csv": 0.054,
     "amortized_irt_pca_beta_pre_max_n_max.csv": 0.054,
     "amortized_irt_raw_beta_n_max.csv": 0.029,
@@ -451,9 +451,9 @@ def plot_tau_sensitivity():
             ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '--', 'skyblue'),
             ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
         ]),
-        ('n8_merged', [
-            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_8_n_1.csv', '--', 'salmon'),
-            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_8_n_max.csv', '-', 'tab:red'),
+        ('n32_merged', [
+            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_32_n_1.csv', '--', 'salmon'),
+            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_32_n_max.csv', '-', 'tab:red'),
             ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '--', 'skyblue'),
             ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
         ])
@@ -539,7 +539,7 @@ def plot_dimensionality_bar():
     # Configuration for the specific bars
     # Label, Filename, Target Tau
     configs = [
-        ('Pre_8 (Beta)', 'amortized_irt_sae_beta_pre_8_n_max.csv', 0.16),
+        ('Pre_32 (Beta)', 'amortized_irt_sae_beta_pre_32_n_max.csv', 0.16),
         ('Post_max', 'amortized_irt_sae_beta_n_max.csv', 0.0535)
     ]
     

@@ -302,7 +302,7 @@ def parse_args():
     parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
-    parser.add_argument('--pre-revision', type=str, choices=['none', '8', 'max'], default='none', 
+    parser.add_argument('--pre-revision', type=str, choices=['none', '32', 'max'], default='none', 
                         help='Evaluate on pre-revision matrix with N=1.')
     parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
@@ -348,6 +348,15 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
                     break
             
             if df is not None:
+                # [ALIGNMENT FIX]: Filter SciCode to match the 29 refined items used in post-revision
+                if b == 'scicode':
+                    # Exact list of 29 task IDs (stripped) from post-revision
+                    SCICODE_POST_IDS = ['12', '14', '15', '16', '2', '23', '28', '32', '35', '41', '43', '46', '48', '52', '56', '58', '59', '61', '62', '63', '64', '66', '67', '71', '72', '77', '79', '80', '9']
+                    post_cols = [f"scicode.{it}" for it in SCICODE_POST_IDS]
+                    # Only keep columns that are in the post-revision set
+                    valid_df_cols = [c for c in df.columns if c in post_cols]
+                    df = df[valid_df_cols]
+
                 # Prefix agents to ensure uniqueness across benchmarks (matching post-revision style)
                 # and ensuring exactly 32 unique rows when sampling 8 per benchmark.
                 df.index = [f"{b}.{a}" for a in df.index]
@@ -360,7 +369,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
             
         final_df = pd.concat(combined_dfs, axis=1, join='outer')
         
-        if pre_revision == '8':
+        if pre_revision == '32':
             sampled_agents = []
             for b_name in b_names:
                 # Find the benchmark-specific DataFrame from the list we just populated

@@ -35,11 +35,11 @@ def plot_merged_sensitivity_all_embeddings(suite_name):
     plt.rcParams.update(get_bundle())
     embedding_types = ['raw', 'pca', 'sae']
     
-    # Selection logic to mirror tau_sensitivity_n8_log_appendix.pdf datasets
+    # Selection logic to mirror tau_sensitivity_n32_log_appendix.pdf datasets
     if suite_name == 'max':
         title_suffix = "(All Agents)"
-    else:  # n8
-        title_suffix = "(8 Agents)"
+    else:  # n32
+        title_suffix = "(32 Agents)"
 
     # Rows will be metrics
     metrics = [
@@ -67,10 +67,10 @@ def plot_merged_sensitivity_all_embeddings(suite_name):
                     ('Bernoulli Post-Revision', f'amortized_irt_{embedding_type}_bernoulli_n_1.csv',      '-', 'skyblue'),
                     ('Beta Post-Revision',      f'amortized_irt_{embedding_type}_beta_n_max.csv',           '-', 'tab:blue'),
                 ]
-            else:  # n8
+            else:  # n32
                 configs = [
-                    ('Bernoulli Pre-Revision', f'amortized_irt_{embedding_type}_bernoulli_pre_8_n_1.csv', '-', 'salmon'),
-                    ('Beta Pre-Revision',      f'amortized_irt_{embedding_type}_beta_pre_8_n_max.csv', '-', 'tab:red'),
+                    ('Bernoulli Pre-Revision', f'amortized_irt_{embedding_type}_bernoulli_pre_32_n_1.csv', '-', 'salmon'),
+                    ('Beta Pre-Revision',      f'amortized_irt_{embedding_type}_beta_pre_32_n_max.csv', '-', 'tab:red'),
                     ('Bernoulli Post-Revision', f'amortized_irt_{embedding_type}_bernoulli_n_1.csv',      '-', 'skyblue'),
                     ('Beta Post-Revision',      f'amortized_irt_{embedding_type}_beta_n_max.csv',           '-', 'tab:blue'),
                 ]
@@ -161,7 +161,7 @@ def plot_merged_sensitivity_all_embeddings(suite_name):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    for suite in ['max', 'n8']:
+    for suite in ['max', 'n32']:
         plot_merged_sensitivity_all_embeddings(suite)
 
 if __name__ == "__main__":

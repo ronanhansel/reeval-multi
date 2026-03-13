@@ -54,6 +54,14 @@ def collect_data(benchmarks):
         if os.path.exists(path):
             df = pd.read_csv(path, index_col=0)
             df.columns = [f"{bench}.{c}" if not str(c).startswith(bench) and not str(c).startswith(bench.replace('_hard','')) else c for c in df.columns]
+            
+            # [ALIGNMENT FIX]: Filter SciCode to match the 29 refined items used in post-revision
+            if bench == 'scicode':
+                SCICODE_POST_IDS = ['12', '14', '15', '16', '2', '23', '28', '32', '35', '41', '43', '46', '48', '52', '56', '58', '59', '61', '62', '63', '64', '66', '67', '71', '72', '77', '79', '80', '9']
+                post_cols = [f"scicode.{it}" for it in SCICODE_POST_IDS]
+                valid_df_cols = [c for c in df.columns if c in post_cols]
+                df = df[valid_df_cols]
+                
             df.index = [f"{bench}.{normalize_agent_name(a)}" for a in df.index]
             if df.index.duplicated().any(): df = df.groupby(level=0).mean()
             pre_res_list.append(df)

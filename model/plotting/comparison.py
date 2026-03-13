@@ -64,7 +64,7 @@ def format_label(val, se):
 def plot_remediation_summary():
     """6-bar plot comparing benchmarks before and after remediation (SAE only)."""
     configs = {
-        'Pre_8': 'amortized_irt_sae_bernoulli_pre_8_n_1.csv',
+        'Pre_32': 'amortized_irt_sae_bernoulli_pre_32_n_1.csv',
         'Pre_max': 'amortized_irt_sae_beta_pre_max_n_max.csv',
         'Post_1': 'amortized_irt_sae_bernoulli_n_1.csv',
         'Post_max': 'amortized_irt_sae_beta_n_max.csv',
@@ -101,7 +101,7 @@ def plot_remediation_summary():
             print(f"Warning: {path} not found.")
             res[label] = {'a_m': 0.0, 'a_s': 0.0, 'r_m': 0.0, 'r_s': 0.0}
 
-    order = ['Naive', 'Rasch', 'Pre_8', 'Pre_max', 'Post_1', 'Post_max']
+    order = ['Naive', 'Rasch', 'Pre_32', 'Pre_max', 'Post_1', 'Post_max']
     df_p = pd.DataFrame([{
         'Model': l, 'AUC': res[l]['a_m'], 'AUC_SE': res[l]['a_s'], 'RMSE': res[l]['r_m'], 'RMSE_SE': res[l]['r_s']
     } for l in order])
@@ -174,11 +174,11 @@ def generate_comprehensive_table():
         ('RAW Post (N=max)', 'raw', 'max', 'beta', ''),
 
         # --- Pre-Revision (Baseline Phase) ---
-        ('Naive-8 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_8'),
-        ('Rasch-8 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_8'),
-        ('SAE Pre-8 (N=1)', 'sae', '1', 'bernoulli', 'pre_8'),
-        ('PCA Pre-8 (N=1)', 'pca', '1', 'bernoulli', 'pre_8'),
-        ('RAW Pre-8 (N=1)', 'raw', '1', 'bernoulli', 'pre_8'),
+        ('Naive-32 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_32'),
+        ('Rasch-32 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_32'),
+        ('SAE Pre-32 (N=1)', 'sae', '1', 'bernoulli', 'pre_32'),
+        ('PCA Pre-32 (N=1)', 'pca', '1', 'bernoulli', 'pre_32'),
+        ('RAW Pre-32 (N=1)', 'raw', '1', 'bernoulli', 'pre_32'),
         
         ('Naive Pre-max (Baseline)', 'sae', 'max', 'beta', 'pre_max'),
         ('Rasch Pre-max (Baseline)', 'sae', 'max', 'beta', 'pre_max'),

@@ -103,11 +103,11 @@ if $ONLY_PLOT; then
     
     if $FULL_SWEEP; then
         # Pre-Revision files
-        check_file "amortized_irt_sae_bernoulli_pre_8_n_1.csv"
+        check_file "amortized_irt_sae_bernoulli_pre_32_n_1.csv"
         check_file "amortized_irt_sae_beta_pre_max_n_max.csv"
-        check_file "amortized_irt_pca_bernoulli_pre_8_n_1.csv"
+        check_file "amortized_irt_pca_bernoulli_pre_32_n_1.csv"
         check_file "amortized_irt_pca_beta_pre_max_n_max.csv"
-        check_file "amortized_irt_raw_bernoulli_pre_8_n_1.csv"
+        check_file "amortized_irt_raw_bernoulli_pre_32_n_1.csv"
         check_file "amortized_irt_raw_beta_pre_max_n_max.csv"
     fi
     echo "[VERIFY] All required data files found."
@@ -235,21 +235,21 @@ if ! $ONLY_PLOT; then
     # 4. Pre-Revision Checks (Full Sweep only)
     if $FULL_SWEEP; then
         # SAE (Symmetric Sweep)
-        run_tau_sweep sae 1 bernoulli 0.0159 8
+        run_tau_sweep sae 1 bernoulli 0.0159 32
         run_tau_sweep sae 1 bernoulli 0.0159 max
         run_tau_sweep sae max beta 0.16 max
-        run_tau_sweep sae max beta 0.16 8
+        run_tau_sweep sae max beta 0.16 32
         
         # PCA/RAW (Main stage only for baseline)
-        run_tau_sweep pca 1 bernoulli 0.0155 8
+        run_tau_sweep pca 1 bernoulli 0.0155 32
         run_tau_sweep pca 1 bernoulli 0.0155 max
         run_tau_sweep pca max beta 0.054 max
-        run_tau_sweep pca max beta 0.054 8
+        run_tau_sweep pca max beta 0.054 32
 
-        run_tau_sweep raw 1 bernoulli 0.0151 8
+        run_tau_sweep raw 1 bernoulli 0.0151 32
         run_tau_sweep raw 1 bernoulli 0.0151 max
         run_tau_sweep raw max beta 0.029 max
-        run_tau_sweep raw max beta 0.029 8
+        run_tau_sweep raw max beta 0.029 32
         
         # 5. Ablation Studies (Full Sweep only)
         # Setup 1: No TAU (w/ SAE, PCA, RAW embeddings)
@@ -283,16 +283,16 @@ if ! $ONLY_PLOT; then
         # Setup 9: No TAU & No Embeddings - Pre-max N=max
         run_exp ones max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
 
-        # Setup 10: No TAU (w/ SAE, PCA, RAW) - Pre-8 N=1
-        run_exp sae 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
-        run_exp pca 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
-        run_exp raw 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
+        # Setup 10: No TAU (w/ SAE, PCA, RAW) - Pre-32 N=1
+        run_exp sae 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+        run_exp pca 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+        run_exp raw 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
 
-        # Setup 11: No Embeddings (w/ TAU search) - Pre-8 N=1
-        run_exp ones 1 bernoulli "$SHARED_TAUS" 8 "$SEEDS" "${RESULT_DIR}" false
+        # Setup 11: No Embeddings (w/ TAU search) - Pre-32 N=1
+        run_exp ones 1 bernoulli "$SHARED_TAUS" 32 "$SEEDS" "${RESULT_DIR}" false
 
-        # Setup 12: No TAU & No Embeddings - Pre-8 N=1
-        run_exp ones 1 bernoulli "1.0" 8 "$SEEDS" "${RESULT_DIR}" true
+        # Setup 12: No TAU & No Embeddings - Pre-32 N=1
+        run_exp ones 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
     fi
 fi
 

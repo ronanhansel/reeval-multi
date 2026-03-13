@@ -98,9 +98,9 @@ configs = [
     ('amortized_irt_sae_beta_pre_max_n_max.csv', 'SAE Pre-max (N=max)'),
     ('amortized_irt_pca_beta_pre_max_n_max.csv', 'PCA Pre-max (N=max)'),
     ('amortized_irt_raw_beta_pre_max_n_max.csv', 'RAW Pre-max (N=max)'),
-    ('amortized_irt_sae_bernoulli_pre_8_n_1.csv', 'SAE Pre-8 (N=1)'),
-    ('amortized_irt_pca_bernoulli_pre_8_n_1.csv', 'PCA Pre-8 (N=1)'),
-    ('amortized_irt_raw_bernoulli_pre_8_n_1.csv', 'RAW Pre-8 (N=1)'),
+    ('amortized_irt_sae_bernoulli_pre_32_n_1.csv', 'SAE Pre-32 (N=1)'),
+    ('amortized_irt_pca_bernoulli_pre_32_n_1.csv', 'PCA Pre-32 (N=1)'),
+    ('amortized_irt_raw_bernoulli_pre_32_n_1.csv', 'RAW Pre-32 (N=1)'),
     
     # Ablations (Post Revision)
     ('amortized_irt_sae_beta_n_max_notau.csv', 'SAE Post (N=max, No-TAU)'),
@@ -123,12 +123,12 @@ configs = [
     ('amortized_irt_ones_beta_pre_max_n_max.csv', 'ONES Pre-max (N=max)'),
     ('amortized_irt_ones_beta_pre_max_n_max_notau.csv', 'ONES Pre-max (N=max, No-TAU)'),
 
-    # Ablations (Pre Revision Pre-8 N=1)
-    ('amortized_irt_sae_bernoulli_pre_8_n_1_notau.csv', 'SAE Pre-8 (N=1, No-TAU)'),
-    ('amortized_irt_pca_bernoulli_pre_8_n_1_notau.csv', 'PCA Pre-8 (N=1, No-TAU)'),
-    ('amortized_irt_raw_bernoulli_pre_8_n_1_notau.csv', 'RAW Pre-8 (N=1, No-TAU)'),
-    ('amortized_irt_ones_bernoulli_pre_8_n_1.csv', 'ONES Pre-8 (N=1)'),
-    ('amortized_irt_ones_bernoulli_pre_8_n_1_notau.csv', 'ONES Pre-8 (N=1, No-TAU)'),
+    # Ablations (Pre Revision Pre-32 N=1)
+    ('amortized_irt_sae_bernoulli_pre_32_n_1_notau.csv', 'SAE Pre-32 (N=1, No-TAU)'),
+    ('amortized_irt_pca_bernoulli_pre_32_n_1_notau.csv', 'PCA Pre-32 (N=1, No-TAU)'),
+    ('amortized_irt_raw_bernoulli_pre_32_n_1_notau.csv', 'RAW Pre-32 (N=1, No-TAU)'),
+    ('amortized_irt_ones_bernoulli_pre_32_n_1.csv', 'ONES Pre-32 (N=1)'),
+    ('amortized_irt_ones_bernoulli_pre_32_n_1_notau.csv', 'ONES Pre-32 (N=1, No-TAU)'),
 ]
 
 all_results = []
@@ -152,7 +152,7 @@ def sort_key(label):
 def cond_key(label):
     score = 0
     if "Pre-max" in label: score += 10
-    if "Pre-8" in label: score += 20
+    if "Pre-32" in label: score += 20
     if "Post (N=1)" in label: score += 30
     if "Post (N=max)" in label: score += 40
     return score
