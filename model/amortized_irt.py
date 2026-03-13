@@ -348,6 +348,9 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
                     break
             
             if df is not None:
+                # Prefix agents to ensure uniqueness across benchmarks (matching post-revision style)
+                # and ensuring exactly 32 unique rows when sampling 8 per benchmark.
+                df.index = [f"{b}.{a}" for a in df.index]
                 # Ensure columns are prefixed with benchmark name
                 df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
                 combined_dfs.append(df)
@@ -358,10 +361,27 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         final_df = pd.concat(combined_dfs, axis=1, join='outer')
         
         if pre_revision == '8':
-            colbench_agents = final_df[final_df.columns[final_df.columns.str.startswith('colbench')]].dropna(how='all').index
-            np.random.seed(RANDOM_SEED)
-            sampled = np.random.choice(colbench_agents, size=8, replace=False)
-            final_df = final_df.loc[sampled]
+            sampled_agents = []
+            for b_name in b_names:
+                # Find the benchmark-specific DataFrame from the list we just populated
+                # (Logic matches how we concatenated them into combined_dfs)
+                b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
+                if b_df_matches:
+                    b_df = b_df_matches[0]
+                    # Find agents that have data for this benchmark
+                    b_agents = b_df.dropna(how='all').index.tolist()
+                    np.random.seed(RANDOM_SEED)
+                    if len(b_agents) > 8:
+                        sampled = np.random.choice(b_agents, size=8, replace=False)
+                    else:
+                        sampled = b_agents
+                    sampled_agents.extend(sampled)
+            
+            # Print sampling breakdown if not quiet
+            if not locals().get('quiet', False):
+                print(f"Equating Dimensions: Sampled {len(sampled_agents)} agents (8 per benchmark) for Pre-Revision.")
+            
+            final_df = final_df.loc[sampled_agents]
             
         final_df = final_df.dropna(axis=1, how='all')
         all_dfs = [final_df]

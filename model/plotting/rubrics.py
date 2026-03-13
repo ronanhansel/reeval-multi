@@ -108,42 +108,41 @@ def plot_rubric_statistics(df):
         return
 
     plt.rcParams.update(get_bundle())
-    fig, ax = plt.subplots(figsize=(6.75, 2.5))
+    
+    # Matching the reference image aspect ratio and style
+    fig, ax = plt.subplots(figsize=(5, 5))
     
     x = np.arange(len(df['Benchmark']))
     width = 0.35
     
-    # All bars use PRIMARY_LIGHT_BLUE
-    rects1 = ax.bar(x - width/2, df['Pre'], width, label='Pre-revision', 
-                    color=pc.PRIMARY_LIGHT_BLUE, alpha=0.9, edgecolor=pc.BAR_EDGE_COLOR, linewidth=pc.BAR_LINEWIDTH)
-    rects2 = ax.bar(x + width/2, df['Post_Mean'], width, yerr=df['Post_SE'], label='Post-revision', 
-                    color=pc.PRIMARY_LIGHT_BLUE, alpha=0.7, edgecolor=pc.BAR_EDGE_COLOR, linewidth=pc.BAR_LINEWIDTH, capsize=3)
+    rects1 = ax.bar(x - width/2, df['Pre'], width, label='Pre-Revision', 
+                    color=pc.LIGHT_BLUE, alpha=1.0, edgecolor=pc.BAR_EDGE_COLOR, linewidth=1.0)
+    rects2 = ax.bar(x + width/2, df['Post_Mean'], width, yerr=df['Post_SE'], label='Post-Revision', 
+                    color=pc.LIGHT_GREEN, alpha=1.0, edgecolor=pc.BAR_EDGE_COLOR, linewidth=1.0, capsize=4, 
+                    error_kw={'elinewidth': 1, 'capthick': 1})
 
     # Styling
-    ax.set_ylabel('Fraction of Items Meeting Rubrics', fontsize=9)
+    ax.set_ylabel('Fraction of Matched Items', fontsize=12)
     ax.set_xticks(x)
-    ax.set_xticklabels(df['Benchmark'], fontsize=8)
+    ax.set_xticklabels(df['Benchmark'], fontsize=11)
 
-    # Add numerical labels
-    # add_labels(ax, rects1)
-    # add_labels(ax, rects2)
-    
-    # Adaptive Y-axis
-    max_val = max(df['Pre'].max(), df['Post_Mean'].max() + df['Post_SE'].max())
-    ax.set_ylim(0, min(1.0, max_val * 1.3)) # Leave room for labels
+    # Fixed Y-axis to match reference image
+    ax.set_ylim(0, 0.30)
+    ax.set_yticks(np.arange(0, 0.31, 0.05))
+    ax.tick_params(axis='y', labelsize=10)
     
     # Remove top/right spines for a cleaner look
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_linewidth(0.8)
-    ax.spines['bottom'].set_linewidth(0.8)
+    ax.spines['left'].set_linewidth(1.2)
+    ax.spines['bottom'].set_linewidth(1.2)
 
     # Grid and Legend
-    ax.yaxis.grid(True, linestyle='--', which='major', color='grey', alpha=0.3)
+    ax.yaxis.grid(True, linestyle='--', which='major', color='grey', alpha=0.4)
     ax.set_axisbelow(True)
     
-    # Legend with better placement and frame
-    ax.legend(loc='upper right', fontsize=8, frameon=True, fancybox=True, shadow=False)
+    # Legend with exact placement and style from image
+    ax.legend(loc='upper right', fontsize=11, frameon=True, fancybox=True, borderpad=0.5)
     
     plt.tight_layout()
     output_path = os.path.join(FIGURE_DIR, 'rubric_statistics.pdf')

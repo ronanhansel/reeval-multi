@@ -12,7 +12,7 @@ import pickle
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from scipy.stats import entropy
-from scipy.ndimage import gaussian_filter1d
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -32,14 +32,7 @@ os.makedirs(FIGURE_DIR, exist_ok=True)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-# Colors (R, G, B)
-BLUE = (0.12, 0.47, 0.71)
-LIGHT_BLUE = (0.45, 0.62, 0.78)
-GREEN = (0.17, 0.63, 0.17)
-LIGHT_GREEN = (0.53, 0.75, 0.42)
-RED = (0.84, 0.15, 0.16)
-LIGHT_RED = (0.92, 0.48, 0.48)
-ORANGE = (1.0, 0.5, 0.05)
+from model.plotting import colors as pc
 
 def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
@@ -466,94 +459,79 @@ def plot_tau_sensitivity():
         ])
     ]
 
-    scales = [
-        ('linear', 0.0, 0.1, 0.102, 'linear'),
-        ('log_appendix', 0.001, 1000.0, 1000.0, 'log')
-    ]
+    # Only paper linear scale now (appendix handled in appendix.py)
+    scale_name, x_start, x_data_limit, x_axis_limit, x_scale = ('linear', 0.0, 0.1, 0.102, 'linear')
     
-    for scale_name, x_start, x_data_limit, x_axis_limit, x_scale in scales:
-        is_appendix = (scale_name == 'log_appendix')
-        
-        for suffix, configs in comparison_sets:
-            data = []
-            for label, filename, ls, color in configs:
-                path_data = os.path.join(RESULT_DIR, filename)
-                if not os.path.exists(path_data): continue
-                
-                try:
-                    df = pd.read_csv(path_data, on_bad_lines='skip')
-                    df.columns = df.columns.str.strip()
-                    
-                    required_cols = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'active_dims']
-                    for col in required_cols:
-                        if col in df.columns:
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
-                    df = df.dropna(subset=['lambda_tau', 'auc_amortized', 'active_dims'])
-                    df = df[df['lambda_tau'] <= x_data_limit]
-                    if df.empty: continue
-
-                    cols_to_agg = ['auc_amortized', 'active_dims']
-                    if 'rmse_amortized' in df.columns:
-                        cols_to_agg.append('rmse_amortized')
-
-                    df_mean = df.groupby('lambda_tau')[cols_to_agg].mean().reset_index()
-                    df_sem = df.groupby('lambda_tau')[cols_to_agg].sem().reset_index().fillna(0)
-                    
-                    data.append({
-                        'label': label, 'color': color, 'ls': ls,
-                        'mean': df_mean.sort_values('lambda_tau'),
-                        'sem': df_sem.sort_values('lambda_tau')
-                    })
-                except Exception: continue
-
-            if not data: continue
-
-            # Determine layout: Appendix gets RMSE, Paper (linear) does not
-            if is_appendix:
-                fig, axes = plt.subplots(1, 3, figsize=(10, 3.2), constrained_layout=True)
-                metrics = [
-                    ('auc_amortized', 'AUC', (0.58, 0.82)),
-                    ('rmse_amortized', 'RMSE', (0.20, 0.55)),
-                    ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
-                ]
-            else:
-                fig, axes = plt.subplots(1, 2, figsize=(5, 2), constrained_layout=True)
-                metrics = [
-                    ('auc_amortized', 'AUC', (0.58, 0.82)),
-                    ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
-                ]
-
-            for i, (col, title, ylim) in enumerate(metrics):
-                ax = axes[i]
-                for d in data:
-                    if col not in d['mean'].columns: continue
-                    taus = d['mean']['lambda_tau'].values
-                    means = gaussian_filter1d(d['mean'][col].values, sigma=1.5)
-                    error_band = gaussian_filter1d(d['sem'][col].values, sigma=1.5)
-                    ax.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
-                    ax.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
-                
-                ax.set_title(title, fontsize=9)
-                ax.set_xscale(x_scale)
-                ax.set_xlim(x_start, x_axis_limit)
-                ax.set_ylim(ylim)
-                ax.grid(linestyle=':', alpha=0.8, which='both')
-                ax.tick_params(labelsize=8)
-
-            fig.supxlabel(r'Regularization Strength ($\tau$)', fontsize=9)
-
-            handles, labels = axes[0].get_legend_handles_labels()
-            if is_appendix:
-                fig.legend(handles, labels, loc='lower center', ncol=4, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.09))
-            else:
-                fig.legend(handles, labels, loc='lower center', ncol=2, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.2))
+    for suffix, configs in comparison_sets:
+        data = []
+        for label, filename, ls, color in configs:
+            path_data = os.path.join(RESULT_DIR, filename)
+            if not os.path.exists(path_data): continue
             
-            fname = f"tau_sensitivity_{suffix.split('_')[0]}_{scale_name}.pdf"
-            plt.savefig(os.path.join(FIGURE_DIR, fname), bbox_inches='tight')
-            plt.close()
+            try:
+                df = pd.read_csv(path_data, on_bad_lines='skip')
+                df.columns = df.columns.str.strip()
+                
+                required_cols = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'active_dims']
+                for col in required_cols:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                
+                df = df.dropna(subset=['lambda_tau', 'auc_amortized', 'active_dims'])
+                df = df[df['lambda_tau'] <= x_data_limit]
+                if df.empty: continue
 
-    print(f"Dual-layout sensitivity plots (Paper: 2-panel, Appendix: 3-panel) generated in {FIGURE_DIR}")
+                cols_to_agg = ['auc_amortized', 'active_dims']
+                if 'rmse_amortized' in df.columns:
+                    cols_to_agg.append('rmse_amortized')
+
+                df_mean = df.groupby('lambda_tau')[cols_to_agg].mean().reset_index()
+                df_sem = df.groupby('lambda_tau')[cols_to_agg].sem().reset_index().fillna(0)
+                
+                data.append({
+                    'label': label, 'color': color, 'ls': ls,
+                    'mean': df_mean.sort_values('lambda_tau'),
+                    'sem': df_sem.sort_values('lambda_tau')
+                })
+            except Exception: continue
+
+        if not data: continue
+
+        # Determine layout: Paper (linear) is 2-panel
+        fig, axes = plt.subplots(1, 2, figsize=(6, 2.5), constrained_layout=True)
+        metrics = [
+            ('auc_amortized', 'AUC', (0.58, 0.82)),
+            ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
+        ]
+
+        for i, (col, title, ylim) in enumerate(metrics):
+            ax = axes[i]
+            for d in data:
+                if col not in d['mean'].columns: continue
+                taus = d['mean']['lambda_tau'].values
+                means = d['mean'][col].values
+                error_band = d['sem'][col].values
+                ax.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
+                ax.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
+            
+            ax.set_title(title, fontsize=9)
+            ax.set_xscale(x_scale)
+            ax.set_xlim(x_start, x_axis_limit)
+            ax.set_ylim(ylim)
+            ax.grid(linestyle=':', alpha=0.8, which='both')
+            ax.tick_params(labelsize=8)
+
+        fig.supxlabel(r'Regularization Strength ($\tau$)', fontsize=9)
+
+        handles, labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='lower center', ncol=2, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.2))
+        
+        fname = f"tau_sensitivity_{suffix.split('_')[0]}_{scale_name}.pdf"
+        plt.savefig(os.path.join(FIGURE_DIR, fname), bbox_inches='tight')
+        plt.close()
+
+    print(f"Paper 2-panel sensitivity plots generated in {FIGURE_DIR}")
+
 def plot_dimensionality_bar():
     """Create a side-by-side bar chart comparison of K for key model stages."""
     plt.rcParams.update(get_bundle())
@@ -595,7 +573,7 @@ def plot_dimensionality_bar():
     fig, ax = plt.subplots(figsize=(4.0, 3.2))
     
     # Create the bar plot
-    bars = ax.bar(names, means, yerr=errors, color=BLUE, alpha=0.8, capsize=3, ecolor='black', error_kw={'lw': 0.5, 'capthick': 0.5, 'capsize': 2})
+    bars = ax.bar(names, means, yerr=errors, color=pc.BLUE, alpha=0.8, capsize=3, ecolor='black', error_kw={'lw': 0.5, 'capthick': 0.5, 'capsize': 2})
     
     ax.set_ylabel('Active Dimensions ($K$)')
     ax.set_ylim(0, 32)
