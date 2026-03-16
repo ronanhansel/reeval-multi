@@ -283,32 +283,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     return best_rmse, best_state, final_state
 
 
-def parse_args():
-    import argparse
-    parser = argparse.add_argument_group("Experiment Settings")
-    parser = argparse.ArgumentParser(description="Run Amortized IRT experiments.")
-    parser.add_argument('--embedding-type', type=str, choices=['raw', 'pca', 'sae', 'ones'], default='sae',
-                        help='Type of embeddings to use.')
-    parser.add_argument('--no-tau', action='store_true', help='Ablation: Disable tau sparsity mechanism.')
-    parser.add_argument('--embedding-dim', type=int, default=48,
-                        help='Dimension for pca or sae embeddings.')
-    parser.add_argument('--n-samples', type=str, default='1,5,10,15,32,all',
-                        help='Comma-separated list of N values (e.g., "1,5,all").')
-    parser.add_argument('--model-type', type=str, choices=['beta', 'bernoulli'], default='beta',
-                        help='Distribution to use for the IRT model.')
-    parser.add_argument('--beta-phi', type=float, default=BETA_PHI,
-                        help='Precision parameter for Beta distribution.')
-    parser.add_argument('--lambda-tau', type=str, default=str(LAMBDA_TAU), help='Override LAMBDA_TAU (comma separated lists allowed)')
-    parser.add_argument('--wd-theta', type=float, default=None, help='Override WD_THETA')
-    parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
-    parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
-    parser.add_argument('--pre-revision', type=str, choices=['none', '32', 'max'], default='none', 
-                        help='Evaluate on pre-revision matrix with N=1.')
-    parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
-    parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
-    parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
-    parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
-    return parser.parse_args()
+    # Combined parser moved to main()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -369,10 +344,23 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
             
         final_df = pd.concat(combined_dfs, axis=1, join='outer')
         
-        if pre_revision == '32':
-            sampled_agents = []
-            for b_name in b_names:
-                # Find the benchmark-specific DataFrame from the list we just populated
+        if pre_revision != 'max':
+            try:
+                n_total = int(pre_revision)
+            except ValueError:
+                n_total = None
+
+            if n_total is not None:
+                sampled_agents = []
+                n_per_benchmark = n_total // 4
+                remainder = n_total % 4
+                
+                for i, b_name in enumerate(b_names):
+                    # Distribute remainder across first few benchmarks
+                    current_n = n_per_benchmark + (1 if i < remainder else 0)
+                    if current_n == 0: continue
+
+                    # Find the benchmark-specific DataFrame from the list we just populated
                 # (Logic matches how we concatenated them into combined_dfs)
                 b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
                 if b_df_matches:
@@ -380,15 +368,15 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
                     # Find agents that have data for this benchmark
                     b_agents = b_df.dropna(how='all').index.tolist()
                     np.random.seed(RANDOM_SEED)
-                    if len(b_agents) > 8:
-                        sampled = np.random.choice(b_agents, size=8, replace=False)
+                    if len(b_agents) > current_n:
+                        sampled = np.random.choice(b_agents, size=current_n, replace=False)
                     else:
                         sampled = b_agents
                     sampled_agents.extend(sampled)
             
             # Print sampling breakdown if not quiet
             if not locals().get('quiet', False):
-                print(f"Equating Dimensions: Sampled {len(sampled_agents)} agents (8 per benchmark) for Pre-Revision.")
+                print(f"Equating Dimensions: Sampled {len(sampled_agents)} agents for Pre-Revision ({pre_revision}).")
             
             final_df = final_df.loc[sampled_agents]
             
@@ -885,8 +873,8 @@ def main():
     parser.add_argument('--wd-w', type=float, default=None, help='Override WD_W')
     parser.add_argument('--epochs', type=int, default=None, help='Override EPOCHS')
     parser.add_argument('--snapping-threshold', type=float, default=None, help='Override SNAPPING_THRESHOLD')
-    parser.add_argument('--pre-revision', type=str, choices=['none', '32', 'max'], default='none', 
-                        help='Evaluate on pre-revision matrix with N=1.')
+    parser.add_argument('--pre-revision', type=str, default='none', 
+                        help='Evaluate on pre-revision matrix with N=X or "max".')
     parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
     parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')

@@ -253,6 +253,7 @@ def plot_loading_heatmap():
     
     for i, (label, w_path, pre_rev) in enumerate(configs):
         if not os.path.exists(w_path): 
+            print(f"Skipping {label} loading heatmap: {os.path.basename(w_path)} not found.")
             loaded_data.append(None)
             continue
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
@@ -269,6 +270,7 @@ def plot_loading_heatmap():
             common_tids = common_tids.intersection(set(tids))
             
     if not common_tids:
+        print("Skipping loading cleanliness comparison: No common items found or weights missing.")
         plt.close()
         return
         
@@ -346,7 +348,9 @@ def plot_loading_heatmap():
     
     if any_plotted:
         fig.subplots_adjust(wspace=0.15)
-        plt.savefig(os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf"), bbox_inches='tight')
+        out_path = os.path.join(FIGURE_DIR, "loading_cleanliness_comparison.pdf")
+        plt.savefig(out_path, bbox_inches='tight')
+        print(f"Loading cleanliness comparison generated: {out_path}")
     plt.close()
 
 def plot_semantic_alignment():
@@ -367,7 +371,9 @@ def plot_semantic_alignment():
             descriptions = pd.DataFrame(descriptions)
 
     for label, w_path, pre_rev in configs:
-        if not os.path.exists(w_path): continue
+        if not os.path.exists(w_path): 
+            print(f"Skipping {label} semantic alignment: {os.path.basename(w_path)} not found.")
+            continue
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
         if A is None: continue
         

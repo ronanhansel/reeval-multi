@@ -244,21 +244,45 @@ if ! $ONLY_PLOT; then
     # 4. Pre-Revision Checks (Full Sweep only)
     if $FULL_SWEEP; then
         # SAE (Symmetric Sweep)
+        run_tau_sweep sae 1 bernoulli 0.0159 4
+        run_tau_sweep sae 1 bernoulli 0.0159 8
+        run_tau_sweep sae 1 bernoulli 0.0159 16
         run_tau_sweep sae 1 bernoulli 0.0159 32
+        run_tau_sweep sae 1 bernoulli 0.0159 64
         run_tau_sweep sae 1 bernoulli 0.0159 max
         run_tau_sweep sae max beta 0.16 max
+        run_tau_sweep sae max beta 0.16 64
         run_tau_sweep sae max beta 0.16 32
+        run_tau_sweep sae max beta 0.16 16
+        run_tau_sweep sae max beta 0.16 8
+        run_tau_sweep sae max beta 0.16 4
         
         # PCA/RAW (Main stage only for baseline)
+        run_tau_sweep pca 1 bernoulli 0.0155 4
+        run_tau_sweep pca 1 bernoulli 0.0155 8
+        run_tau_sweep pca 1 bernoulli 0.0155 16
         run_tau_sweep pca 1 bernoulli 0.0155 32
+        run_tau_sweep pca 1 bernoulli 0.0155 64
         run_tau_sweep pca 1 bernoulli 0.0155 max
         run_tau_sweep pca max beta 0.054 max
+        run_tau_sweep pca max beta 0.054 64
         run_tau_sweep pca max beta 0.054 32
+        run_tau_sweep pca max beta 0.054 16
+        run_tau_sweep pca max beta 0.054 8
+        run_tau_sweep pca max beta 0.054 4
 
+        run_tau_sweep raw 1 bernoulli 0.0151 4
+        run_tau_sweep raw 1 bernoulli 0.0151 8
+        run_tau_sweep raw 1 bernoulli 0.0151 16
         run_tau_sweep raw 1 bernoulli 0.0151 32
+        run_tau_sweep raw 1 bernoulli 0.0151 64
         run_tau_sweep raw 1 bernoulli 0.0151 max
         run_tau_sweep raw max beta 0.029 max
+        run_tau_sweep raw max beta 0.029 64
         run_tau_sweep raw max beta 0.029 32
+        run_tau_sweep raw max beta 0.029 16
+        run_tau_sweep raw max beta 0.029 8
+        run_tau_sweep raw max beta 0.029 4
         
         # 5. Ablation Studies (Full Sweep only)
         # Setup 1: No TAU (w/ SAE, PCA, RAW embeddings)
