@@ -12,6 +12,7 @@ import pickle
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from scipy.stats import entropy
+from matplotlib.patches import FancyBboxPatch
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -443,19 +444,18 @@ def plot_semantic_alignment():
 def plot_tau_sensitivity():
     plt.rcParams.update(get_bundle())
     
-    # Legend order: Bernoulli Pre, Beta Pre, Bernoulli Post, Beta Post
+    # Legend order: Pre Revision (32), Bernoulli, Beta
+    # Dark on top, Light on bottom
     comparison_sets = [
         ('max_merged', [
-            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_max_n_1.csv', '--', 'salmon'),
-            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_max_n_max.csv', '-', 'tab:red'),
-            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '--', 'skyblue'),
-            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
+            ('Pre Revision', 'amortized_irt_sae_bernoulli_pre_max_n_1.csv', '-', 'salmon'),
+            ('Bernoulli', 'amortized_irt_sae_bernoulli_n_1.csv', '-', 'skyblue'),
+            ('Beta', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
         ]),
         ('n32_merged', [
-            ('Bernoulli Pre-Revision', 'amortized_irt_sae_bernoulli_pre_32_n_1.csv', '--', 'salmon'),
-            ('Beta Pre-Revision', 'amortized_irt_sae_beta_pre_32_n_max.csv', '-', 'tab:red'),
-            ('Bernoulli Post-Revision', 'amortized_irt_sae_bernoulli_n_1.csv', '--', 'skyblue'),
-            ('Beta Post-Revision', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
+            ('Pre Revision', 'amortized_irt_sae_bernoulli_pre_32_n_1.csv', '-', 'salmon'),
+            ('Bernoulli', 'amortized_irt_sae_bernoulli_n_1.csv', '-', 'skyblue'),
+            ('Beta', 'amortized_irt_sae_beta_n_max.csv', '-', 'tab:blue'),
         ])
     ]
 
@@ -501,7 +501,7 @@ def plot_tau_sensitivity():
         fig, axes = plt.subplots(1, 2, figsize=(6, 2.5), constrained_layout=True)
         metrics = [
             ('auc_amortized', 'AUC', (0.58, 0.82)),
-            ('active_dims', 'Active Dimensions ($K$)', (-1.5, 31.5))
+            ('active_dims', 'Active Dimensions', (-1.5, 31.5))
         ]
 
         for i, (col, title, ylim) in enumerate(metrics):
@@ -514,12 +514,13 @@ def plot_tau_sensitivity():
                 ax.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
                 ax.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
             
-            ax.set_title(title, fontsize=9)
             ax.set_xscale(x_scale)
             ax.set_xlim(x_start, x_axis_limit)
             ax.set_ylim(ylim)
             ax.grid(linestyle=':', alpha=0.8, which='both')
             ax.tick_params(labelsize=8)
+            if i == 1:
+                ax.set_title(title, fontsize=9)
 
         fig.supxlabel(r'Regularization Strength ($\tau$)', fontsize=9)
 
@@ -528,6 +529,32 @@ def plot_tau_sensitivity():
         
         fname = f"tau_sensitivity_{suffix.split('_')[0]}_{scale_name}.pdf"
         plt.savefig(os.path.join(FIGURE_DIR, fname), bbox_inches='tight')
+        
+        # New: Export Active Dimensions (K) separately for n32 linear
+        if suffix == 'n32_merged' and scale_name == 'linear':
+            fig_k, ax_k = plt.subplots(figsize=(3.5, 2.5))
+            
+            for d in data:
+                if 'active_dims' not in d['mean'].columns: continue
+                taus = d['mean']['lambda_tau'].values
+                means = d['mean']['active_dims'].values
+                error_band = d['sem']['active_dims'].values
+                ax_k.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
+                ax_k.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
+            
+            # ax_k.set_xlabel(r'Regularization Strength ($\tau$)', fontsize=10)
+            ax_k.set_ylabel("Active Dimensions ($K$)", fontsize=10)
+            ax_k.set_xlim(x_start, x_axis_limit)
+            ax_k.set_ylim((-1.5, 31.5))
+            ax_k.grid(linestyle=':', alpha=0.8)
+            ax_k.tick_params(labelsize=9)
+            
+            ax_k.legend(loc='best', fontsize=8, frameon=True)
+            
+            k_fname = f"tau_sensitivity_{suffix.split('_')[0]}_k_only.pdf"
+            plt.savefig(os.path.join(FIGURE_DIR, k_fname), bbox_inches='tight')
+            plt.close(fig_k)
+
         plt.close()
 
     print(f"Paper 2-panel sensitivity plots generated in {FIGURE_DIR}")
@@ -570,7 +597,7 @@ def plot_dimensionality_bar():
     if not names:
         return
         
-    fig, ax = plt.subplots(figsize=(4.0, 3.2))
+    fig, ax = plt.subplots(figsize=(4, 3.2))
     
     # Create the bar plot
     bars = ax.bar(names, means, yerr=errors, color=pc.BLUE, alpha=0.8, capsize=3, ecolor='black', error_kw={'lw': 0.5, 'capthick': 0.5, 'capsize': 2})
@@ -590,6 +617,143 @@ def plot_dimensionality_bar():
     print(f"Dimensionality bar comparison generated: {os.path.join(FIGURE_DIR, 'dimensionality_bar_comparison.pdf')}")
 
 
+def plot_double_stacked_performance_bars():
+    """Double-bar architecture: Pre (Left, Red) vs Post (Right, Blue). Exports both Stacked and Base versions."""
+    plt.rcParams.update(get_bundle())
+    
+    architectures = ['Naive', 'Rasch', 'SAE', 'PCA', 'RAW']
+    
+    def get_val_stats(filename, arch_type):
+        """Returns (mean, sem) for the best tau or baseline."""
+        path = os.path.join(RESULT_DIR, filename)
+        if not os.path.exists(path): return 0.5, 0.0
+        try:
+            df = pd.read_csv(path, on_bad_lines='skip')
+            df.columns = df.columns.str.strip()
+            # Coerce numeric
+            numeric_cols = ['lambda_tau', 'auc_amortized', 'auc_rasch', 'auc_naive']
+            for c in numeric_cols:
+                if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce')
+            
+            # Find best tau or unique baseline
+            if arch_type in ['SAE', 'PCA', 'RAW']:
+                # For amortized, find best tau based on AUC
+                df = df.dropna(subset=['auc_amortized', 'lambda_tau'])
+                if df.empty: return 0.5, 0.0
+                best_tau = df.groupby('lambda_tau')['auc_amortized'].mean().idxmax()
+                best_df = df[df['lambda_tau'] == best_tau]
+                metric_col = 'auc_amortized'
+            else:
+                # Naive or Rasch
+                best_df = df.drop_duplicates(subset=['seed'])
+                metric_col = f'auc_{arch_type.lower()}'
+            
+            if metric_col not in best_df.columns: return 0.5, 0.0
+            vals = best_df[metric_col].dropna()
+            return vals.mean(), vals.sem() if len(vals) > 1 else 0.0
+        except: return 0.5, 0.0
+
+    # Data Collection
+    pre32_m, pre32_s = [], []
+    premx_m, premx_s = [], []
+    pbern_m, pbern_s = [], []
+    pbeta_m, pbeta_s = [], []
+    
+    for arch in architectures:
+        if arch == 'Naive':
+            prefix = 'amortized_irt_ones'
+        elif arch == 'Rasch':
+            prefix = 'amortized_irt_sae'
+        else:
+            prefix = f'amortized_irt_{arch.lower()}'
+            
+        m32, s32 = get_val_stats(f'{prefix}_bernoulli_pre_32_n_1.csv', arch)
+        mmx, smx = get_val_stats(f'{prefix}_beta_pre_max_n_max.csv', arch)
+        mbr, sbr = get_val_stats(f'{prefix}_bernoulli_n_1.csv', arch)
+        mbt, sbt = get_val_stats(f'{prefix}_beta_n_max.csv', arch)
+        
+        pre32_m.append(m32); pre32_s.append(s32)
+        premx_m.append(mmx); premx_s.append(smx)
+        pbern_m.append(mbr); pbern_s.append(sbr)
+        pbeta_m.append(mbt); pbeta_s.append(sbt)
+
+    pre_base = np.array(pre32_m)
+    pre_stack = np.maximum(0, np.array(premx_m) - pre_base)
+    post_base = np.array(pbern_m)
+    post_stack = np.maximum(0, np.array(pbeta_m) - post_base)
+
+    # Export Loop: mode can be 'full', 'base', or 'hybrid'
+    plot_configs = [
+        ('full', 'best_auc_double_bars.pdf'),
+        ('base', 'best_auc_base_only.pdf'),
+        ('hybrid', 'best_auc_hybrid_stacked.pdf')
+    ]
+
+    for mode, fname in plot_configs:
+        fig, ax = plt.subplots(figsize=(3.5, 2.5))
+        x = np.arange(len(architectures))
+        width = 0.35
+
+        # Determine what to plot for Pre
+        # Pre: 32 Base (Light Red / Salmon)
+        label_pre = f'{"32 Test Takers" if mode == "full" else "Pre Revision"}'
+        ax.bar(x - width/2, pre_base, width, color='salmon', 
+               edgecolor='black', linewidth=0.5, label=label_pre, alpha=0.8,
+               yerr=pre32_s, error_kw={'lw': 0.5, 'capsize': 2})
+        if mode == 'full':
+            ax.bar(x - width/2, pre_stack, width, bottom=pre_base, color='tab:red', 
+                   edgecolor='black', linewidth=0.5, label='124 Test Takers', alpha=0.8,
+                   yerr=premx_s, error_kw={'lw': 0.5, 'capsize': 2})
+        
+        # Determine what to plot for Post
+        # Post: Bernoulli (Yellow / Gold)
+        ax.bar(x + width/2, post_base, width, color='skyblue', 
+               edgecolor='black', linewidth=0.5, label='Bernoulli', alpha=0.8,
+               yerr=pbern_s, error_kw={'lw': 0.5, 'capsize': 2}) 
+        if mode in ['full', 'hybrid']:
+            ax.bar(x + width/2, post_stack, width, bottom=post_base, color='tab:blue', 
+                   edgecolor='black', linewidth=0.5, label='Beta', alpha=0.8,
+                   yerr=pbeta_s, error_kw={'lw': 0.5, 'capsize': 2})
+
+        # Highlight Proposed Models (SAE, PCA, RAW)
+        if mode == 'hybrid':
+            # Highlight indices 2, 3, 4
+            x_min, x_max = 1.5, 4.5
+            y_min, y_max = 0.48, 0.75
+            
+            highlight = FancyBboxPatch(
+                (x_min, y_min), x_max - x_min, y_max - y_min,
+                boxstyle="square,pad=0",
+                linestyle='--', linewidth=0.8, edgecolor='grey',
+                facecolor='lightgrey', alpha=0.15,
+                zorder=0
+            )
+            ax.add_patch(highlight)
+            
+            # Optional: Add a subtle text label or just rely on the box
+            ax.text((x_min + x_max)/2, y_max + 0.003, 'Our Models', 
+                    ha='center', va='bottom', fontsize=6, color='black')
+
+        ax.set_ylabel('AUC', fontsize=10)
+        ax.set_xticks(x)
+        ax.set_xticklabels(architectures, fontsize=9)
+        ax.tick_params(axis='y', labelsize=9)
+        ax.set_ylim(0.48, 0.85)
+        ax.grid(axis='y', linestyle=':', alpha=0.5)
+        
+        # Consistent legend
+        handles, labels = ax.get_legend_handles_labels()
+        ncol = 2 if mode in ['full', 'hybrid'] else 1
+        ax.legend(handles, labels, loc='best', fontsize=8, ncol=ncol, frameon=True)
+
+        ax.spines['top'].set_visible(True)
+        ax.spines['right'].set_visible(True)
+        
+        plt.savefig(os.path.join(FIGURE_DIR, fname), bbox_inches='tight')
+        plt.close()
+
+    print(f"Update: All AUC plot variants (Full, Base, Hybrid) generated in {FIGURE_DIR}")
+
 def main():
     print("=" * 60)
     print("GENERATING INTERPRETABILITY PLOTS")
@@ -600,6 +764,7 @@ def main():
     plot_loading_heatmap()
     plot_semantic_alignment()
     plot_tau_sensitivity()
+    plot_double_stacked_performance_bars()
     
     print(f"Interpretability plots generated in {FIGURE_DIR}")
     print("=" * 60)

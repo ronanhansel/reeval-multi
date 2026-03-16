@@ -1,21 +1,49 @@
 Model Configuration,AUC,RMSE
-Naive (Post-max Baseline),0.500,0.266±0.000
-Rasch IRT (Post-max Baseline),0.571±0.001,0.272±0.000
-Naive (Post-1 Baseline),0.500,0.266±0.000
-Rasch IRT (Post-1 Baseline),0.565±0.001,0.338±0.000
-SAE Post (N=1),0.697±0.001,0.252±0.000
-SAE Post (N=max),0.693±0.001,0.256±0.000
-PCA Post (N=1),0.706±0.001,0.250±0.000
-PCA Post (N=max),0.710±0.001,0.251±0.000
-RAW Post (N=1),0.697±0.001,0.263±0.000
-RAW Post (N=max),0.714±0.000,0.253±0.000
-Naive-32 (Pre Baseline),0.500,0.447±0.000
-Rasch-32 (Pre Baseline),0.619±0.000,0.510±0.001
-SAE Pre-32 (N=1),0.687±0.000,0.419±0.000
-PCA Pre-32 (N=1),0.695±0.000,0.416±0.000
-RAW Pre-32 (N=1),0.683±0.000,0.433±0.000
-Naive Pre-max (Baseline),0.500,0.449±0.000
-Rasch Pre-max (Baseline),0.648±0.000,0.436±0.000
-SAE Pre-max (N=max),0.726±0.000,0.423±0.000
-PCA Pre-max (N=max),0.728±0.001,0.422±0.000
-RAW Pre-max (N=max),0.722±0.001,0.435±0.000
+"Naive (Post (N=max, No-TAU) Baseline)",0.500,0.266±0.002
+"Naive (Post (N=1, No-TAU) Baseline)",0.500,0.266±0.002
+"Rasch IRT (Post (N=max, No-TAU) Baseline)",0.571±0.006,0.272±0.002
+"Rasch IRT (Post (N=1, No-TAU) Baseline)",0.565±0.006,0.337±0.005
+"SAE Post (N=max, No-TAU)",0.686±0.007,0.253±0.002
+"SAE Post (N=1, No-TAU)",0.691±0.011,0.250±0.002
+"PCA Post (N=max, No-TAU)",0.660±0.008,0.246±0.002
+"PCA Post (N=1, No-TAU)",0.677±0.011,0.249±0.002
+"RAW Post (N=max, No-TAU)",0.665±0.006,0.244±0.002
+"RAW Post (N=1, No-TAU)",0.705±0.011,0.245±0.002
+"ONES Post (N=max, No-TAU)",0.569±0.004,0.266±0.002
+"ONES Post (N=1, No-TAU)",0.570±0.004,0.261±0.002
+Naive (Pre-max (N=max) Baseline),0.500,0.449±0.001
+"Naive (Pre-max (N=max, No-TAU) Baseline)",0.500,0.449±0.001
+Rasch IRT (Pre-max (N=max) Baseline),0.648±0.004,0.436±0.002
+"Rasch IRT (Pre-max (N=max, No-TAU) Baseline)",0.648±0.004,0.436±0.002
+SAE Pre-max (N=max),0.727±0.005,0.439±0.003
+"SAE Pre-max (N=max, No-TAU)",0.725±0.005,0.411±0.002
+PCA Pre-max (N=max),0.733±0.005,0.435±0.003
+"PCA Pre-max (N=max, No-TAU)",0.726±0.005,0.410±0.002
+RAW Pre-max (N=max),0.730±0.005,0.434±0.003
+"RAW Pre-max (N=max, No-TAU)",0.721±0.005,0.416±0.002
+ONES Pre-max (N=max),0.676±0.005,0.458±0.003
+"ONES Pre-max (N=max, No-TAU)",0.675±0.005,0.452±0.003
+Naive (Pre-32 (N=1) Baseline),0.500,0.447±0.001
+"Naive (Pre-32 (N=1, No-TAU) Baseline)",0.500,0.447±0.001
+Rasch IRT (Pre-32 (N=1) Baseline),0.619±0.003,0.510±0.005
+"Rasch IRT (Pre-32 (N=1, No-TAU) Baseline)",0.619±0.003,0.510±0.005
+SAE Pre-32 (N=1),0.695±0.004,0.415±0.001
+"SAE Pre-32 (N=1, No-TAU)",0.696±0.004,0.415±0.002
+PCA Pre-32 (N=1),0.701±0.005,0.413±0.001
+"PCA Pre-32 (N=1, No-TAU)",0.702±0.005,0.412±0.002
+RAW Pre-32 (N=1),0.690±0.004,0.431±0.002
+"RAW Pre-32 (N=1, No-TAU)",0.716±0.004,0.410±0.001
+ONES Pre-32 (N=1),0.622±0.003,0.433±0.001
+"ONES Pre-32 (N=1, No-TAU)",0.622±0.003,0.432±0.001
+Naive (Post (N=1) Baseline),0.500,0.267±0.001
+Rasch IRT (Post (N=1) Baseline),0.565±0.004,0.342±0.004
+SAE Post (N=1),0.700±0.009,0.251±0.002
+PCA Post (N=1),0.711±0.009,0.250±0.002
+RAW Post (N=1),0.701±0.011,0.260±0.002
+ONES Post (N=1),0.573±0.004,0.261±0.002
+Naive (Post (N=max) Baseline),0.500,0.267±0.001
+Rasch IRT (Post (N=max) Baseline),0.569±0.004,0.273±0.002
+SAE Post (N=max),0.702±0.006,0.253±0.002
+PCA Post (N=max),0.726±0.007,0.245±0.002
+RAW Post (N=max),0.745±0.000,0.233±0.000
+ONES Post (N=max),0.570±0.004,0.268±0.002

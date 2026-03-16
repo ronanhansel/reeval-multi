@@ -158,6 +158,7 @@ run_exp() {
     local seeds=$6
     local out_dir=${7:-""}
     local no_tau=${8:-false}
+    local save_weights=${9:-false}
     
     # Replace spaces with commas for Python arg parsing
     local taus_csv=${taus// /,}
@@ -172,6 +173,9 @@ run_exp() {
     fi
     if $QUIET; then
         cmd="$cmd --quiet"
+    fi
+    if [[ "$save_weights" == "true" ]]; then
+        cmd="$cmd --save-weights"
     fi
     if [[ -n "$out_dir" ]]; then
         mkdir -p "$out_dir"
@@ -214,6 +218,11 @@ if ! $ONLY_PLOT; then
 
     echo "[MODE] Running Experiments..."
     
+    # 0. Primary Model Exports (Required for Interpretability Plots)
+    echo " -> Exporting primary SAE weights..."
+    run_exp sae max beta 0.16 max "$SEEDS" "${RESULT_DIR}" false true
+    run_exp sae max beta 0.0535 false "$SEEDS" "${RESULT_DIR}" false true
+
     # 1. PCA Embeddings
     run_tau_sweep pca max beta 0.054 false
     if $FULL_SWEEP; then

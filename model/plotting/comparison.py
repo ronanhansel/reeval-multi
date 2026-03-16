@@ -185,6 +185,18 @@ def generate_comprehensive_table():
         ('SAE Pre-max (N=max)', 'sae', 'max', 'beta', 'pre_max'),
         ('PCA Pre-max (N=max)', 'pca', 'max', 'beta', 'pre_max'),
         ('RAW Pre-max (N=max)', 'raw', 'max', 'beta', 'pre_max'),
+
+        # --- Ablations: No Tau (Post) ---
+        ('SAE Post (N=1, No-TAU)', 'sae', '1_notau', 'bernoulli', ''),
+        ('SAE Post (N=max, No-TAU)', 'sae', 'max_notau', 'beta', ''),
+        ('PCA Post (N=max, No-TAU)', 'pca', 'max_notau', 'beta', ''),
+        ('RAW Post (N=max, No-TAU)', 'raw', 'max_notau', 'beta', ''),
+
+        # --- Ablations: No Embedding (ONES) ---
+        ('ONES Post (N=1)', 'ones', '1', 'bernoulli', ''),
+        ('ONES Post (N=max)', 'ones', 'max', 'beta', ''),
+        ('ONES Pre-32 (N=1)', 'ones', '1', 'bernoulli', 'pre_32'),
+        ('ONES Pre-max (N=max)', 'ones', 'max', 'beta', 'pre_max'),
     ]
     
     table_data = []
