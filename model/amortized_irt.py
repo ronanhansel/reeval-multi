@@ -354,25 +354,24 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
                 sampled_agents = []
                 n_per_benchmark = n_total // 4
                 remainder = n_total % 4
-                
+                np.random.seed(RANDOM_SEED)
                 for i, b_name in enumerate(b_names):
                     # Distribute remainder across first few benchmarks
                     current_n = n_per_benchmark + (1 if i < remainder else 0)
                     if current_n == 0: continue
 
                     # Find the benchmark-specific DataFrame from the list we just populated
-                # (Logic matches how we concatenated them into combined_dfs)
-                b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
-                if b_df_matches:
-                    b_df = b_df_matches[0]
-                    # Find agents that have data for this benchmark
-                    b_agents = b_df.dropna(how='all').index.tolist()
-                    np.random.seed(RANDOM_SEED)
-                    if len(b_agents) > current_n:
-                        sampled = np.random.choice(b_agents, size=current_n, replace=False)
-                    else:
-                        sampled = b_agents
-                    sampled_agents.extend(sampled)
+                    # (Logic matches how we concatenated them into combined_dfs)
+                    b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
+                    if b_df_matches:
+                        b_df = b_df_matches[0]
+                        # Find agents that have data for this benchmark
+                        b_agents = b_df.dropna(how='all').index.tolist()
+                        if len(b_agents) > current_n:
+                            sampled = np.random.choice(b_agents, size=current_n, replace=False)
+                        else:
+                            sampled = b_agents
+                        sampled_agents.extend(sampled)
             
             # Print sampling breakdown if not quiet
             if not locals().get('quiet', False):
