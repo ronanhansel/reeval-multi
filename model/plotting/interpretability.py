@@ -24,6 +24,7 @@ MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
 
 RESULT_DIR = os.path.join(MODEL_DIR, "result")
+BASELINE_PATH = os.path.join(RESULT_DIR, "baselines", "baseline_metrics.csv")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures", "interpretability")
 EMB_DIR = os.path.join(MODEL_DIR, "processed_embeddings")
 
@@ -37,6 +38,37 @@ from model.plotting import colors as pc
 
 def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
+
+
+def load_baseline_cache():
+    if not os.path.exists(BASELINE_PATH):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(BASELINE_PATH, on_bad_lines='skip')
+    except Exception:
+        return pd.DataFrame()
+
+    if 'n_samples' in df.columns:
+        df['n_samples'] = pd.to_numeric(df['n_samples'], errors='coerce')
+    if 'pre_revision' in df.columns:
+        df['pre_revision'] = df['pre_revision'].astype(str).str.strip().str.lower().replace('', 'none')
+    if 'model_type' in df.columns:
+        df['model_type'] = df['model_type'].astype(str)
+    return df
+
+
+def lookup_baseline_auc(baseline_df, model_type, n_samples, pre_revision, metric_col):
+    if baseline_df.empty or metric_col not in baseline_df.columns or n_samples is None:
+        return None, 0.0
+    sub = baseline_df[
+        (baseline_df['model_type'] == str(model_type)) &
+        (baseline_df['n_samples'] == int(n_samples)) &
+        (baseline_df['pre_revision'] == str(pre_revision).strip().lower())
+    ]
+    vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
+    if vals.empty:
+        return None, 0.0
+    return float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Optimal SOTA Tau mappings (when filtering sweep CSVs for robustness plots)
@@ -629,6 +661,8 @@ def plot_double_stacked_performance_bars():
     
     architectures = ['Naive', 'Rasch', 'SAE', 'PCA', 'RAW']
     
+    baseline_df = load_baseline_cache()
+
     def get_val_stats(filename, arch_type):
         """Returns (mean, sem) for the best tau or baseline."""
         path = os.path.join(RESULT_DIR, filename)
@@ -650,9 +684,25 @@ def plot_double_stacked_performance_bars():
                 best_df = df[df['lambda_tau'] == best_tau]
                 metric_col = 'auc_amortized'
             else:
-                # Naive or Rasch
-                best_df = df.drop_duplicates(subset=['seed'])
+                # Naive or Rasch are sourced from the dedicated baseline cache.
+                model_type = 'bernoulli' if '_bernoulli_' in filename else 'beta'
+                if 'scenario' in df.columns and df['scenario'].notna().any():
+                    pre_revision = str(df['scenario'].dropna().iloc[0]).replace('Pre-', '').strip().lower()
+                elif '_pre_' in filename:
+                    pre_revision = filename.split('_pre_')[1].split('_')[0].strip().lower()
+                else:
+                    pre_revision = 'none'
+
+                n_vals = pd.to_numeric(df['n_samples'], errors='coerce').dropna() if 'n_samples' in df.columns else pd.Series(dtype=float)
+                n_samples = int(n_vals.iloc[0]) if not n_vals.empty else None
+
                 metric_col = f'auc_{arch_type.lower()}'
+                m, s = lookup_baseline_auc(baseline_df, model_type, n_samples, pre_revision, metric_col)
+                if m is not None:
+                    return m, s
+
+                # Fallback to historical inline columns if still present.
+                best_df = df.drop_duplicates(subset=['seed'])
             
             if metric_col not in best_df.columns: return 0.5, 0.0
             vals = best_df[metric_col].dropna()

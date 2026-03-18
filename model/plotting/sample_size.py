@@ -19,6 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
 RESULT_DIR = os.path.join(MODEL_DIR, 'result')
+BASELINE_PATH = os.path.join(RESULT_DIR, 'baselines', 'baseline_metrics.csv')
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
@@ -39,6 +40,61 @@ X_VALS_BETA = [4, 8, 16, 32, 64, 143]
 MODELS = ['sae', 'pca', 'raw']
 MODEL_LABELS = {'sae': 'A.SAE', 'pca': 'A.PCA', 'raw': 'A.RAW'}
 MODEL_COLORS = {'sae': "lightblue", 'pca': "deepskyblue", 'raw': "steelblue"}
+
+
+def load_baseline_cache():
+    if not os.path.exists(BASELINE_PATH):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(BASELINE_PATH, on_bad_lines='skip')
+    except Exception:
+        return pd.DataFrame()
+
+    if 'n_samples' in df.columns:
+        df['n_samples'] = pd.to_numeric(df['n_samples'], errors='coerce')
+    if 'pre_revision' in df.columns:
+        df['pre_revision'] = df['pre_revision'].astype(str).str.strip().str.lower().replace('', 'none')
+    if 'model_type' in df.columns:
+        df['model_type'] = df['model_type'].astype(str)
+    return df
+
+
+def baseline_stats(df, model_type, n_samples, pre_revision, metric_col):
+    if df.empty or metric_col not in df.columns or n_samples is None:
+        return None, None
+    sub = df[
+        (df['model_type'] == str(model_type)) &
+        (df['n_samples'] == int(n_samples)) &
+        (df['pre_revision'] == str(pre_revision).strip().lower())
+    ]
+    vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
+    if vals.empty:
+        return None, None
+    return float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0)
+
+
+def infer_baseline_key_from_df(df, setup, size):
+    if df is None or df.empty:
+        return None, None
+    model_type = 'bernoulli' if setup == 'bernoulli' else 'beta'
+    if 'scenario' in df.columns and df['scenario'].notna().any():
+        pre_val = str(df['scenario'].dropna().iloc[0]).replace('Pre-', '').strip().lower()
+        pre_revision = pre_val if pre_val else 'none'
+    else:
+        pre_revision = 'none' if setup == 'bernoulli' else str(size).strip().lower()
+
+    if 'n_samples' in df.columns:
+        n_vals = pd.to_numeric(df['n_samples'], errors='coerce').dropna()
+        n_samples = int(n_vals.iloc[0]) if not n_vals.empty else None
+    else:
+        if str(size).lower() == 'max':
+            n_samples = None
+        else:
+            try:
+                n_samples = int(size)
+            except ValueError:
+                n_samples = None
+    return model_type, pre_revision, n_samples
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Logic
@@ -98,14 +154,27 @@ def gather_data(setup):
     rasch_data_auc, rasch_data_rmse = [], []
     twopl_data_auc, twopl_data_rmse = [], []
     mirt_data_auc, mirt_data_rmse = [], []
+    baseline_df = load_baseline_cache()
     
     for i, size in enumerate(sizes):
         raw_vals = {met: {bm: [] for bm in ['rasch', '2pl', 'mirt']} for met in ['auc', 'rmse']}
+        example_df = None
         
         # Check standard models (they contain internal baselines)
         for model in MODELS:
             metrics = load_metrics(setup, model, size)
             if metrics:
+                if example_df is None:
+                    try:
+                        n_suffix = "n_1" if setup == 'bernoulli' else "n_max"
+                        p1 = os.path.join(RESULT_DIR, f"amortized_irt_{model}_{setup}_pre_{size}_{n_suffix}.csv")
+                        p2 = os.path.join(RESULT_DIR, f"amortized_irt_{model}_{setup}_n_{size}.csv" if setup == 'bernoulli' else f"amortized_irt_{model}_{setup}_n_max.csv")
+                        if os.path.exists(p1):
+                            example_df = pd.read_csv(p1, on_bad_lines='skip')
+                        elif os.path.exists(p2):
+                            example_df = pd.read_csv(p2, on_bad_lines='skip')
+                    except Exception:
+                        example_df = None
                 if metrics['auc_amortized'][0] is not None:
                     model_data_auc[model].append((x_vals[i], metrics['auc_amortized'][0], metrics['auc_amortized'][1]))
                 if metrics['rmse_amortized'][0] is not None:
@@ -124,6 +193,14 @@ def gather_data(setup):
                     for bm in ['rasch', '2pl', 'mirt']:
                         if metrics[f'{met}_{bm}'][0] is not None:
                             raw_vals[met][bm].append(metrics[f'{met}_{bm}'])
+
+        model_type_key, pre_key, n_key = infer_baseline_key_from_df(example_df, setup, size)
+        if model_type_key is not None and n_key is not None:
+            for met in ['auc', 'rmse']:
+                for bm in ['rasch', '2pl', 'mirt']:
+                    mean_val, sem_val = baseline_stats(baseline_df, model_type_key, n_key, pre_key, f'{met}_{bm}')
+                    if mean_val is not None:
+                        raw_vals[met][bm].append((mean_val, sem_val))
 
         # Aggregate baselines
         if raw_vals['auc']['rasch']:

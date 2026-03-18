@@ -24,6 +24,7 @@ MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
 
 RESULT_DIR = os.path.join(MODEL_DIR, "result")
+BASELINE_PATH = os.path.join(RESULT_DIR, "baselines", "baseline_metrics.csv")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
@@ -31,6 +32,54 @@ os.makedirs(FIGURE_DIR, exist_ok=True)
 
 def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
+
+
+def load_baseline_cache():
+    if not os.path.exists(BASELINE_PATH):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(BASELINE_PATH, on_bad_lines='skip')
+    except Exception:
+        return pd.DataFrame()
+
+    expected = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
+    expected += ['rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt', 'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt']
+    for col in expected:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    df['model_type'] = df['model_type'].astype(str)
+    df['pre_revision'] = df['pre_revision'].astype(str).str.strip().str.lower().replace('', 'none')
+    df['n_samples'] = pd.to_numeric(df['n_samples'], errors='coerce')
+    return df
+
+
+def resolve_n_samples_from_df(df):
+    if 'n_samples' not in df.columns:
+        return None
+    vals = pd.to_numeric(df['n_samples'], errors='coerce').dropna()
+    if vals.empty:
+        return None
+    return int(vals.iloc[0])
+
+
+def lookup_baseline_stats(baseline_df, model_type, n_samples, pre_revision, metric_col):
+    if baseline_df.empty or n_samples is None or metric_col not in baseline_df.columns:
+        return np.nan, np.nan
+
+    pre_key = str(pre_revision).strip().lower() if pre_revision is not None else 'none'
+    if not pre_key:
+        pre_key = 'none'
+
+    sub = baseline_df[
+        (baseline_df['model_type'] == str(model_type)) &
+        (baseline_df['n_samples'] == int(n_samples)) &
+        (baseline_df['pre_revision'] == pre_key)
+    ]
+    vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
+    if vals.empty:
+        return np.nan, np.nan
+    return float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Data Loading & Aggregation
@@ -44,11 +93,15 @@ def load_aggregated_results(embedding_type, n_samples='max', model_type='beta'):
     df = pd.read_csv(path, on_bad_lines='skip')
     metrics = ['rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt', 'rmse_amortized', 
                'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt', 'auc_amortized']
-    
-    # Coerce to numeric and drop rows with corrupted data
+
+    # Backward/forward compatibility: older or specialized CSVs may miss some baseline columns.
     for col in metrics:
+        if col not in df.columns:
+            df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    df = df.dropna(subset=metrics)
+
+    # Require core model metrics; keep rows even when some baseline metrics are absent.
+    df = df.dropna(subset=['rmse_amortized', 'auc_amortized'])
     
     if df.empty: return None
     agg = df.groupby('n_samples')[metrics].agg(['mean', 'sem']).reset_index()
@@ -75,10 +128,29 @@ def plot_remediation_summary():
     base_path = os.path.join(RESULT_DIR, configs['Post_max'])
     if not os.path.exists(base_path): return
     base_df = pd.read_csv(base_path, on_bad_lines='skip')
+    baseline_df = load_baseline_cache()
+    n_post_max = resolve_n_samples_from_df(base_df)
+
+    def fallback_mean(df, col):
+        return float(pd.to_numeric(df[col], errors='coerce').mean()) if col in df.columns else 0.0
+
+    naive_auc_m, naive_auc_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'auc_naive')
+    naive_rmse_m, naive_rmse_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'rmse_naive')
+    rasch_auc_m, rasch_auc_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'auc_rasch')
+    rasch_rmse_m, rasch_rmse_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'rmse_rasch')
+
+    if np.isnan(naive_auc_m):
+        naive_auc_m, naive_auc_s = fallback_mean(base_df, 'auc_naive'), 0.0
+    if np.isnan(naive_rmse_m):
+        naive_rmse_m, naive_rmse_s = fallback_mean(base_df, 'rmse_naive'), 0.0
+    if np.isnan(rasch_auc_m):
+        rasch_auc_m, rasch_auc_s = fallback_mean(base_df, 'auc_rasch'), 0.0
+    if np.isnan(rasch_rmse_m):
+        rasch_rmse_m, rasch_rmse_s = fallback_mean(base_df, 'rmse_rasch'), 0.0
     
     res = {
-        'Naive': {'a_m': base_df['auc_naive'].mean(), 'a_s': 0, 'r_m': base_df['rmse_naive'].mean(), 'r_s': 0},
-        'Rasch': {'a_m': base_df['auc_rasch'].mean(), 'a_s': 0, 'r_m': base_df['rmse_rasch'].mean(), 'r_s': 0},
+        'Naive': {'a_m': naive_auc_m, 'a_s': naive_auc_s, 'r_m': naive_rmse_m, 'r_s': naive_rmse_s},
+        'Rasch': {'a_m': rasch_auc_m, 'a_s': rasch_auc_s, 'r_m': rasch_rmse_m, 'r_s': rasch_rmse_s},
     }
     
     # Try to load standalone 2PL
@@ -87,7 +159,13 @@ def plot_remediation_summary():
         df_2l = pd.read_csv(standalone_2pl)
         res['2PL'] = {'a_m': df_2l['auc_amortized'].mean(), 'a_s': df_2l['auc_amortized'].sem(), 'r_m': df_2l['rmse_amortized'].mean(), 'r_s': df_2l['rmse_amortized'].sem()}
     else:
-        res['2PL'] = {'a_m': base_df['auc_2pl'].mean() if 'auc_2pl' in base_df.columns else 0, 'a_s': 0, 'r_m': base_df['rmse_2pl'].mean() if 'rmse_2pl' in base_df.columns else 0, 'r_s': 0}
+        twopl_auc_m, twopl_auc_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'auc_2pl')
+        twopl_rmse_m, twopl_rmse_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'rmse_2pl')
+        if np.isnan(twopl_auc_m):
+            twopl_auc_m, twopl_auc_s = fallback_mean(base_df, 'auc_2pl'), 0.0
+        if np.isnan(twopl_rmse_m):
+            twopl_rmse_m, twopl_rmse_s = fallback_mean(base_df, 'rmse_2pl'), 0.0
+        res['2PL'] = {'a_m': twopl_auc_m, 'a_s': twopl_auc_s, 'r_m': twopl_rmse_m, 'r_s': twopl_rmse_s}
 
     # Try to load standalone MIRT
     standalone_mirt = os.path.join(RESULT_DIR, 'amortized_irt_nonamortised_mirt_beta_n_max.csv')
@@ -95,7 +173,13 @@ def plot_remediation_summary():
         df_mi = pd.read_csv(standalone_mirt)
         res['MIRT'] = {'a_m': df_mi['auc_amortized'].mean(), 'a_s': df_mi['auc_amortized'].sem(), 'r_m': df_mi['rmse_amortized'].mean(), 'r_s': df_mi['rmse_amortized'].sem()}
     else:
-        res['MIRT'] = {'a_m': base_df['auc_mirt'].mean() if 'auc_mirt' in base_df.columns else 0, 'a_s': 0, 'r_m': base_df['rmse_mirt'].mean() if 'rmse_mirt' in base_df.columns else 0, 'r_s': 0}
+        mirt_auc_m, mirt_auc_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'auc_mirt')
+        mirt_rmse_m, mirt_rmse_s = lookup_baseline_stats(baseline_df, 'beta', n_post_max, 'none', 'rmse_mirt')
+        if np.isnan(mirt_auc_m):
+            mirt_auc_m, mirt_auc_s = fallback_mean(base_df, 'auc_mirt'), 0.0
+        if np.isnan(mirt_rmse_m):
+            mirt_rmse_m, mirt_rmse_s = fallback_mean(base_df, 'rmse_mirt'), 0.0
+        res['MIRT'] = {'a_m': mirt_auc_m, 'a_s': mirt_auc_s, 'r_m': mirt_rmse_m, 'r_s': mirt_rmse_s}
     for label, fname in configs.items():
         path = os.path.join(RESULT_DIR, fname)
         if os.path.exists(path):
@@ -217,6 +301,7 @@ def generate_comprehensive_table():
     ]
     
     table_data = []
+    baseline_df = load_baseline_cache()
     
     for label, emb, n, mtype, pre in configs:
         # Construct filename
@@ -237,11 +322,18 @@ def generate_comprehensive_table():
         if 'Baseline' in label:
             metric_prefix = 'auc_naive' if 'Naive' in label else 'auc_rasch'
             rmse_prefix = 'rmse_naive' if 'Naive' in label else 'rmse_rasch'
+            n_samples = resolve_n_samples_from_df(df)
+            pre_revision = pre if pre else 'none'
             
-            auc_m = df[metric_prefix].mean()
-            auc_se = df[metric_prefix].std() / np.sqrt(len(df)) if len(df) > 1 else 0.0
-            rmse_m = df[rmse_prefix].mean()
-            rmse_se = df[rmse_prefix].std() / np.sqrt(len(df)) if len(df) > 1 else 0.0
+            auc_m, auc_se = lookup_baseline_stats(baseline_df, mtype, n_samples, pre_revision, metric_prefix)
+            rmse_m, rmse_se = lookup_baseline_stats(baseline_df, mtype, n_samples, pre_revision, rmse_prefix)
+
+            if np.isnan(auc_m):
+                auc_m = df[metric_prefix].mean() if metric_prefix in df.columns else 0.0
+                auc_se = df[metric_prefix].std() / np.sqrt(len(df)) if metric_prefix in df.columns and len(df) > 1 else 0.0
+            if np.isnan(rmse_m):
+                rmse_m = df[rmse_prefix].mean() if rmse_prefix in df.columns else 0.0
+                rmse_se = df[rmse_prefix].std() / np.sqrt(len(df)) if rmse_prefix in df.columns and len(df) > 1 else 0.0
         else:
             auc_m = df['auc_amortized'].mean()
             auc_se = df['auc_amortized'].std() / np.sqrt(len(df)) if len(df) > 1 else 0.0

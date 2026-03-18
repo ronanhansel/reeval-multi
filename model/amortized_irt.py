@@ -24,6 +24,7 @@ Usage:
 import argparse
 import ast
 import os
+import re
 import sys
 import warnings
 
@@ -53,6 +54,19 @@ from utils import compute_rmse, evaluate_auc
 
 RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
 os.makedirs(RESULT_DIR, exist_ok=True)
+
+BASELINE_DIR = os.path.join(RESULT_DIR, 'baselines')
+os.makedirs(BASELINE_DIR, exist_ok=True)
+DEFAULT_BASELINE_OUTPUT = os.path.join(BASELINE_DIR, 'baseline_metrics.csv')
+
+BASELINE_METRIC_COLS = [
+    'rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt',
+    'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt'
+]
+
+BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
+INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
+BASELINE_AUX_COLS = ['agent_batch_size']
 
 # Data paths
 HF_REPO_ID = "ronanhansel/data-reeval-multi"
@@ -635,8 +649,158 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 # Experiment
 # ══════════════════════════════════════════════════════════════════════════════
 
+def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_type='beta', quiet=False):
+    """Build training matrix/mask for a specific n_files configuration."""
+    N = data['N']
+    J = data['J']
+    train_idx = data['train_idx']
+
+    dfs_to_use = data.get('all_dfs', all_dfs)
+    if n_files < len(dfs_to_use):
+        sampled_indices = np.random.choice(len(dfs_to_use), n_files, replace=False)
+        if not quiet:
+            print(f"Sampled iterations: {sampled_indices}")
+        current_dfs = [dfs_to_use[i].reindex(index=global_shared_indices) for i in sampled_indices]
+    else:
+        current_dfs = [dfs_to_use[i].reindex(index=global_shared_indices) for i in range(n_files)]
+
+    all_columns = sorted(list(set().union(*[df.columns for df in current_dfs])))
+    current_dfs = [df.reindex(columns=all_columns) for df in current_dfs]
+    current_stacked = np.array([df.values for df in current_dfs], dtype=float)
+    train_target_matrix = np.nanmean(current_stacked, axis=0)
+    train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=all_columns)
+
+    train_values = train_target_df.values.copy()
+    if model_type == 'bernoulli':
+        train_values = (train_values > 0.5).astype(np.float32)
+
+    train_values = np.nan_to_num(train_values, nan=0.5)
+    y_train = torch.from_numpy(train_values.astype(np.float32)).to(device)
+
+    train_mask_current = np.zeros_like(train_target_df.values, dtype=bool)
+    train_mask_current[:, train_idx] = ~np.isnan(train_target_df.values)[:, train_idx]
+    train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
+
+    return N, J, y_train, train_mask_current_t
+
+
+def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+                             model_type='beta', beta_phi=BETA_PHI):
+    """Compute naive + Rasch + 2PL + standalone MIRT baselines for one configuration."""
+    # 1. Naive item-mean baseline
+    valid_counts = train_mask_current_t.sum(dim=0)
+    item_sums = (y_train * train_mask_current_t).sum(dim=0)
+    global_mean = y_train[train_mask_current_t].mean()
+    item_means = torch.where(valid_counts > 0, item_sums / valid_counts, global_mean)
+    p_naive = item_means.unsqueeze(0).expand(N, J)
+
+    rmse_naive = compute_rmse(p_naive.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_naive = evaluate_auc(p_naive, y_oracle, test_mask_t)
+
+    # 2. Rasch (1PL)
+    p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
+    rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_rasch = evaluate_auc(p_rasch, y_oracle, test_mask_t)
+
+    # 3. Rasch (2PL)
+    p_2pl = train_2pl(N, J, y_train, train_mask_current_t)
+    rmse_2pl = compute_rmse(p_2pl.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_2pl = evaluate_auc(p_2pl, y_oracle, test_mask_t)
+
+    # 4. Non-Amortized MIRT
+    mirt_model = MIRTModel(N, J, K_MODEL).to(device)
+    mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
+    mirt_model.train()
+
+    best_mirt_rmse = float('inf')
+    best_p_mirt = None
+
+    for _ in range(EPOCHS // 2):
+        mirt_optimizer.zero_grad()
+        p_mirt = mirt_model()
+        p_m_clamp = p_mirt[train_mask_current_t].clamp(1e-6, 1 - 1e-6)
+        y_m_clamp = y_train[train_mask_current_t]
+
+        if model_type == 'beta':
+            y_m_clamp = y_m_clamp.clamp(1e-6, 1 - 1e-6)
+            dist = torch.distributions.Beta(p_m_clamp * beta_phi, (1 - p_m_clamp) * beta_phi)
+            loss = -dist.log_prob(y_m_clamp).mean()
+        else:
+            dist = torch.distributions.Bernoulli(probs=p_m_clamp)
+            loss = -dist.log_prob(y_m_clamp).mean()
+
+        loss.backward()
+        mirt_optimizer.step()
+
+        with torch.no_grad():
+            curr_m_rmse = compute_rmse(p_mirt.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+            if curr_m_rmse < best_mirt_rmse:
+                best_mirt_rmse = curr_m_rmse
+                best_p_mirt = p_mirt.clone()
+
+    auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
+
+    return {
+        'rmse_naive': rmse_naive,
+        'rmse_rasch': rmse_rasch,
+        'rmse_2pl': rmse_2pl,
+        'rmse_mirt': best_mirt_rmse,
+        'auc_naive': auc_naive,
+        'auc_rasch': auc_rasch,
+        'auc_2pl': auc_2pl,
+        'auc_mirt': auc_mirt,
+        'mirt_state': mirt_model.state_dict(),
+    }
+
+
+def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, model_type='beta', beta_phi=BETA_PHI,
+                             baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
+                             allow_compute=True, quiet=False):
+    """Fetch baselines from cache, or compute and persist once per unique configuration."""
+    baseline_key = {
+        'seed': int(RANDOM_SEED),
+        'model_type': str(model_type),
+        'n_samples': int(n_files),
+        'pre_revision': normalize_pre_revision(pre_revision),
+        'j_percentage': normalize_j_percentage(j_percentage),
+    }
+
+    cached = try_get_cached_baseline(baseline_output, baseline_key)
+    if cached is not None:
+        return cached, None
+
+    if not allow_compute:
+        raise RuntimeError(
+            f"Missing baseline cache row for {baseline_key}. "
+            f"Run with --baseline-only first or set allow_compute=True."
+        )
+
+    N, J, y_train, train_mask_current_t = build_training_targets(
+        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
+    )
+
+    computed = compute_baseline_metrics(
+        N, J, y_train, train_mask_current_t,
+        data['y_oracle'], data['test_mask'], data['test_mask_t'],
+        model_type=model_type, beta_phi=beta_phi
+    )
+
+    baseline_row = baseline_key.copy()
+    baseline_row['agent_batch_size'] = compute_agent_batch_size(
+        baseline_key['pre_revision'], baseline_key['n_samples']
+    )
+    for col in BASELINE_METRIC_COLS:
+        baseline_row[col] = float(computed[col])
+    append_baseline_row(baseline_output, baseline_row)
+
+    cached_now = {k: float(computed[k]) for k in BASELINE_METRIC_COLS}
+    return cached_now, computed.get('mirt_state')
+
+
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
-                   beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None):
+                   beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None,
+                   baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
+                   allow_compute_baselines=True):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -650,66 +814,29 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     N = data['N']
     J = data['J']
     y_oracle = data['y_oracle']
-    train_idx = data['train_idx']
     test_mask = data['test_mask']
     test_mask_t = data['test_mask_t']
     x_j = data['x_j']
     embedding_dim = data['embedding_dim']
 
-    # Prepare training data from n_files samples
-    dfs_to_use = data.get('all_dfs', all_dfs) # Use J-filtered DFS if available
-    
-    if n_files < len(dfs_to_use):
-        sampled_indices = np.random.choice(len(dfs_to_use), n_files, replace=False)
-        if not quiet:
-            print(f"Sampled iterations: {sampled_indices}")
-        current_dfs = [dfs_to_use[i].reindex(index=global_shared_indices) for i in sampled_indices]
-    else:
-        current_dfs = [dfs_to_use[i].reindex(index=global_shared_indices) for i in range(n_files)]
-    all_columns = sorted(list(set().union(*[df.columns for df in current_dfs])))
-    current_dfs = [df.reindex(columns=all_columns) for df in current_dfs]
-    current_stacked = np.array([df.values for df in current_dfs], dtype=float)
-    train_target_matrix = np.nanmean(current_stacked, axis=0)
-    train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=all_columns)
+    baselines, mirt_state = get_or_compute_baselines(
+        n_files,
+        all_dfs,
+        global_shared_indices,
+        data,
+        model_type=model_type,
+        beta_phi=beta_phi,
+        baseline_output=baseline_output,
+        pre_revision=pre_revision,
+        j_percentage=j_percentage,
+        allow_compute=allow_compute_baselines,
+        quiet=quiet,
+    )
 
-    train_values = train_target_df.values.copy()
-
-    if model_type == 'bernoulli':
-        # Binarize: convert averaged probabilities to binary responses
-        train_values = (train_values > 0.5).astype(np.float32)
-
-    train_values = np.nan_to_num(train_values, nan=0.5)
-    y_train = torch.from_numpy(train_values.astype(np.float32)).to(device)
-
-    train_mask_current = np.zeros_like(train_target_df.values, dtype=bool)
-    train_mask_current[:, train_idx] = ~np.isnan(train_target_df.values)[:, train_idx]
-    train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
-
-    # 1. Naive Item-Mean baseline
-    # Predict each item as its mean observed success rate in the current iteration
-    # Since we have N users/agents, the item-wise mean is the average across users.
-    valid_counts = train_mask_current_t.sum(dim=0)
-    item_sums = (y_train * train_mask_current_t).sum(dim=0)
-    
-    # Avoid division by zero: if an item has no observations, use global mean
-    global_mean = y_train[train_mask_current_t].mean()
-    item_means = torch.where(valid_counts > 0, item_sums / valid_counts, global_mean)
-    
-    # Broadcast item_means to (N, J) shape to match p_rasch and p_amortized
-    p_naive = item_means.unsqueeze(0).expand(N, J)
-    
-    rmse_naive = compute_rmse(p_naive.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_naive = evaluate_auc(p_naive, y_oracle, test_mask_t)
-
-    # 2. Rasch IRT baseline (1PL)
-    p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
-    rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_rasch = evaluate_auc(p_rasch, y_oracle, test_mask_t)
-
-    # 3. Rasch 2PL baseline
-    p_2pl = train_2pl(N, J, y_train, train_mask_current_t)
-    rmse_2pl = compute_rmse(p_2pl.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_2pl = evaluate_auc(p_2pl, y_oracle, test_mask_t)
+    rmse_2pl = baselines['rmse_2pl']
+    best_mirt_rmse = baselines['rmse_mirt']
+    auc_2pl = baselines['auc_2pl']
+    auc_mirt = baselines['auc_mirt']
 
     if embedding_type == 'rasch_2pl':
         return {
@@ -717,15 +844,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
-            'rmse_naive': rmse_naive,
-            'rmse_rasch': rmse_rasch,
-            'rmse_2pl': rmse_2pl,
-            'rmse_mirt': 0.0,
             'rmse_amortized': rmse_2pl,
-            'auc_naive': auc_naive,
-            'auc_rasch': auc_rasch,
-            'auc_2pl': auc_2pl,
-            'auc_mirt': 0.0,
             'auc_amortized': auc_2pl,
             'active_dims': 0,
             'active_indices': '[]',
@@ -734,60 +853,26 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'final_state': {}
         }
 
-    # 4. Non-Amortized MIRT
-    mirt_model = MIRTModel(N, J, K_MODEL).to(device)
-    mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
-    
-    mirt_model.train()
-    best_mirt_rmse = float('inf')
-    best_p_mirt = None
-    
-    for _ in range(EPOCHS // 2): # Slightly shorter training for speed
-        mirt_optimizer.zero_grad()
-        p_mirt = mirt_model()
-        p_m_clamp = p_mirt[train_mask_current_t].clamp(1e-6, 1-1e-6)
-        y_m_clamp = y_train[train_mask_current_t]
-        if model_type == 'beta':
-            y_m_clamp = y_m_clamp.clamp(1e-6, 1-1e-6)
-            dist = torch.distributions.Beta(p_m_clamp * beta_phi, (1-p_m_clamp) * beta_phi)
-            loss = -dist.log_prob(y_m_clamp).mean()
-        else:
-            dist = torch.distributions.Bernoulli(probs=p_m_clamp)
-            loss = -dist.log_prob(y_m_clamp).mean()
-        
-        loss.backward()
-        mirt_optimizer.step()
-        
-        with torch.no_grad():
-            curr_m_rmse = compute_rmse(p_mirt.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-            if curr_m_rmse < best_mirt_rmse:
-                best_mirt_rmse = curr_m_rmse
-                best_p_mirt = p_mirt.clone()
-    
-    auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
-
     if embedding_type == 'nonamortised_mirt':
+        model_state = mirt_state if mirt_state is not None else {}
         return {
             'n_samples': n_files,
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
-            'rmse_naive': rmse_naive,
-            'rmse_rasch': rmse_rasch,
-            'rmse_2pl': rmse_2pl,
-            'rmse_mirt': best_mirt_rmse,
             'rmse_amortized': best_mirt_rmse,
-            'auc_naive': auc_naive,
-            'auc_rasch': auc_rasch,
-            'auc_2pl': auc_2pl,
-            'auc_mirt': auc_mirt,
             'auc_amortized': auc_mirt,
             'active_dims': K_MODEL,
             'active_indices': str(list(range(K_MODEL))),
             'tau_values': str([1.0]*K_MODEL),
-            'model_state': mirt_model.state_dict(),
-            'final_state': mirt_model.state_dict()
+            'model_state': model_state,
+            'final_state': model_state
         }
+
+    # Build train targets only when the amortized model is needed
+    _, _, y_train, train_mask_current_t = build_training_targets(
+        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
+    )
 
     # 5. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
@@ -815,15 +900,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
-        'rmse_naive': rmse_naive,
-        'rmse_rasch': rmse_rasch,
-        'rmse_2pl': rmse_2pl,
-        'rmse_mirt': best_mirt_rmse,
         'rmse_amortized': best_rmse,
-        'auc_naive': auc_naive,
-        'auc_rasch': auc_rasch,
-        'auc_2pl': auc_2pl,
-        'auc_mirt': auc_mirt,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
         'active_indices': str(active_dim_indices),
@@ -860,6 +937,206 @@ def parse_n_samples(arg, total_files):
 
     result = [n for n in result if 1 <= n <= total_files]
     return sorted(set(result))
+
+
+def normalize_pre_revision(value):
+    """Normalize pre-revision value to stable string key used in baseline cache."""
+    if value is None:
+        return 'none'
+    v = str(value).strip().lower()
+    return v if v else 'none'
+
+
+def normalize_j_percentage(value):
+    """Normalize j_percentage for reliable float comparisons in CSV cache."""
+    return float(f"{float(value):.6f}")
+
+
+def compute_agent_batch_size(pre_revision, n_samples):
+    """Return user-facing effective batch size (pre-revision size or n_samples)."""
+    pre = normalize_pre_revision(pre_revision)
+    if pre == 'none':
+        return str(int(n_samples))
+    if pre == 'max':
+        return 'max'
+    try:
+        return str(int(pre))
+    except Exception:
+        return pre
+
+
+def baseline_row_matches(df, key):
+    """Return rows matching baseline key with tolerance on j_percentage."""
+    if df.empty:
+        return df
+
+    mask = (
+        (df['seed'].astype(int) == int(key['seed'])) &
+        (df['model_type'].astype(str) == str(key['model_type'])) &
+        (df['n_samples'].astype(int) == int(key['n_samples'])) &
+        (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
+        np.isclose(df['j_percentage'].astype(float), float(key['j_percentage']), atol=1e-6)
+    )
+    return df[mask]
+
+
+def load_baseline_store(path):
+    """Load baseline store or return an empty frame with required schema."""
+    if os.path.exists(path):
+        try:
+            df = pd.read_csv(path)
+            for col in BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS:
+                if col not in df.columns:
+                    df[col] = np.nan
+
+            # Backfill explicit effective batch size for readability.
+            df['agent_batch_size'] = [
+                compute_agent_batch_size(pr, ns)
+                for pr, ns in zip(df['pre_revision'], df['n_samples'])
+            ]
+            return df
+        except Exception:
+            pass
+
+    cols = BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS
+    return pd.DataFrame(columns=cols)
+
+
+def append_baseline_row(path, row):
+    """Atomically append or upsert one baseline row in the baseline cache file."""
+    lock = FileLock(f"{path}.lock", timeout=600)
+    with lock:
+        df_old = load_baseline_store(path)
+        if 'agent_batch_size' not in row:
+            row['agent_batch_size'] = compute_agent_batch_size(row.get('pre_revision', 'none'), row.get('n_samples', 0))
+        df_new = pd.DataFrame([row])
+        df = pd.concat([df_old, df_new], ignore_index=True)
+        # Keep latest row per unique baseline key
+        df = df.drop_duplicates(subset=BASELINE_KEY_COLS, keep='last')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_csv(path, index=False)
+
+
+def try_get_cached_baseline(path, key):
+    """Lookup cached baseline row by key. Returns dict or None."""
+    if not os.path.exists(path):
+        return None
+
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return None
+
+    if any(c not in df.columns for c in BASELINE_KEY_COLS + BASELINE_METRIC_COLS):
+        return None
+
+    match = baseline_row_matches(df, key)
+    if match.empty:
+        return None
+
+    row = match.iloc[-1].to_dict()
+    return {k: float(row[k]) for k in BASELINE_METRIC_COLS}
+
+
+def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
+    """Extract baseline columns from existing result CSVs into unified baseline cache."""
+    pattern = re.compile(r"_pre_([^_]+)_")
+    j_pattern = re.compile(r"_j([0-9]+(?:\.[0-9]+)?)")
+
+    migrated_rows = []
+    files = [f for f in os.listdir(source_dir) if f.startswith('amortized_irt_') and f.endswith('.csv')]
+
+    for fname in files:
+        path = os.path.join(source_dir, fname)
+        if os.path.abspath(path) == os.path.abspath(baseline_output):
+            continue
+
+        try:
+            df = pd.read_csv(path, on_bad_lines='skip')
+        except Exception:
+            continue
+
+        required = ['seed', 'model_type', 'n_samples'] + BASELINE_METRIC_COLS
+        if any(col not in df.columns for col in required):
+            continue
+
+        pre_revision = 'none'
+        if 'scenario' in df.columns and df['scenario'].notna().any():
+            # Expected forms: Pre-32 / Pre-max
+            val = str(df['scenario'].dropna().iloc[0]).replace('Pre-', '').strip().lower()
+            if val:
+                pre_revision = val
+        else:
+            m = pattern.search(fname)
+            if m:
+                pre_revision = normalize_pre_revision(m.group(1))
+
+        j_percentage = 1.0
+        m_j = j_pattern.search(fname)
+        if m_j:
+            j_percentage = normalize_j_percentage(float(m_j.group(1)))
+
+        sub = df[required].copy()
+        sub['pre_revision'] = pre_revision
+        sub['j_percentage'] = j_percentage
+        sub['agent_batch_size'] = [
+            compute_agent_batch_size(pre_revision, ns)
+            for ns in sub['n_samples'].tolist()
+        ]
+        sub = sub[BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS]
+        migrated_rows.append(sub)
+
+    if not migrated_rows:
+        if not quiet:
+            print("No baseline columns discovered to migrate.")
+        return
+
+    migrated_df = pd.concat(migrated_rows, ignore_index=True)
+    for k in ['seed', 'n_samples']:
+        migrated_df[k] = pd.to_numeric(migrated_df[k], errors='coerce')
+    migrated_df['j_percentage'] = pd.to_numeric(migrated_df['j_percentage'], errors='coerce').fillna(1.0)
+    migrated_df = migrated_df.dropna(subset=['seed', 'n_samples'])
+    migrated_df['seed'] = migrated_df['seed'].astype(int)
+    migrated_df['n_samples'] = migrated_df['n_samples'].astype(int)
+    migrated_df['pre_revision'] = migrated_df['pre_revision'].astype(str).map(normalize_pre_revision)
+    migrated_df['j_percentage'] = migrated_df['j_percentage'].map(normalize_j_percentage)
+
+    lock = FileLock(f"{baseline_output}.lock", timeout=600)
+    with lock:
+        existing = load_baseline_store(baseline_output)
+        combined = pd.concat([existing, migrated_df], ignore_index=True)
+        combined = combined.drop_duplicates(subset=BASELINE_KEY_COLS, keep='last')
+        os.makedirs(os.path.dirname(baseline_output), exist_ok=True)
+        combined.to_csv(baseline_output, index=False)
+
+    if not quiet:
+        print(f"Migrated {len(migrated_df)} baseline rows into {baseline_output}")
+
+
+def strip_inline_baseline_columns(source_dir, quiet=False):
+    """Rewrite amortized_irt CSVs by removing legacy inline baseline columns."""
+    files = [f for f in os.listdir(source_dir) if f.startswith('amortized_irt_') and f.endswith('.csv')]
+    rewritten = 0
+    removed_cols = 0
+
+    for fname in files:
+        path = os.path.join(source_dir, fname)
+        try:
+            df = pd.read_csv(path, on_bad_lines='skip')
+        except Exception:
+            continue
+
+        present = [c for c in INLINE_BASELINE_COLS if c in df.columns]
+        if not present:
+            continue
+
+        df = df.drop(columns=present)
+        df.to_csv(path, index=False)
+        rewritten += 1
+        removed_cols += len(present)
+
+    if not quiet:
+        print(f"Stripped inline baseline columns from {rewritten} files ({removed_cols} columns removed total).")
 
 
 # Global variables for worker processes to avoid pickling overhead
@@ -904,14 +1181,16 @@ def run_single_config(config, args, n_values):
     RANDOM_SEED = seed
 
     j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
-    if args.output:
-        output_path = args.output
-    else:
-        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
-        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
+    output_path = None
+    if not args.baseline_only:
+        if args.output:
+            output_path = args.output
+        else:
+            suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
+            n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
+            output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
 
-    if os.path.exists(output_path):
+    if output_path is not None and os.path.exists(output_path):
         try:
             df_existing = pd.read_csv(output_path)
             max_n = max(n_values)
@@ -945,9 +1224,29 @@ def run_single_config(config, args, n_values):
         device = local_device
         
         try:
+            if args.baseline_only:
+                get_or_compute_baselines(
+                    n,
+                    all_dfs,
+                    global_shared_indices,
+                    data,
+                    model_type=args.model_type,
+                    beta_phi=args.beta_phi,
+                    baseline_output=args.baseline_output,
+                    pre_revision=args.pre_revision,
+                    j_percentage=args.j_percentage,
+                    allow_compute=True,
+                    quiet=quiet,
+                )
+                continue
+
             result = run_experiment(n, all_dfs, global_shared_indices, data,
                                     model_type=args.model_type, beta_phi=args.beta_phi, no_tau=args.no_tau, 
-                                    quiet=quiet, embedding_type=actual_emb_type)
+                                    quiet=quiet, embedding_type=actual_emb_type,
+                                    baseline_output=args.baseline_output,
+                                    pre_revision=args.pre_revision,
+                                    j_percentage=args.j_percentage,
+                                    allow_compute_baselines=True)
                                     
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -963,6 +1262,11 @@ def run_single_config(config, args, n_values):
                 torch.save(result['final_state'], final_weight_path)
         finally:
             device = old_device
+
+    if args.baseline_only:
+        if not quiet:
+            print(f"[DONE] worker {worker_id} cached baselines: seed={seed}, pre={args.pre_revision}, n={n_values}")
+        return
             
     # Save results to CSV (Consolidated)
     save_results = []
@@ -1037,6 +1341,15 @@ def main():
     parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
     parser.add_argument('--j-percentage', type=float, default=1.0, help='Percentage of items (columns) to sample (0.0 to 1.0).')
     parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
+    parser.add_argument('--baseline-only', action='store_true', help='Only compute/cache baselines and skip amortized outputs.')
+    parser.add_argument('--baseline-output', type=str, default=DEFAULT_BASELINE_OUTPUT,
+                        help='Path to baseline cache CSV (default: model/result/baselines/baseline_metrics.csv).')
+    parser.add_argument('--migrate-baselines', action='store_true',
+                        help='Migrate baseline columns from existing amortized_irt_*.csv files into baseline-output and exit.')
+    parser.add_argument('--migrate-all-csvs', action='store_true',
+                        help='Migrate baseline cache and strip inline baseline columns from all amortized_irt_*.csv files, then exit.')
+    parser.add_argument('--migrate-source-dir', type=str, default=RESULT_DIR,
+                        help='Source directory containing historical amortized_irt_*.csv files for migration.')
     args = parser.parse_args()
 
     import sys, os
@@ -1048,6 +1361,15 @@ def main():
     if args.quiet:
         original_stdout = sys.stdout
         sys.stdout = open(os.devnull, 'w')
+
+    if args.migrate_baselines:
+        migrate_existing_baselines(args.migrate_source_dir, args.baseline_output, quiet=args.quiet)
+        return
+
+    if args.migrate_all_csvs:
+        migrate_existing_baselines(args.migrate_source_dir, args.baseline_output, quiet=args.quiet)
+        strip_inline_baseline_columns(args.migrate_source_dir, quiet=args.quiet)
+        return
 
     if args.wd_theta is not None:
         WD_THETA = args.wd_theta
@@ -1061,6 +1383,8 @@ def main():
     # Parse multi-experiment parameters
     seeds = [int(s.strip()) for s in str(args.seed).split(',') if s.strip()]
     taus = [float(t.strip()) for t in str(args.lambda_tau).split(',') if t.strip()]
+    if args.baseline_only and len(taus) > 1:
+        taus = [taus[0]]
 
     print(f"Embedding type: {args.embedding_type}")
     if args.model_type == 'beta':
@@ -1075,16 +1399,18 @@ def main():
     # but let's safely approximate it by saying "if all or max, assume we just check existence"
     # Actually, we can load_data efficiently or just check the OS level CSV if it exists
     
-    if args.output:
-        output_path = args.output
-    else:
-        suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
-        n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
+    output_path = None
+    if not args.baseline_only:
+        if args.output:
+            output_path = args.output
+        else:
+            suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
+            n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
+            j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
+            output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
 
     completed_configs = set()
-    if os.path.exists(output_path):
+    if output_path is not None and os.path.exists(output_path):
         try:
             df_existing = pd.read_csv(output_path)
             if not df_existing.empty and 'seed' in df_existing.columns and 'lambda_tau' in df_existing.columns and 'n_samples' in df_existing.columns:
@@ -1111,7 +1437,24 @@ def main():
     max_n = max(n_values)
     
     # accurately check completion now
-    if os.path.exists(output_path):
+    if args.baseline_only:
+        try:
+            df_baseline = load_baseline_store(args.baseline_output)
+            key_pre = normalize_pre_revision(args.pre_revision)
+            key_j = normalize_j_percentage(args.j_percentage)
+            for seed in seeds:
+                mask = (
+                    (df_baseline['seed'].astype(int) == int(seed)) &
+                    (df_baseline['model_type'].astype(str) == args.model_type) &
+                    (df_baseline['n_samples'].astype(int) == int(max_n)) &
+                    (df_baseline['pre_revision'].astype(str) == key_pre) &
+                    np.isclose(df_baseline['j_percentage'].astype(float), key_j, atol=1e-6)
+                )
+                if mask.any():
+                    completed_configs.add((int(seed), float(taus[0])))
+        except Exception:
+            pass
+    elif output_path is not None and os.path.exists(output_path):
         try:
             df_existing = pd.read_csv(output_path)
             if not df_existing.empty and 'seed' in df_existing.columns and 'lambda_tau' in df_existing.columns and 'n_samples' in df_existing.columns:
@@ -1134,7 +1477,10 @@ def main():
                     break
                     
             if isCompleted:
-                print(f"[SKIP] Quick-skip: seed={seed}, tau={tau} already complete in {os.path.basename(output_path)}.")
+                if args.baseline_only:
+                    print(f"[SKIP] Baseline cache already complete for seed={seed}, n={max_n}, pre={args.pre_revision}, j={args.j_percentage}.")
+                else:
+                    print(f"[SKIP] Quick-skip: seed={seed}, tau={tau} already complete in {os.path.basename(output_path)}.")
                 continue
 
             configs.append((seed, tau, worker_id))
