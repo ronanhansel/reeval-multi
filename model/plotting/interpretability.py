@@ -548,7 +548,7 @@ def plot_tau_sensitivity():
                 ax_k.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
                 ax_k.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
             
-            # ax_k.set_xlabel(r'Regularization Strength ($\tau$)', fontsize=10)
+            ax_k.set_xlabel(r'Regularization Strength ($\tau$)', fontsize=10)
             ax_k.set_ylabel("Active Dimensions ($K$)", fontsize=10)
             ax_k.set_xlim(x_start, x_axis_limit)
             ax_k.set_ylim((-1.5, 31.5))
@@ -737,12 +737,13 @@ def plot_double_stacked_performance_bars():
             ax.add_patch(highlight)
             
             # Optional: Add a subtle text label or just rely on the box
-            ax.text((x_min + x_max)/2, y_max + 0.003, 'Our Models', 
-                    ha='center', va='bottom', fontsize=6, color='black')
+            # ax.text((x_min + x_max)/2, y_max + 0.003, 'Our Models', 
+            #         ha='center', va='bottom', fontsize=6, color='black')
 
         ax.set_ylabel('AUC', fontsize=10)
         ax.set_xticks(x)
-        ax.set_xticklabels(architectures, fontsize=9)
+        display_labels = [f"ARAF\n({arch})" if arch in ['SAE', 'PCA', 'RAW'] else arch for arch in architectures]
+        ax.set_xticklabels(display_labels, fontsize=9)
         ax.tick_params(axis='y', labelsize=9)
         ax.set_ylim(0.48, 0.85)
         ax.grid(axis='y', linestyle=':', alpha=0.5)

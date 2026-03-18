@@ -476,7 +476,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     return all_dfs, global_shared_indices, raw_embs_map, embedding_type
 
 
-def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca'):
+def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', j_percentage=1.0):
     """Prepare oracle ground truth, train/test splits, and embedding tensors."""
     print("=" * 60)
     print("PREPARING EXPERIMENT DATA")
@@ -499,8 +499,29 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
+    N, J_full = oracle_df.shape
+    
+    # 2D Scaling Study: Randomly sub-sample the available items (columns) before holdout
+    if j_percentage < 1.0:
+        n_j_keep = max(10, int(j_percentage * J_full)) # Keep at least 10 items for meaningful calc
+        all_j_indices = np.arange(J_full)
+        # Fix seed for item sampling so it's consistent for a given RANDOM_SEED
+        np.random.seed(RANDOM_SEED + 999) 
+        sampled_j_indices = np.random.choice(all_j_indices, size=n_j_keep, replace=False)
+        sampled_j_indices.sort()
+        
+        oracle_df = oracle_df.iloc[:, sampled_j_indices]
+        print(f"Sub-sampling Items: {J_full} -> {n_j_keep} ({j_percentage*100:.1f}%)")
+        
     N, J = oracle_df.shape
+    sampled_columns = oracle_df.columns.tolist()
+    
+    # Filter all_dfs to match the sampled columns
+    all_dfs_filtered = [df.reindex(columns=sampled_columns) for df in all_dfs]
+    
     J_indices = np.arange(J)
+    # Reset seed for train/test split consistency
+    np.random.seed(RANDOM_SEED)
     np.random.shuffle(J_indices)
 
     n_test = int(TEST_SIZE * J)
@@ -550,15 +571,14 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     print(f"Embeddings shape: {x_j.shape}")
 
     return {
-        'oracle_df': oracle_df,
+        'all_dfs': all_dfs_filtered, # Pass filtered dataframes
         'y_oracle': y_oracle,
-        'train_idx': train_idx,
-        'test_idx': test_idx,
-        'train_mask': train_mask,
-        'test_mask': test_mask,
         'train_mask_t': train_mask_t,
         'test_mask_t': test_mask_t,
+        'test_mask': test_mask,
         'x_j': x_j,
+        'test_idx': test_idx,
+        'train_idx': train_idx,
         'N': N,
         'J': J,
         'embedding_dim': x_j.shape[1],
@@ -591,13 +611,15 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     embedding_dim = data['embedding_dim']
 
     # Prepare training data from n_files samples
-    if n_files < len(all_dfs):
-        sampled_indices = np.random.choice(len(all_dfs), n_files, replace=False)
+    dfs_to_use = data.get('all_dfs', all_dfs) # Use J-filtered DFS if available
+    
+    if n_files < len(dfs_to_use):
+        sampled_indices = np.random.choice(len(dfs_to_use), n_files, replace=False)
         if not quiet:
             print(f"Sampled iterations: {sampled_indices}")
-        current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in sampled_indices]
+        current_dfs = [dfs_to_use[i].reindex(index=global_shared_indices) for i in sampled_indices]
     else:
-        current_dfs = [all_dfs[i].reindex(index=global_shared_indices) for i in range(n_files)]
+        current_dfs = [dfs_to_use[i].reindex(index=global_shared_indices) for i in range(n_files)]
     all_columns = sorted(list(set().union(*[df.columns for df in current_dfs])))
     current_dfs = [df.reindex(columns=all_columns) for df in current_dfs]
     current_stacked = np.array([df.values for df in current_dfs], dtype=float)
@@ -748,12 +770,13 @@ def run_single_config(config, args, n_values):
     LAMBDA_TAU = lambda_tau
     RANDOM_SEED = seed
 
+    j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
     if args.output:
         output_path = args.output
     else:
         suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
         n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
 
     if os.path.exists(output_path):
         try:
@@ -770,7 +793,8 @@ def run_single_config(config, args, n_values):
             pass # File lock contention, just run it
 
     # Prepare data on the local device
-    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type=actual_emb_type)
+    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, 
+                                 embedding_type=actual_emb_type, j_percentage=args.j_percentage)
     # Move tensors to the correct device
     data['x_j'] = data['x_j'].to(local_device)
     data['y_oracle'] = data['y_oracle'].to(local_device)
@@ -877,6 +901,7 @@ def main():
     parser.add_argument('--seed', type=str, default=str(RANDOM_SEED), help='Random seed(s) (comma separated strings allowed)')
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
     parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
+    parser.add_argument('--j-percentage', type=float, default=1.0, help='Percentage of items (columns) to sample (0.0 to 1.0).')
     parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
     args = parser.parse_args()
 
@@ -900,8 +925,8 @@ def main():
         SNAPPING_THRESHOLD = args.snapping_threshold
 
     # Parse multi-experiment parameters
-    seeds = [int(s.strip()) for s in str(args.seed).split(',')]
-    taus = [float(t.strip()) for t in str(args.lambda_tau).split(',')]
+    seeds = [int(s.strip()) for s in str(args.seed).split(',') if s.strip()]
+    taus = [float(t.strip()) for t in str(args.lambda_tau).split(',') if t.strip()]
 
     print(f"Embedding type: {args.embedding_type}")
     if args.model_type == 'beta':
@@ -921,7 +946,8 @@ def main():
     else:
         suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
         n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}.csv')
+        j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
+        output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
 
     completed_configs = set()
     if os.path.exists(output_path):

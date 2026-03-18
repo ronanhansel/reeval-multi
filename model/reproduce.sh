@@ -156,9 +156,9 @@ run_exp() {
     local taus=$4
     local pre=${5:-false}
     local seeds=$6
-    local out_dir=${7:-""}
     local no_tau=${8:-false}
     local save_weights=${9:-false}
+    local j_pct=${10:-1.0}
     
     # Replace spaces with commas for Python arg parsing
     local taus_csv=${taus// /,}
@@ -177,6 +177,9 @@ run_exp() {
     if [[ "$save_weights" == "true" ]]; then
         cmd="$cmd --save-weights"
     fi
+    if [[ "$j_pct" != "1.0" ]]; then
+        cmd="$cmd --j-percentage $j_pct"
+    fi
     if [[ -n "$out_dir" ]]; then
         mkdir -p "$out_dir"
         local suffix=""
@@ -185,7 +188,9 @@ run_exp() {
         if [[ "$n" == "max" ]]; then n_suffix="_n_max"; fi
         local notau_suffix=""
         if [[ "$no_tau" == "true" ]]; then notau_suffix="_notau"; fi
-        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}${notau_suffix}.csv"
+        local j_suffix=""
+        if [[ "$j_pct" != "1.0" ]]; then j_suffix="_j${j_pct}"; fi
+        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}${notau_suffix}${j_suffix}.csv"
         
         cmd="$cmd --output $out_file"
     fi
@@ -218,6 +223,25 @@ if ! $ONLY_PLOT; then
 
     echo "[MODE] Running Experiments..."
     
+    # [SCALING LAW]: Item Scaling Study (N=32, 50 seeds)
+    # We fix N=32 and sweep J-percentages (0.1 through 0.9)
+    # This is added at the top for resume-ability.
+    if $FULL_SWEEP; then
+        echo " -> Starting Item Scaling Law Study (N=32, 50 seeds)..."
+        J_SEEDS=$(seq -s ' ' 42 91)
+        for j in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9; do
+            # SAE (Base Taus)
+            run_exp sae 1 bernoulli 0.0159 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+            run_exp sae max beta 0.16 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+            # PCA
+            run_exp pca 1 bernoulli 0.0155 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+            run_exp pca max beta 0.054 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+            # RAW
+            run_exp raw 1 bernoulli 0.0151 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+            run_exp raw max beta 0.029 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+        done
+    fi
+
     # 0. Primary Model Exports (Required for Interpretability Plots)
     echo " -> Exporting primary SAE weights..."
     run_exp sae max beta 0.16 max "$SEEDS" "${RESULT_DIR}" false true
