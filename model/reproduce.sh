@@ -212,6 +212,7 @@ if ! $ONLY_PLOT; then
         local model=$3
         local base_tau=$4
         local pre=${5:-false}
+        local j_pct=${6:-1.0}
         
         # If full sweep, run the shared global tau sweep, otherwise just run base_tau
         local taus="$base_tau"
@@ -219,26 +220,22 @@ if ! $ONLY_PLOT; then
             taus="$SHARED_TAUS"
         fi
         
-        run_exp $emb $n $model "$taus" $pre "$SEEDS" "${RESULT_DIR}"
+        run_exp $emb $n $model "$taus" $pre "$SEEDS" "${RESULT_DIR}" false false $j_pct
     }
 
     echo "[MODE] Running Experiments..."
     
-    # [SCALING LAW]: Item Scaling Study (N=32, 50 seeds)
+    # [SCALING LAW]: Item Scaling Study (N=32)
     # We fix N=32 and sweep J-percentages (0.1 through 0.9)
-    # This is added at the top for resume-ability.
-        echo " -> Starting Item Scaling Law Study (N=32, 50 seeds)..."
-        J_SEEDS=$(seq -s ' ' 0 49)
+    if $FULL_SWEEP; then
+        echo " -> Starting Item Scaling Law Study (N=32, Full Tau Sweep)..."
         for j in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9; do
-            # SAE (Base Taus)
-            run_exp sae 1 bernoulli 0.0159 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
-            run_exp sae max beta 0.16 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
-            # PCA
-            run_exp pca 1 bernoulli 0.0155 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
-            run_exp pca max beta 0.054 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
-            # RAW
-            run_exp raw 1 bernoulli 0.0151 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
-            run_exp raw max beta 0.029 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
+            run_tau_sweep sae 1 bernoulli 0.0159 32 $j
+            run_tau_sweep sae max beta 0.16 32 $j
+            run_tau_sweep pca 1 bernoulli 0.0155 32 $j
+            run_tau_sweep pca max beta 0.054 32 $j
+            run_tau_sweep raw 1 bernoulli 0.0151 32 $j
+            run_tau_sweep raw max beta 0.029 32 $j
         done
     fi
 
