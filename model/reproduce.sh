@@ -156,6 +156,7 @@ run_exp() {
     local taus=$4
     local pre=${5:-false}
     local seeds=$6
+    local out_dir=${7:-""}
     local no_tau=${8:-false}
     local save_weights=${9:-false}
     local j_pct=${10:-1.0}
