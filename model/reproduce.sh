@@ -227,9 +227,8 @@ if ! $ONLY_PLOT; then
     # [SCALING LAW]: Item Scaling Study (N=32, 50 seeds)
     # We fix N=32 and sweep J-percentages (0.1 through 0.9)
     # This is added at the top for resume-ability.
-    if $FULL_SWEEP; then
         echo " -> Starting Item Scaling Law Study (N=32, 50 seeds)..."
-        J_SEEDS=$(seq -s ' ' 42 91)
+        J_SEEDS=$(seq -s ' ' 0 49)
         for j in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9; do
             # SAE (Base Taus)
             run_exp sae 1 bernoulli 0.0159 32 "$J_SEEDS" "${RESULT_DIR}" false false $j
