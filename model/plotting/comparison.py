@@ -42,7 +42,8 @@ def load_aggregated_results(embedding_type, n_samples='max', model_type='beta'):
     if not os.path.exists(path): return None
 
     df = pd.read_csv(path, on_bad_lines='skip')
-    metrics = ['rmse_naive', 'rmse_rasch', 'rmse_amortized', 'auc_naive', 'auc_rasch', 'auc_amortized']
+    metrics = ['rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt', 'rmse_amortized', 
+               'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt', 'auc_amortized']
     
     # Coerce to numeric and drop rows with corrupted data
     for col in metrics:
@@ -77,8 +78,24 @@ def plot_remediation_summary():
     
     res = {
         'Naive': {'a_m': base_df['auc_naive'].mean(), 'a_s': 0, 'r_m': base_df['rmse_naive'].mean(), 'r_s': 0},
-        'Rasch': {'a_m': base_df['auc_rasch'].mean(), 'a_s': 0, 'r_m': base_df['rmse_rasch'].mean(), 'r_s': 0}
+        'Rasch': {'a_m': base_df['auc_rasch'].mean(), 'a_s': 0, 'r_m': base_df['rmse_rasch'].mean(), 'r_s': 0},
     }
+    
+    # Try to load standalone 2PL
+    standalone_2pl = os.path.join(RESULT_DIR, 'amortized_irt_rasch_2pl_beta_n_max.csv')
+    if os.path.exists(standalone_2pl):
+        df_2l = pd.read_csv(standalone_2pl)
+        res['2PL'] = {'a_m': df_2l['auc_amortized'].mean(), 'a_s': df_2l['auc_amortized'].sem(), 'r_m': df_2l['rmse_amortized'].mean(), 'r_s': df_2l['rmse_amortized'].sem()}
+    else:
+        res['2PL'] = {'a_m': base_df['auc_2pl'].mean() if 'auc_2pl' in base_df.columns else 0, 'a_s': 0, 'r_m': base_df['rmse_2pl'].mean() if 'rmse_2pl' in base_df.columns else 0, 'r_s': 0}
+
+    # Try to load standalone MIRT
+    standalone_mirt = os.path.join(RESULT_DIR, 'amortized_irt_nonamortised_mirt_beta_n_max.csv')
+    if os.path.exists(standalone_mirt):
+        df_mi = pd.read_csv(standalone_mirt)
+        res['MIRT'] = {'a_m': df_mi['auc_amortized'].mean(), 'a_s': df_mi['auc_amortized'].sem(), 'r_m': df_mi['rmse_amortized'].mean(), 'r_s': df_mi['rmse_amortized'].sem()}
+    else:
+        res['MIRT'] = {'a_m': base_df['auc_mirt'].mean() if 'auc_mirt' in base_df.columns else 0, 'a_s': 0, 'r_m': base_df['rmse_mirt'].mean() if 'rmse_mirt' in base_df.columns else 0, 'r_s': 0}
     for label, fname in configs.items():
         path = os.path.join(RESULT_DIR, fname)
         if os.path.exists(path):
@@ -101,7 +118,7 @@ def plot_remediation_summary():
             print(f"Warning: {path} not found.")
             res[label] = {'a_m': 0.0, 'a_s': 0.0, 'r_m': 0.0, 'r_s': 0.0}
 
-    order = ['Naive', 'Rasch', 'Pre_32', 'Pre_max', 'Post_1', 'Post_max']
+    order = ['Naive', 'Rasch', '2PL', 'MIRT', 'Pre_32', 'Pre_max', 'Post_1', 'Post_max']
     df_p = pd.DataFrame([{
         'Model': l, 'AUC': res[l]['a_m'], 'AUC_SE': res[l]['a_s'], 'RMSE': res[l]['r_m'], 'RMSE_SE': res[l]['r_s']
     } for l in order])

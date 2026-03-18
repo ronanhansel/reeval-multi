@@ -154,6 +154,24 @@ class AmortizedIRTModel(nn.Module):
         return torch.sigmoid(logits)
 
 
+class MIRTModel(nn.Module):
+    """
+    Non-Amortized Multidimensional IRT model.
+    Learns item loadings directly as parameters instead of projecting from embeddings.
+    """
+    def __init__(self, N, J, K):
+        super().__init__()
+        self.theta = nn.Parameter(torch.randn(N, K) * 0.01)
+        self.theta_bias = nn.Parameter(torch.zeros(N))
+        self.a_j = nn.Parameter(torch.randn(J, K) * 0.01)
+        self.diff = nn.Parameter(torch.zeros(J))
+        self.global_bias = nn.Parameter(torch.zeros(1))
+
+    def forward(self):
+        logits = self.theta @ self.a_j.T + self.diff.unsqueeze(0) + self.theta_bias.unsqueeze(1) + self.global_bias
+        return torch.sigmoid(logits)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Training Functions
 # ══════════════════════════════════════════════════════════════════════════════
@@ -181,6 +199,34 @@ def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
 
     with torch.no_grad():
         probs = torch.sigmoid(theta.unsqueeze(1) - beta.unsqueeze(0))
+
+    return probs
+
+
+def train_2pl(N, J, y_train, train_mask_t, n_outer_iter=100):
+    """Train a 2-parameter logistic (2PL) IRT model (baseline)."""
+    theta = nn.Parameter(torch.randn(N, device=device) * 0.1)
+    beta = nn.Parameter(torch.randn(J, device=device) * 0.1)
+    alpha = nn.Parameter(torch.ones(J, device=device)) # Discrimination
+
+    optimizer = torch.optim.LBFGS(
+        [theta, beta, alpha], lr=0.1, max_iter=20,
+        history_size=10, line_search_fn="strong_wolfe"
+    )
+
+    def closure():
+        optimizer.zero_grad()
+        probs = torch.sigmoid(alpha.unsqueeze(0) * (theta.unsqueeze(1) - beta.unsqueeze(0)))
+        loss = F.binary_cross_entropy(probs, y_train, reduction='none')
+        total_loss = (loss * train_mask_t).sum() / train_mask_t.sum()
+        total_loss.backward()
+        return total_loss
+
+    for _ in range(n_outer_iter):
+        optimizer.step(closure)
+
+    with torch.no_grad():
+        probs = torch.sigmoid(alpha.unsqueeze(0) * (theta.unsqueeze(1) - beta.unsqueeze(0)))
 
     return probs
 
@@ -442,7 +488,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         emb_file = os.path.join(processed_emb_dir, f'embeddings_pca_{embedding_dim}.pkl')
     elif embedding_type == 'sae':
         emb_file = os.path.join(processed_emb_dir, f'embeddings_sae_{embedding_dim}.pkl')
-    elif embedding_type == 'ones':
+    elif embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
         emb_file = None
     else:
         raise ValueError(f"Unknown embedding type: {embedding_type}")
@@ -454,7 +500,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         emb_file = raw_emb_file
         embedding_type = 'raw'
 
-    if embedding_type == 'ones':
+    if embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
         raw_embs_map = {}
     else:
         print(f"Loading {embedding_type} embeddings from {emb_file}...")
@@ -545,7 +591,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 
     # Align embeddings with oracle columns
     task_ids = oracle_df.columns.tolist()
-    if embedding_type == 'ones':
+    if embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
         embeddings = np.ones((len(task_ids), 1), dtype=np.float32)
     else:
         embeddings = []
@@ -590,7 +636,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
-                   beta_phi=BETA_PHI, no_tau=False, quiet=False):
+                   beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -655,12 +701,95 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     rmse_naive = compute_rmse(p_naive.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
     auc_naive = evaluate_auc(p_naive, y_oracle, test_mask_t)
 
-    # 2. Rasch IRT baseline
+    # 2. Rasch IRT baseline (1PL)
     p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
     rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
     auc_rasch = evaluate_auc(p_rasch, y_oracle, test_mask_t)
 
-    # 3. Amortized IRT (our method)
+    # 3. Rasch 2PL baseline
+    p_2pl = train_2pl(N, J, y_train, train_mask_current_t)
+    rmse_2pl = compute_rmse(p_2pl.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_2pl = evaluate_auc(p_2pl, y_oracle, test_mask_t)
+
+    if embedding_type == 'rasch_2pl':
+        return {
+            'n_samples': n_files,
+            'model_type': model_type,
+            'seed': RANDOM_SEED,
+            'lambda_tau': LAMBDA_TAU,
+            'rmse_naive': rmse_naive,
+            'rmse_rasch': rmse_rasch,
+            'rmse_2pl': rmse_2pl,
+            'rmse_mirt': 0.0,
+            'rmse_amortized': rmse_2pl,
+            'auc_naive': auc_naive,
+            'auc_rasch': auc_rasch,
+            'auc_2pl': auc_2pl,
+            'auc_mirt': 0.0,
+            'auc_amortized': auc_2pl,
+            'active_dims': 0,
+            'active_indices': '[]',
+            'tau_values': '[]',
+            'model_state': {},
+            'final_state': {}
+        }
+
+    # 4. Non-Amortized MIRT
+    mirt_model = MIRTModel(N, J, K_MODEL).to(device)
+    mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
+    
+    mirt_model.train()
+    best_mirt_rmse = float('inf')
+    best_p_mirt = None
+    
+    for _ in range(EPOCHS // 2): # Slightly shorter training for speed
+        mirt_optimizer.zero_grad()
+        p_mirt = mirt_model()
+        p_m_clamp = p_mirt[train_mask_current_t].clamp(1e-6, 1-1e-6)
+        y_m_clamp = y_train[train_mask_current_t]
+        if model_type == 'beta':
+            y_m_clamp = y_m_clamp.clamp(1e-6, 1-1e-6)
+            dist = torch.distributions.Beta(p_m_clamp * beta_phi, (1-p_m_clamp) * beta_phi)
+            loss = -dist.log_prob(y_m_clamp).mean()
+        else:
+            dist = torch.distributions.Bernoulli(probs=p_m_clamp)
+            loss = -dist.log_prob(y_m_clamp).mean()
+        
+        loss.backward()
+        mirt_optimizer.step()
+        
+        with torch.no_grad():
+            curr_m_rmse = compute_rmse(p_mirt.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+            if curr_m_rmse < best_mirt_rmse:
+                best_mirt_rmse = curr_m_rmse
+                best_p_mirt = p_mirt.clone()
+    
+    auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
+
+    if embedding_type == 'nonamortised_mirt':
+        return {
+            'n_samples': n_files,
+            'model_type': model_type,
+            'seed': RANDOM_SEED,
+            'lambda_tau': LAMBDA_TAU,
+            'rmse_naive': rmse_naive,
+            'rmse_rasch': rmse_rasch,
+            'rmse_2pl': rmse_2pl,
+            'rmse_mirt': best_mirt_rmse,
+            'rmse_amortized': best_mirt_rmse,
+            'auc_naive': auc_naive,
+            'auc_rasch': auc_rasch,
+            'auc_2pl': auc_2pl,
+            'auc_mirt': auc_mirt,
+            'auc_amortized': auc_mirt,
+            'active_dims': K_MODEL,
+            'active_indices': str(list(range(K_MODEL))),
+            'tau_values': str([1.0]*K_MODEL),
+            'model_state': mirt_model.state_dict(),
+            'final_state': mirt_model.state_dict()
+        }
+
+    # 5. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
     best_rmse, best_state, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                      model_type=model_type, beta_phi=beta_phi,
@@ -688,9 +817,13 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'lambda_tau': LAMBDA_TAU,
         'rmse_naive': rmse_naive,
         'rmse_rasch': rmse_rasch,
+        'rmse_2pl': rmse_2pl,
+        'rmse_mirt': best_mirt_rmse,
         'rmse_amortized': best_rmse,
         'auc_naive': auc_naive,
         'auc_rasch': auc_rasch,
+        'auc_2pl': auc_2pl,
+        'auc_mirt': auc_mirt,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
         'active_indices': str(active_dim_indices),
@@ -813,7 +946,8 @@ def run_single_config(config, args, n_values):
         
         try:
             result = run_experiment(n, all_dfs, global_shared_indices, data,
-                                    model_type=args.model_type, beta_phi=args.beta_phi, no_tau=args.no_tau, quiet=quiet)
+                                    model_type=args.model_type, beta_phi=args.beta_phi, no_tau=args.no_tau, 
+                                    quiet=quiet, embedding_type=actual_emb_type)
                                     
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -866,7 +1000,7 @@ def main():
     parser = argparse.ArgumentParser(description='Amortized IRT Experiment')
     parser.add_argument(
         '--embedding-type', type=str, default='pca',
-        choices=['raw', 'pca', 'sae', 'ones'],
+        choices=['raw', 'pca', 'sae', 'ones', 'rasch_2pl', 'nonamortised_mirt'],
         help='Type of embeddings to use (default: pca)'
     )
     parser.add_argument(

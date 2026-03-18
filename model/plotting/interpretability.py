@@ -696,56 +696,62 @@ def plot_double_stacked_performance_bars():
     ]
 
     for mode, fname in plot_configs:
-        fig, ax = plt.subplots(figsize=(3.5, 2.5))
-        x = np.arange(len(architectures))
+        fig, ax = plt.subplots(figsize=(3, 2.5))
+        
+        # Filter architectures for hybrid mode
+        curr_archs = list(architectures)
+        curr_pre_base = np.array(pre_base)
+        curr_pre_stack = np.array(pre_stack)
+        curr_post_base = np.array(post_base)
+        curr_post_stack = np.array(post_stack)
+        curr_pre32_s = np.array(pre32_s)
+        curr_premx_s = np.array(premx_s)
+        curr_pbern_s = np.array(pbern_s)
+        curr_pbeta_s = np.array(pbeta_s)
+
+        if mode == 'hybrid':
+            mask = [i for i, a in enumerate(curr_archs) if a not in ['SAE', 'PCA']]
+            curr_archs = [curr_archs[i] for i in mask]
+            curr_pre_base = curr_pre_base[mask]
+            curr_pre_stack = curr_pre_stack[mask]
+            curr_post_base = curr_post_base[mask]
+            curr_post_stack = curr_post_stack[mask]
+            curr_pre32_s = curr_pre32_s[mask]
+            curr_premx_s = curr_premx_s[mask]
+            curr_pbern_s = curr_pbern_s[mask]
+            curr_pbeta_s = curr_pbeta_s[mask]
+
+        x = np.arange(len(curr_archs))
         width = 0.35
 
         # Determine what to plot for Pre
         # Pre: 32 Base (Light Red / Salmon)
         label_pre = f'{"32 Test Takers" if mode == "full" else "Pre Revision"}'
-        ax.bar(x - width/2, pre_base, width, color='salmon', 
+        ax.bar(x - width/2, curr_pre_base, width, color='salmon', 
                edgecolor='black', linewidth=0.5, label=label_pre, alpha=0.8,
-               yerr=pre32_s, error_kw={'lw': 0.5, 'capsize': 2})
+               yerr=curr_pre32_s, error_kw={'lw': 0.5, 'capsize': 2})
         if mode == 'full':
-            ax.bar(x - width/2, pre_stack, width, bottom=pre_base, color='tab:red', 
+            ax.bar(x - width/2, curr_pre_stack, width, bottom=curr_pre_base, color='tab:red', 
                    edgecolor='black', linewidth=0.5, label='124 Test Takers', alpha=0.8,
-                   yerr=premx_s, error_kw={'lw': 0.5, 'capsize': 2})
+                   yerr=curr_premx_s, error_kw={'lw': 0.5, 'capsize': 2})
         
         # Determine what to plot for Post
         # Post: Bernoulli (Yellow / Gold)
-        ax.bar(x + width/2, post_base, width, color='skyblue', 
+        ax.bar(x + width/2, curr_post_base, width, color='skyblue', 
                edgecolor='black', linewidth=0.5, label='Bernoulli', alpha=0.8,
-               yerr=pbern_s, error_kw={'lw': 0.5, 'capsize': 2}) 
+               yerr=curr_pbern_s, error_kw={'lw': 0.5, 'capsize': 2}) 
         if mode in ['full', 'hybrid']:
-            ax.bar(x + width/2, post_stack, width, bottom=post_base, color='tab:blue', 
+            ax.bar(x + width/2, curr_post_stack, width, bottom=curr_post_base, color='tab:blue', 
                    edgecolor='black', linewidth=0.5, label='Beta', alpha=0.8,
-                   yerr=pbeta_s, error_kw={'lw': 0.5, 'capsize': 2})
-
-        # Highlight Proposed Models (SAE, PCA, RAW)
-        if mode == 'hybrid':
-            # Highlight indices 2, 3, 4
-            x_min, x_max = 1.5, 4.5
-            y_min, y_max = 0.48, 0.75
-            
-            highlight = FancyBboxPatch(
-                (x_min, y_min), x_max - x_min, y_max - y_min,
-                boxstyle="square,pad=0",
-                linestyle='--', linewidth=0.8, edgecolor='grey',
-                facecolor='lightgrey', alpha=0.15,
-                zorder=0
-            )
-            ax.add_patch(highlight)
-            
-            # Optional: Add a subtle text label or just rely on the box
-            # ax.text((x_min + x_max)/2, y_max + 0.003, 'Our Models', 
-            #         ha='center', va='bottom', fontsize=6, color='black')
+                   yerr=curr_pbeta_s, error_kw={'lw': 0.5, 'capsize': 2})
 
         ax.set_ylabel('AUC', fontsize=10)
+        ax.set_yticks([0.5, 0.6, 0.7, 0.8])
         ax.set_xticks(x)
-        display_labels = [f"ARAF\n({arch})" if arch in ['SAE', 'PCA', 'RAW'] else arch for arch in architectures]
+        display_labels = [f"ARAF\n({arch})" if arch in ['SAE', 'PCA', 'RAW'] else arch for arch in curr_archs]
         ax.set_xticklabels(display_labels, fontsize=9)
         ax.tick_params(axis='y', labelsize=9)
-        ax.set_ylim(0.48, 0.85)
+        ax.set_ylim(0.48, 0.78)
         ax.grid(axis='y', linestyle=':', alpha=0.5)
         
         # Consistent legend

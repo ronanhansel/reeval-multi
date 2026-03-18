@@ -224,6 +224,14 @@ if ! $ONLY_PLOT; then
     }
 
     echo "[MODE] Running Experiments..."
+
+    # Standalone Baselines (Rasch 2PL and Non-Amortized MIRT)
+    # These are run at the top to ensure they are available for comparison independently.
+    echo " -> Running Standalone Baselines (N=32)..."
+    run_exp rasch_2pl 32 bernoulli 1.0 false "$SEEDS" "${RESULT_DIR}"
+    run_exp rasch_2pl max beta 1.0 false "$SEEDS" "${RESULT_DIR}"
+    run_exp nonamortised_mirt 32 bernoulli 1.0 false "$SEEDS" "${RESULT_DIR}"
+    run_exp nonamortised_mirt max beta 1.0 false "$SEEDS" "${RESULT_DIR}"
     
     # [SCALING LAW]: Item Scaling Study (N=32)
     # We fix N=32 and sweep J-percentages (0.1 through 0.9)
@@ -236,6 +244,12 @@ if ! $ONLY_PLOT; then
             run_tau_sweep pca max beta 0.054 32 $j
             run_tau_sweep raw 1 bernoulli 0.0151 32 $j
             run_tau_sweep raw max beta 0.029 32 $j
+            
+            # Baselines (No Tau Sweep, matching N=32 setup)
+            run_exp rasch_2pl 1 bernoulli 1.0 32 "$SEEDS" "${RESULT_DIR}" false false $j
+            run_exp rasch_2pl max beta 1.0 32 "$SEEDS" "${RESULT_DIR}" false false $j
+            run_exp nonamortised_mirt 1 bernoulli 1.0 32 "$SEEDS" "${RESULT_DIR}" false false $j
+            run_exp nonamortised_mirt max beta 1.0 32 "$SEEDS" "${RESULT_DIR}" false false $j
         done
     fi
 
@@ -304,6 +318,15 @@ if ! $ONLY_PLOT; then
         run_tau_sweep raw max beta 0.029 16
         run_tau_sweep raw max beta 0.029 8
         run_tau_sweep raw max beta 0.029 4
+        
+        # Baselines Scaling (N-Sweep)
+        echo " -> Starting Baseline Scaling Study (N-Sweep, No Tau)..."
+        for n in 4 8 16 32 64 max; do
+            run_exp rasch_2pl 1 bernoulli 1.0 $n "$SEEDS" "${RESULT_DIR}"
+            run_exp rasch_2pl max beta 1.0 $n "$SEEDS" "${RESULT_DIR}"
+            run_exp nonamortised_mirt 1 bernoulli 1.0 $n "$SEEDS" "${RESULT_DIR}"
+            run_exp nonamortised_mirt max beta 1.0 $n "$SEEDS" "${RESULT_DIR}"
+        done
         
         # 5. Ablation Studies (Full Sweep only)
         # Setup 1: No TAU (w/ SAE, PCA, RAW embeddings)

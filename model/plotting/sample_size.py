@@ -37,27 +37,33 @@ SIZES_BETA = ['4', '8', '16', '32', '64', 'max']
 X_VALS_BETA = [4, 8, 16, 32, 64, 143]
 
 MODELS = ['sae', 'pca', 'raw']
-# J percentages to plot
-J_PERCENTAGES = [0.25, 0.5, 1.0]
-J_LABELS = {0.25: '25% Items', 0.5: '50% Items', 1.0: '100% Items'}
-J_LINESTYLES = {0.25: ':', 0.5: '--', 1.0: '-'}
-
-MODEL_LABELS = {'sae': 'ARAF (SAE)', 'pca': 'ARAF (PCA)', 'raw': 'ARAF (RAW)'}
-MODEL_COLORS = {'sae': "salmon", 'pca': "skyblue", 'raw': "tab:blue"}
+MODEL_LABELS = {'sae': 'A.SAE', 'pca': 'A.PCA', 'raw': 'A.RAW'}
+MODEL_COLORS = {'sae': "lightblue", 'pca': "deepskyblue", 'raw': "steelblue"}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Logic
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_auc(setup, model, size, j_percentage=1.0):
-    # Bernoulli uses n_1, Beta uses n_max
+def load_metrics(setup, model, size):
+    """Loads AUC and RMSE metrics for a given model and setup."""
+    # Bernoulli uses n_1 (minimal sampling), Beta uses n_max (full averaging)
     n_suffix = "n_1" if setup == 'bernoulli' else "n_max"
-    j_suffix = f"_j{j_percentage}" if j_percentage < 1.0 else ""
-    filename = f"amortized_irt_{model}_{setup}_pre_{size}_{n_suffix}{j_suffix}.csv"
-    path = os.path.join(RESULT_DIR, filename)
-    if not os.path.exists(path):
-        # Silently skip if file doesn't exist for a specific J-percentage
-        return (None, None), (None, None)
+    
+    # Try multiple patterns for the filename
+    options = [
+        f"amortized_irt_{model}_{setup}_pre_{size}_{n_suffix}.csv",
+        f"amortized_irt_{model}_{setup}_n_{size}.csv" if setup == 'bernoulli' else f"amortized_irt_{model}_{setup}_n_max.csv"
+    ]
+    
+    path = None
+    for opt in options:
+        p = os.path.join(RESULT_DIR, opt)
+        if os.path.exists(p):
+            path = p
+            break
+            
+    if path is None:
+        return None
     
     try:
         df = pd.read_csv(path)
@@ -69,111 +75,192 @@ def load_auc(setup, model, size, j_percentage=1.0):
         else:
             best_df = df
             
-        auc_mean = best_df['auc_amortized'].mean()
-        auc_se = best_df['auc_amortized'].sem()
-        
-        # Rasch baseline (usually consistent across models for the same size)
-        rasch_mean = best_df['auc_rasch'].mean()
-        rasch_se = best_df['auc_rasch'].sem()
-        
-        return (auc_mean, auc_se), (rasch_mean, rasch_se)
+        metrics = {}
+        for metric in ['auc', 'rmse']:
+            for suffix in ['amortized', 'rasch', '2pl', 'mirt']:
+                col = f'{metric}_{suffix}'
+                if col in best_df.columns:
+                    metrics[col] = (best_df[col].mean(), best_df[col].sem())
+                else:
+                    metrics[col] = (None, None)
+        return metrics
     except Exception as e:
-        print(f"Error reading {filename}: {e}")
-        return (None, None), (None, None)
+        print(f"Error reading {path}: {e}")
+        return None
 
-def plot_setup(setup):
-    print(f"Generating plot for {setup} setup...")
-    
+def gather_data(setup):
     sizes = SIZES_BERNOULLI if setup == 'bernoulli' else SIZES_BETA
     x_vals = X_VALS_BERNOULLI if setup == 'bernoulli' else X_VALS_BETA
     
-    model_data = {m: [] for m in MODELS}
-    rasch_data = [] 
+    model_data_auc = {m: [] for m in MODELS}
+    model_data_rmse = {m: [] for m in MODELS}
+    
+    rasch_data_auc, rasch_data_rmse = [], []
+    twopl_data_auc, twopl_data_rmse = [], []
+    mirt_data_auc, mirt_data_rmse = [], []
     
     for i, size in enumerate(sizes):
-        rasch_vals = []
-        for model in MODELS:
-            m_auc, r_auc = load_auc(setup, model, size)
-            if m_auc[0] is not None:
-                model_data[model].append((x_vals[i], m_auc[0], m_auc[1]))
-            if r_auc[0] is not None:
-                rasch_vals.append(r_auc)
+        raw_vals = {met: {bm: [] for bm in ['rasch', '2pl', 'mirt']} for met in ['auc', 'rmse']}
         
-        if rasch_vals:
-            r_means = [v[0] for v in rasch_vals]
-            avg_rasch_mean = np.mean(r_means)
-            avg_rasch_se = np.mean([v[1] for v in rasch_vals if v[1] is not None])
-            rasch_data.append((x_vals[i], avg_rasch_mean, avg_rasch_se))
+        # Check standard models (they contain internal baselines)
+        for model in MODELS:
+            metrics = load_metrics(setup, model, size)
+            if metrics:
+                if metrics['auc_amortized'][0] is not None:
+                    model_data_auc[model].append((x_vals[i], metrics['auc_amortized'][0], metrics['auc_amortized'][1]))
+                if metrics['rmse_amortized'][0] is not None:
+                    model_data_rmse[model].append((x_vals[i], metrics['rmse_amortized'][0], metrics['rmse_amortized'][1]))
+                
+                for met in ['auc', 'rmse']:
+                    for bm in ['rasch', '2pl', 'mirt']:
+                        if metrics[f'{met}_{bm}'][0] is not None:
+                            raw_vals[met][bm].append(metrics[f'{met}_{bm}'])
+        
+        # Check standalone baseline files for scaling data
+        for b_name in ['rasch_2pl', 'nonamortised_mirt']:
+            metrics = load_metrics(setup, b_name, size)
+            if metrics:
+                for met in ['auc', 'rmse']:
+                    for bm in ['rasch', '2pl', 'mirt']:
+                        if metrics[f'{met}_{bm}'][0] is not None:
+                            raw_vals[met][bm].append(metrics[f'{met}_{bm}'])
 
-    # Plotting setup
-    plt.rcParams.update(bundles.icml2024(usetex=False, family="serif"))
-    fig, ax = plt.subplots(figsize=(3.5, 2.5))
-    
-    # 1. Naive Baseline (dashed at 0.5)
-    ax.axhline(0.5, color=BASELINE_GRAY, linestyle='--', linewidth=1, alpha=0.8)
-    # Adjust position slightly for N=4 if needed, but 8.2 is fine
-    label_x = x_vals[0] + 0.2
-    ax.text(label_x, 0.503, "Naive Baseline", color=BASELINE_GRAY, fontsize=9, fontweight='bold', va='bottom')
-    
-    # 2. Rasch
-    if rasch_data:
-        x_r, y_r, e_r = zip(*rasch_data)
-        ax.errorbar(x_r, y_r, yerr=e_r, color='#95a5a6', label='Rasch IRT', 
-                   marker='o', linestyle='-', capsize=3, markersize=4, alpha=0.8)
-    
-    # 3. Amortized Models (Multiple J curves)
-    for model in MODELS:
-        for j_pct in J_PERCENTAGES:
-            j_data = []
-            for i, size in enumerate(sizes):
-                m_auc, _ = load_auc(setup, model, size, j_percentage=j_pct)
-                if m_auc[0] is not None:
-                    j_data.append((x_vals[i], m_auc[0], m_auc[1]))
+        # Aggregate baselines
+        if raw_vals['auc']['rasch']:
+            rasch_data_auc.append((x_vals[i], np.mean([v[0] for v in raw_vals['auc']['rasch']]), np.mean([v[1] for v in raw_vals['auc']['rasch'] if v[1] is not None])))
+        if raw_vals['auc']['2pl']:
+            twopl_data_auc.append((x_vals[i], np.mean([v[0] for v in raw_vals['auc']['2pl']]), np.mean([v[1] for v in raw_vals['auc']['2pl'] if v[1] is not None])))
+        if raw_vals['auc']['mirt']:
+            mirt_data_auc.append((x_vals[i], np.mean([v[0] for v in raw_vals['auc']['mirt']]), np.mean([v[1] for v in raw_vals['auc']['mirt'] if v[1] is not None])))
+
+        if raw_vals['rmse']['rasch']:
+            rasch_data_rmse.append((x_vals[i], np.mean([v[0] for v in raw_vals['rmse']['rasch']]), np.mean([v[1] for v in raw_vals['rmse']['rasch'] if v[1] is not None])))
+        if raw_vals['rmse']['2pl']:
+            twopl_data_rmse.append((x_vals[i], np.mean([v[0] for v in raw_vals['rmse']['2pl']]), np.mean([v[1] for v in raw_vals['rmse']['2pl'] if v[1] is not None])))
+        if raw_vals['rmse']['mirt']:
+            mirt_data_rmse.append((x_vals[i], np.mean([v[0] for v in raw_vals['rmse']['mirt']]), np.mean([v[1] for v in raw_vals['rmse']['mirt'] if v[1] is not None])))
             
-            if j_data:
-                x, y, e = zip(*j_data)
-                label = f"{MODEL_LABELS[model]} ({J_LABELS[j_pct]})" if len(J_PERCENTAGES) > 1 else MODEL_LABELS[model]
-                ax.errorbar(x, y, yerr=e, color=MODEL_COLORS[model], label=label, 
-                           marker='o', linestyle=J_LINESTYLES[j_pct], capsize=3, markersize=4, 
-                           linewidth=1.5, alpha=0.8)
+    return {
+        'auc': {
+            'model_data': model_data_auc,
+            'rasch': rasch_data_auc,
+            '2pl': twopl_data_auc,
+            'mirt': mirt_data_auc
+        },
+        'rmse': {
+            'model_data': model_data_rmse,
+            'rasch': rasch_data_rmse,
+            '2pl': twopl_data_rmse,
+            'mirt': mirt_data_rmse
+        },
+        'x_vals': x_vals
+    }
+
+def plot_on_ax(ax, data, setup, metric):
+    res = data[metric]
+    x_vals = data['x_vals']
+    
+    # 1. Base levels
+    if metric == 'auc':
+        ax.axhline(0.5, color=BASELINE_GRAY, linestyle='--', linewidth=1, alpha=0.8)
+    
+    # 2. Baselines
+    if res['rasch']:
+        x, y, e = zip(*res['rasch'])
+        ax.errorbar(x, y, yerr=e, color='#95a5a6', label='Rasch (1PL)', 
+                   marker='o', linestyle='--', capsize=2, markersize=3, alpha=0.6)
+    
+    if res['2pl']:
+        x, y, e = zip(*res['2pl'])
+        ax.errorbar(x, y, yerr=e, color='#7f8c8d', label='2PL IRT', 
+                   marker='s', linestyle='--', capsize=2, markersize=3, alpha=0.6)
+                   
+    if res['mirt']:
+        x, y, e = zip(*res['mirt'])
+        ax.errorbar(x, y, yerr=e, color='#34495e', label='Standal. MIRT', 
+                   marker='^', linestyle='--', capsize=2, markersize=3, alpha=0.6)
+    
+    # 3. Amortized Models
+    for model in MODELS:
+        m_data = res['model_data'][model]
+        if m_data:
+            x, y, e = zip(*m_data)
+            ax.errorbar(x, y, yerr=e, color=MODEL_COLORS[model], label=MODEL_LABELS[model], 
+                       marker='o', linestyle='-', capsize=2, markersize=4, 
+                       linewidth=1.5, alpha=0.8)
     
     # Formatting
-    ax.set_xlabel('Number of Test Takers ($N$)', fontsize=10)
-    ax.set_ylabel('AUC', fontsize=10)
+    t_map = {
+        ('auc', 'bernoulli'): 'Bernoulli (AUC)',
+        ('auc', 'beta'): 'Beta (AUC)',
+        ('rmse', 'bernoulli'): 'Bernoulli (RMSE)',
+        ('rmse', 'beta'): 'Beta (RMSE)'
+    }
+    ax.set_title(t_map.get((metric, setup), f"{setup} ({metric})"), fontsize=10, fontweight='bold')
     
     ax.set_xscale('log', base=2)
     ax.set_xticks(x_vals)
-    # Style xticks
-    ax.tick_params(axis='x', labelsize=9)
-    ax.tick_params(axis='y', labelsize=9)
+    ax.tick_params(axis='both', labelsize=8)
     ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
     
     xticklabels = [str(v) for v in x_vals[:-1]] + ['143']
     ax.set_xticklabels(xticklabels)
     
-    ax.set_ylim(0.48, 0.78)
-    ax.grid(True, linestyle=':', alpha=0.6)
+    if metric == 'auc':
+        ax.set_yticks([0.5, 0.6, 0.7, 0.8])
+        ax.set_ylim(0.48, 0.78)
+    else:
+        # RMSE typically ranges from 0.4 to 0.6
+        ax.set_yticks([0.4, 0.5, 0.6])
+        ax.set_ylim(0.38, 0.65)
+        
+    ax.grid(True, axis='y', linestyle=':', alpha=0.6)
+
+def plot_combined():
+    print("Generating 4-panel horizontal plot for bernoulli and beta setups (AUC and RMSE)...")
     
-    # Legend - handle duplicate labels if J_PERCENTAGES > 1
-    handles, labels = ax.get_legend_handles_labels()
-    # If too many labels, only label J percentages for SAE or something?
-    # For now just show all.
-    ax.legend(fontsize=6, frameon=True, loc='best', ncol=2)
+    data_bernoulli = gather_data('bernoulli')
+    data_beta = gather_data('beta')
+    
+    plt.rcParams.update(bundles.icml2024(usetex=False, family="serif"))
+    # One row, four columns. Share Y within metric pairs.
+    fig, axes = plt.subplots(1, 4, figsize=(11, 2.8))
+    (ax1, ax2, ax3, ax4) = axes
+    
+    # 1. AUC Panel
+    plot_on_ax(ax1, data_bernoulli, 'bernoulli', 'auc')
+    plot_on_ax(ax2, data_beta, 'beta', 'auc')
+    ax1.set_ylabel('AUC', fontsize=10)
+    
+    # 2. RMSE Panel
+    plot_on_ax(ax3, data_bernoulli, 'bernoulli', 'rmse')
+    plot_on_ax(ax4, data_beta, 'beta', 'rmse')
+    ax3.set_ylabel('RMSE', fontsize=10)
+    
+    # Sync Y scales for metric pairs
+    ax2.set_ylim(ax1.get_ylim())
+    ax4.set_ylim(ax3.get_ylim())
+    
+    # Shared X label
+    fig.supxlabel('Number of Agents ($N$)', fontsize=10, y=0.18)
+    
+    # Shared legend - extract from one of the axes
+    handles, labels = ax1.get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.05), 
+               ncol=6, fontsize=8, frameon=True)
     
     plt.tight_layout()
+    # Adjust layout to make room for legend and labels
+    plt.subplots_adjust(bottom=0.32, top=0.88, wspace=0.35)
     
-    # Save
-    out_pdf = os.path.join(FIGURE_DIR, f'sample_size_{setup}.pdf')
-    out_png = os.path.join(RESULT_DIR, f'sample_size_{setup}.png')
+    out_pdf = os.path.join(FIGURE_DIR, 'sample_size_quad.pdf')
     plt.savefig(out_pdf, bbox_inches='tight', dpi=300)
-    plt.savefig(out_png, bbox_inches='tight', dpi=300)
     plt.close()
     
-    print(f"Success! {setup} plot generated: {out_pdf}")
+    print(f"Success! 4-panel plot generated: {out_pdf}")
 
 def main():
-    for setup in ['bernoulli', 'beta']:
-        plot_setup(setup)
+    plot_combined()
 
 if __name__ == "__main__":
     main()

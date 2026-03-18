@@ -22,7 +22,7 @@ def get_best_results(filename, label_prefix):
         df.columns = df.columns.str.strip()
         
         # Coerce numeric
-        cols_to_fix = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'auc_rasch', 'rmse_rasch', 'rmse_naive']
+        cols_to_fix = ['lambda_tau', 'auc_amortized', 'rmse_amortized', 'auc_rasch', 'rmse_rasch', 'auc_2pl', 'rmse_2pl', 'auc_mirt', 'rmse_mirt', 'rmse_naive']
         for col in cols_to_fix:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -51,15 +51,16 @@ def get_best_results(filename, label_prefix):
         'RMSE': format_res(rmse_mean, rmse_se)
     }]
     
-    # 2. Extract Baselines
+    # 2. Extract Baselines (Skip if this IS a standalone baseline already)
+    if any(b in label_prefix for b in ["Rasch 2PL", "MIRT", "ONES"]):
+        return results
+
     unique_seeds = df.drop_duplicates(subset=['seed'])
     
     # Determine the specific baseline label to avoid collisions
-    # Example label_prefix: "SAE Post (N=max)" -> "Post (N=max)"
-    # Example label_prefix: "SAE Pre-max (N=max)" -> "Pre-max (N=max)"
     condition = label_prefix.split(' ', 1)[1] if ' ' in label_prefix else label_prefix
     
-    # Rasch
+    # Rasch 1PL
     if 'auc_rasch' in df.columns:
         rasch_auc_mean = unique_seeds['auc_rasch'].mean()
         rasch_auc_se = unique_seeds['auc_rasch'].sem()
@@ -70,6 +71,32 @@ def get_best_results(filename, label_prefix):
             'Model Configuration': f"Rasch IRT ({condition} Baseline)",
             'AUC': format_res(rasch_auc_mean, rasch_auc_se),
             'RMSE': format_res(rasch_rmse_mean, rasch_rmse_se)
+        })
+
+    # 2PL (internal)
+    if 'auc_2pl' in df.columns:
+        twopl_auc_mean = unique_seeds['auc_2pl'].mean()
+        twopl_auc_se = unique_seeds['auc_2pl'].sem()
+        twopl_rmse_mean = unique_seeds['rmse_2pl'].mean()
+        twopl_rmse_se = unique_seeds['rmse_2pl'].sem()
+        
+        results.append({
+            'Model Configuration': f"2PL IRT ({condition} Baseline)",
+            'AUC': format_res(twopl_auc_mean, twopl_auc_se),
+            'RMSE': format_res(twopl_rmse_mean, twopl_rmse_se)
+        })
+
+    # MIRT (internal)
+    if 'auc_mirt' in df.columns:
+        mirt_auc_mean = unique_seeds['auc_mirt'].mean()
+        mirt_auc_se = unique_seeds['auc_mirt'].sem()
+        mirt_rmse_mean = unique_seeds['rmse_mirt'].mean()
+        mirt_rmse_se = unique_seeds['rmse_mirt'].sem()
+        
+        results.append({
+            'Model Configuration': f"Non-Amortized MIRT ({condition} Baseline)",
+            'AUC': format_res(mirt_auc_mean, mirt_auc_se),
+            'RMSE': format_res(mirt_rmse_mean, mirt_rmse_se)
         })
 
     # Naive
@@ -93,6 +120,12 @@ configs = [
     ('amortized_irt_sae_bernoulli_n_1.csv', 'SAE Post (N=1)'),
     ('amortized_irt_pca_bernoulli_n_1.csv', 'PCA Post (N=1)'),
     ('amortized_irt_raw_bernoulli_n_1.csv', 'RAW Post (N=1)'),
+    
+    # Standalone Baselines
+    ('amortized_irt_rasch_2pl_bernoulli_n_32.csv', 'Rasch 2PL (N=32)'),
+    ('amortized_irt_rasch_2pl_beta_n_max.csv', 'Rasch 2PL (N=max)'),
+    ('amortized_irt_nonamortised_mirt_bernoulli_n_32.csv', 'Non-Amortized MIRT (N=32)'),
+    ('amortized_irt_nonamortised_mirt_beta_n_max.csv', 'Non-Amortized MIRT (N=max)'),
 
     # Pre Revision
     ('amortized_irt_sae_beta_pre_max_n_max.csv', 'SAE Pre-max (N=max)'),
@@ -129,6 +162,12 @@ configs = [
     ('amortized_irt_raw_bernoulli_pre_32_n_1_notau.csv', 'RAW Pre-32 (N=1, No-TAU)'),
     ('amortized_irt_ones_bernoulli_pre_32_n_1.csv', 'ONES Pre-32 (N=1)'),
     ('amortized_irt_ones_bernoulli_pre_32_n_1_notau.csv', 'ONES Pre-32 (N=1, No-TAU)'),
+    
+    # Standalone Baselines
+    ('amortized_irt_rasch_2pl_bernoulli_n_32.csv', '2PL Standalone (N=32)'),
+    ('amortized_irt_rasch_2pl_beta_n_max.csv', '2PL Standalone (N=max)'),
+    ('amortized_irt_nonamortised_mirt_bernoulli_n_32.csv', 'MIRT Standalone (N=32)'),
+    ('amortized_irt_nonamortised_mirt_beta_n_max.csv', 'MIRT Standalone (N=max)'),
 ]
 
 all_results = []
@@ -142,11 +181,13 @@ final_df = pd.DataFrame(all_results).drop_duplicates(subset=['Model Configuratio
 def sort_key(label):
     if 'Naive' in label: return 0
     if 'Rasch' in label: return 1
-    if 'SAE' in label: return 2
-    if 'PCA' in label: return 3
-    if 'RAW' in label: return 4
-    if 'ONES' in label: return 5
-    return 6
+    if '2PL' in label: return 2
+    if 'MIRT' in label: return 3
+    if 'SAE' in label: return 4
+    if 'PCA' in label: return 5
+    if 'RAW' in label: return 6
+    if 'ONES' in label: return 7
+    return 8
 
 # Priority for Pre/Post and Max/8
 def cond_key(label):

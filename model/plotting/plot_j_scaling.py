@@ -15,9 +15,15 @@ RESULT_DIR = 'result'
 FIGURE_DIR = '../paper/figures'
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-MODELS = ['sae', 'pca', 'raw']
-MODEL_LABELS = {'sae': 'ARAF (SAE)', 'pca': 'ARAF (PCA)', 'raw': 'ARAF (RAW)'}
-MODEL_COLORS = {'sae': "salmon", 'pca': "skyblue", 'raw': "tab:blue"}
+MODELS = ['sae', 'pca', 'raw', 'rasch_2pl', 'nonamortised_mirt']
+MODEL_LABELS = {
+    'sae': 'ARAF (SAE)', 'pca': 'ARAF (PCA)', 'raw': 'ARAF (RAW)',
+    'rasch_2pl': '2PL IRT', 'nonamortised_mirt': 'Non-Amort. MIRT'
+}
+MODEL_COLORS = {
+    'sae': "salmon", 'pca': "skyblue", 'raw': "tab:blue",
+    'rasch_2pl': '#7f8c8d', 'nonamortised_mirt': '#34495e'
+}
 J_PCTS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 def load_auc_for_j(setup, model, j_pct):
@@ -62,9 +68,11 @@ def plot_j_scaling(setup):
                 valid_js.append(j * 100) # Percentage
         
         if means:
+            ls = '--' if 'mirt' in model or '2pl' in model else '-'
+            marker = '^' if 'mirt' in model else ('s' if '2pl' in model else 'o')
             ax.errorbar(valid_js, means, yerr=ses, color=MODEL_COLORS[model], 
-                       label=MODEL_LABELS[model], marker='o', linestyle='-', 
-                       capsize=3, markersize=4, linewidth=1.5, alpha=0.8)
+                       label=MODEL_LABELS[model], marker=marker, linestyle=ls, 
+                       capsize=3, markersize=3, linewidth=1.2, alpha=0.7)
 
     ax.set_xlabel('Percentage of Items ($J\%$) at $N=32$', fontsize=10)
     ax.set_ylabel('AUC', fontsize=10)
