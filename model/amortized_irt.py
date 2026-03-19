@@ -61,7 +61,8 @@ DEFAULT_BASELINE_OUTPUT = os.path.join(BASELINE_DIR, 'baseline_metrics.csv')
 
 BASELINE_METRIC_COLS = [
     'rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt',
-    'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt'
+    'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt',
+    'rmse_knn', 'auc_knn'
 ]
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
@@ -99,6 +100,9 @@ WD_W = 0.1
 
 # Beta distribution precision parameter
 BETA_PHI = 10.0
+
+# Embedding kNN baseline settings
+KNN_K = 10
 
 warnings.filterwarnings('ignore')
 
@@ -685,7 +689,7 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
 
 
 def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-                             model_type='beta', beta_phi=BETA_PHI):
+                             model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K):
     """Compute naive + Rasch + 2PL + standalone MIRT baselines for one configuration."""
     # 1. Naive item-mean baseline
     valid_counts = train_mask_current_t.sum(dim=0)
@@ -740,6 +744,63 @@ def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test
 
     auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
 
+    # 5. Embedding kNN cold-start baseline (predict held-out items from nearest train items)
+    # Uses item embeddings only and observed user responses on train items.
+    if x_j is None:
+        p_knn = p_naive.clone()
+    else:
+        x = x_j
+        if x.dim() != 2 or x.shape[0] != J:
+            p_knn = p_naive.clone()
+        else:
+            train_item_mask = train_mask_current_t.any(dim=0)
+            test_item_mask = torch.from_numpy(test_mask).to(device).any(dim=0)
+
+            train_item_idx = torch.where(train_item_mask)[0]
+            test_item_idx = torch.where(test_item_mask)[0]
+
+            if train_item_idx.numel() == 0 or test_item_idx.numel() == 0:
+                p_knn = p_naive.clone()
+            else:
+                # User fallback = mean on observed train items.
+                train_obs = train_mask_current_t.float()
+                user_counts = train_obs.sum(dim=1)
+                global_mean = y_train[train_mask_current_t].mean()
+                user_means = torch.where(
+                    user_counts > 0,
+                    (y_train * train_obs).sum(dim=1) / user_counts.clamp_min(1.0),
+                    global_mean
+                )
+
+                p_knn = user_means.unsqueeze(1).expand(N, J).clone()
+
+                # Embeddings are already normalized in data prep, but renormalize defensively.
+                x_norm = F.normalize(x, dim=1)
+                sims = x_norm[test_item_idx] @ x_norm[train_item_idx].T
+                k_eff = max(1, min(int(knn_k), train_item_idx.numel()))
+                sim_vals, sim_pos = torch.topk(sims, k=k_eff, dim=1)
+                nn_item_idx = train_item_idx[sim_pos]
+
+                # Positive similarities only; fallback to uniform if all non-positive.
+                nn_weights = torch.clamp(sim_vals, min=0.0)
+                zero_rows = nn_weights.sum(dim=1, keepdim=True) <= 1e-12
+                if zero_rows.any():
+                    nn_weights[zero_rows.squeeze(1)] = 1.0
+
+                for t in range(test_item_idx.numel()):
+                    nbrs = nn_item_idx[t]
+                    w = nn_weights[t].unsqueeze(0)
+                    obs = train_mask_current_t[:, nbrs].float()
+                    yy = y_train[:, nbrs]
+
+                    num = (yy * obs * w).sum(dim=1)
+                    den = (obs * w).sum(dim=1)
+                    pred = torch.where(den > 0, num / den.clamp_min(1e-12), user_means)
+                    p_knn[:, test_item_idx[t]] = pred
+
+    rmse_knn = compute_rmse(p_knn.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+    auc_knn = evaluate_auc(p_knn, y_oracle, test_mask_t)
+
     return {
         'rmse_naive': rmse_naive,
         'rmse_rasch': rmse_rasch,
@@ -749,6 +810,8 @@ def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test
         'auc_rasch': auc_rasch,
         'auc_2pl': auc_2pl,
         'auc_mirt': auc_mirt,
+        'rmse_knn': rmse_knn,
+        'auc_knn': auc_knn,
         'mirt_state': mirt_model.state_dict(),
     }
 
@@ -782,7 +845,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     computed = compute_baseline_metrics(
         N, J, y_train, train_mask_current_t,
         data['y_oracle'], data['test_mask'], data['test_mask_t'],
-        model_type=model_type, beta_phi=beta_phi
+        model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j')
     )
 
     baseline_row = baseline_key.copy()

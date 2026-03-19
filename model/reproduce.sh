@@ -163,7 +163,9 @@ run_baseline() {
     local j_pct=${5:-1.0}
 
     local seeds_csv=${seeds// /,}
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV}"
+    # Baseline cache now includes an embedding-kNN zero-shot baseline.
+    # We pin baseline embedding type to PCA for a stable, single reference baseline.
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type pca --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
