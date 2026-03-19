@@ -274,6 +274,10 @@ if ! $ONLY_PLOT; then
             run_tau_sweep sae max beta 0.16 32 $j
             run_tau_sweep pca max beta 0.054 32 $j
             run_tau_sweep raw max beta 0.029 32 $j
+
+            run_tau_sweep sae 1 bernoulli 0.0159 32 $j
+            run_tau_sweep pca 1 bernoulli 0.0155 32 $j
+            run_tau_sweep raw 1 bernoulli 0.0151 32 $j
         done
     fi
 
@@ -284,21 +288,15 @@ if ! $ONLY_PLOT; then
 
     # 1. PCA Embeddings
     run_tau_sweep pca max beta 0.054 false
-    if $FULL_SWEEP; then
-        run_tau_sweep pca 1 bernoulli 0.0155 false
-    fi
+    run_tau_sweep pca 1 bernoulli 0.0155 false
 
     # 2. SAE Embeddings
     run_tau_sweep sae max beta 0.0535 false
-    if $FULL_SWEEP; then
-        run_tau_sweep sae 1 bernoulli 0.0159 false
-    fi
+    run_tau_sweep sae 1 bernoulli 0.0159 false
 
     # 3. RAW Embeddings
     run_tau_sweep raw max beta 0.029 false
-    if $FULL_SWEEP; then
-        run_tau_sweep raw 1 bernoulli 0.0151 false
-    fi
+    run_tau_sweep raw 1 bernoulli 0.0151 false
 
     # 4. Pre-Revision Checks (Full Sweep only)
     if $FULL_SWEEP; then
