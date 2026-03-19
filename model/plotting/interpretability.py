@@ -570,7 +570,7 @@ def plot_tau_sensitivity():
         
         # New: Export Active Dimensions (K) separately for n32 linear
         if suffix == 'n32_merged' and scale_name == 'linear':
-            fig_k, ax_k = plt.subplots(figsize=(3.5, 2.5))
+            fig_k, ax_k = plt.subplots(figsize=(3.5, 2))
             
             for d in data:
                 if 'active_dims' not in d['mean'].columns: continue
@@ -580,7 +580,7 @@ def plot_tau_sensitivity():
                 ax_k.plot(taus, means, color=d['color'], label=d['label'], linewidth=1.2, linestyle=d['ls'], alpha=0.8)
                 ax_k.fill_between(taus, means - error_band, means + error_band, color=d['color'], alpha=0.1)
             
-            ax_k.set_xlabel(r'Regularization Strength ($\tau$)', fontsize=10)
+            # ax_k.set_xlabel(r'Regularization Strength ($\tau$)', fontsize=10)
             ax_k.set_ylabel("Active Dimensions ($K$)", fontsize=10)
             ax_k.set_xlim(x_start, x_axis_limit)
             ax_k.set_ylim((-1.5, 31.5))
@@ -659,7 +659,7 @@ def plot_double_stacked_performance_bars():
     """Double-bar architecture: Pre (Left, Red) vs Post (Right, Blue). Exports both Stacked and Base versions."""
     plt.rcParams.update(get_bundle())
     
-    architectures = ['Naive', 'Rasch', 'SAE', 'PCA', 'RAW']
+    architectures = ['Naive', 'Rasch', 'IRT-2PL', 'MIRT', 'SAE', 'PCA', 'RAW']
     
     baseline_df = load_baseline_cache()
 
@@ -671,7 +671,7 @@ def plot_double_stacked_performance_bars():
             df = pd.read_csv(path, on_bad_lines='skip')
             df.columns = df.columns.str.strip()
             # Coerce numeric
-            numeric_cols = ['lambda_tau', 'auc_amortized', 'auc_rasch', 'auc_naive']
+            numeric_cols = ['lambda_tau', 'auc_amortized', 'auc_rasch', 'auc_naive', 'auc_2pl', 'auc_mirt']
             for c in numeric_cols:
                 if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce')
             
@@ -696,7 +696,16 @@ def plot_double_stacked_performance_bars():
                 n_vals = pd.to_numeric(df['n_samples'], errors='coerce').dropna() if 'n_samples' in df.columns else pd.Series(dtype=float)
                 n_samples = int(n_vals.iloc[0]) if not n_vals.empty else None
 
-                metric_col = f'auc_{arch_type.lower()}'
+                metric_col_map = {
+                    'Naive': 'auc_naive',
+                    'Rasch': 'auc_rasch',
+                    'IRT-2PL': 'auc_2pl',
+                    'MIRT': 'auc_mirt',
+                }
+                metric_col = metric_col_map.get(arch_type)
+                if metric_col is None:
+                    return 0.5, 0.0
+
                 m, s = lookup_baseline_auc(baseline_df, model_type, n_samples, pre_revision, metric_col)
                 if m is not None:
                     return m, s
@@ -715,18 +724,63 @@ def plot_double_stacked_performance_bars():
     pbern_m, pbern_s = [], []
     pbeta_m, pbeta_s = [], []
     
+    file_variants = {
+        'Naive': {
+            'pre32': 'amortized_irt_ones_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_ones_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_ones_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_ones_beta_n_max.csv',
+        },
+        'Rasch': {
+            # Rasch is sourced from baseline cache via lookup_baseline_auc.
+            # Use neutral sweep files only to provide scenario/n_samples context.
+            'pre32': 'amortized_irt_ones_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_ones_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_ones_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_ones_beta_n_max.csv',
+        },
+        'IRT-2PL': {
+            # Use the same setup context as other baselines for apples-to-apples
+            # comparisons in hybrid bars (Pre-32, Post Bernoulli N=1, Post Beta N=max).
+            'pre32': 'amortized_irt_ones_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_ones_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_ones_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_ones_beta_n_max.csv',
+        },
+        'MIRT': {
+            # Use the same setup context as other baselines for apples-to-apples
+            # comparisons in hybrid bars (Pre-32, Post Bernoulli N=1, Post Beta N=max).
+            'pre32': 'amortized_irt_ones_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_ones_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_ones_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_ones_beta_n_max.csv',
+        },
+        'SAE': {
+            'pre32': 'amortized_irt_sae_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_sae_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_sae_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_sae_beta_n_max.csv',
+        },
+        'PCA': {
+            'pre32': 'amortized_irt_pca_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_pca_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_pca_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_pca_beta_n_max.csv',
+        },
+        'RAW': {
+            'pre32': 'amortized_irt_raw_bernoulli_pre_32_n_1.csv',
+            'premax': 'amortized_irt_raw_beta_pre_max_n_max.csv',
+            'bernoulli': 'amortized_irt_raw_bernoulli_n_1.csv',
+            'beta': 'amortized_irt_raw_beta_n_max.csv',
+        },
+    }
+
     for arch in architectures:
-        if arch == 'Naive':
-            prefix = 'amortized_irt_ones'
-        elif arch == 'Rasch':
-            prefix = 'amortized_irt_sae'
-        else:
-            prefix = f'amortized_irt_{arch.lower()}'
-            
-        m32, s32 = get_val_stats(f'{prefix}_bernoulli_pre_32_n_1.csv', arch)
-        mmx, smx = get_val_stats(f'{prefix}_beta_pre_max_n_max.csv', arch)
-        mbr, sbr = get_val_stats(f'{prefix}_bernoulli_n_1.csv', arch)
-        mbt, sbt = get_val_stats(f'{prefix}_beta_n_max.csv', arch)
+        variants = file_variants.get(arch, {})
+        m32, s32 = get_val_stats(variants.get('pre32', ''), arch)
+        mmx, smx = get_val_stats(variants.get('premax', ''), arch)
+        mbr, sbr = get_val_stats(variants.get('bernoulli', ''), arch)
+        mbt, sbt = get_val_stats(variants.get('beta', ''), arch)
         
         pre32_m.append(m32); pre32_s.append(s32)
         premx_m.append(mmx); premx_s.append(smx)
@@ -746,7 +800,7 @@ def plot_double_stacked_performance_bars():
     ]
 
     for mode, fname in plot_configs:
-        fig, ax = plt.subplots(figsize=(3, 2.5))
+        fig, ax = plt.subplots(figsize=(3.5, 2))
         
         # Filter architectures for hybrid mode
         curr_archs = list(architectures)
@@ -759,8 +813,8 @@ def plot_double_stacked_performance_bars():
         curr_pbern_s = np.array(pbern_s)
         curr_pbeta_s = np.array(pbeta_s)
 
-        if mode == 'hybrid':
-            mask = [i for i, a in enumerate(curr_archs) if a not in ['SAE', 'PCA']]
+        if mode in ['full', 'base']:
+            mask = [i for i, a in enumerate(curr_archs) if a not in ['IRT-2PL', 'MIRT']]
             curr_archs = [curr_archs[i] for i in mask]
             curr_pre_base = curr_pre_base[mask]
             curr_pre_stack = curr_pre_stack[mask]
@@ -770,6 +824,22 @@ def plot_double_stacked_performance_bars():
             curr_premx_s = curr_premx_s[mask]
             curr_pbern_s = curr_pbern_s[mask]
             curr_pbeta_s = curr_pbeta_s[mask]
+
+        if mode == 'hybrid':
+            # Hybrid order: Naive, Rasch, IRT (2PL), MIRT, ARAF (RAW)
+            hybrid_order = ['Naive', 'Rasch', 'IRT-2PL', 'MIRT', 'RAW']
+            index_by_arch = {a: i for i, a in enumerate(curr_archs)}
+            order_idx = [index_by_arch[a] for a in hybrid_order if a in index_by_arch]
+
+            curr_archs = [curr_archs[i] for i in order_idx]
+            curr_pre_base = curr_pre_base[order_idx]
+            curr_pre_stack = curr_pre_stack[order_idx]
+            curr_post_base = curr_post_base[order_idx]
+            curr_post_stack = curr_post_stack[order_idx]
+            curr_pre32_s = curr_pre32_s[order_idx]
+            curr_premx_s = curr_premx_s[order_idx]
+            curr_pbern_s = curr_pbern_s[order_idx]
+            curr_pbeta_s = curr_pbeta_s[order_idx]
 
         x = np.arange(len(curr_archs))
         width = 0.35
@@ -798,10 +868,19 @@ def plot_double_stacked_performance_bars():
         ax.set_ylabel('AUC', fontsize=10)
         ax.set_yticks([0.5, 0.6, 0.7, 0.8])
         ax.set_xticks(x)
-        display_labels = [f"ARAF\n({arch})" if arch in ['SAE', 'PCA', 'RAW'] else arch for arch in curr_archs]
+        display_labels = []
+        for arch in curr_archs:
+            if mode == 'hybrid' and arch == 'RAW':
+                display_labels.append('ARAF')
+            elif mode == 'hybrid' and arch == 'IRT-2PL':
+                display_labels.append('IRT (2PL)')
+            elif arch in ['SAE', 'PCA', 'RAW']:
+                display_labels.append(f"ARAF\n({arch})")
+            else:
+                display_labels.append(arch)
         ax.set_xticklabels(display_labels, fontsize=9)
         ax.tick_params(axis='y', labelsize=9)
-        ax.set_ylim(0.48, 0.78)
+        ax.set_ylim(0.48, 0.82)
         ax.grid(axis='y', linestyle=':', alpha=0.5)
         
         # Consistent legend

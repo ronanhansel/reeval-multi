@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-Sample Size vs. AUC Plot.
-Shows how AUC improves as the number of test takers (agents) increases.
-Generates two versions: Bernoulli (efficient sampling) and Beta (averaged probabilities).
+Beta-only sample-size scaling plot.
+
+Generates a 4-panel figure with:
+- AUC vs Number of Agents
+- AUC vs Percentage of Items
+- RMSE vs Number of Agents
+- RMSE vs Percentage of Items
 """
 
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from tueplots import bundles
 
@@ -23,23 +27,68 @@ BASELINE_PATH = os.path.join(RESULT_DIR, 'baselines', 'baseline_metrics.csv')
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-# Shared colors (matching colors.py)
-BLUE = (0.12, 0.47, 0.71)
-LIGHT_BLUE = (0.45, 0.62, 0.78)
-GREEN = (0.17, 0.63, 0.17)
-ORANGE = (1.0, 0.5, 0.05)
-BASELINE_GRAY = '#7F8C8D'
-
-# Common sizes for Bernoulli. Beta also includes 4.
-SIZES_BERNOULLI = ['4', '8', '16', '32', '64', 'max']
-X_VALS_BERNOULLI = [4, 8, 16, 32, 64, 143]
-
+# Beta setup only
 SIZES_BETA = ['4', '8', '16', '32', '64', 'max']
 X_VALS_BETA = [4, 8, 16, 32, 64, 143]
+J_PCTS = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
 
 MODELS = ['sae', 'pca', 'raw']
-MODEL_LABELS = {'sae': 'A.SAE', 'pca': 'A.PCA', 'raw': 'A.RAW'}
+MODEL_LABELS = {'sae': 'ARAF (SAE)', 'pca': 'ARAF (PCA)', 'raw': 'ARAF (RAW)'}
 MODEL_COLORS = {'sae': "lightblue", 'pca': "deepskyblue", 'raw': "steelblue"}
+BASELINE_GRAY = 'slategray'
+BASELINE_KEYS = ['rasch', 'mirt']
+BASELINE_LABELS = {
+    'rasch': 'Rasch',
+    'mirt': 'MIRT',
+}
+BASELINE_COLORS = {
+    'rasch': 'darkslategray',
+    'mirt': 'darkgray',
+}
+BASELINE_MARKERS = {
+    'rasch': 'o',
+    'mirt': 'o',
+}
+
+# Typography
+FONT_SIZE_TITLE = 11
+FONT_SIZE_TICK = 10
+FONT_SIZE_ANNOTATION = 10
+FONT_SIZE_GROUP_LABEL = 11
+FONT_SIZE_LEGEND = 10
+
+# Marker sizing
+BASELINE_MARKER_SIZE = 2.75
+MODEL_MARKER_SIZE = 3.0
+
+
+def _load_metrics_from_file(path):
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path, on_bad_lines='skip')
+        if df.empty:
+            return None
+        if 'lambda_tau' in df.columns and 'auc_amortized' in df.columns:
+            tau_stats = df.groupby('lambda_tau')['auc_amortized'].mean()
+            best_tau = tau_stats.idxmax()
+            df = df[df['lambda_tau'] == best_tau]
+
+        metrics = {}
+        for metric in ['auc', 'rmse']:
+            col = f'{metric}_amortized'
+            if col in df.columns:
+                vals = pd.to_numeric(df[col], errors='coerce').dropna()
+                if not vals.empty:
+                    metrics[metric] = (float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0))
+                else:
+                    metrics[metric] = (None, None)
+            else:
+                metrics[metric] = (None, None)
+        return metrics
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+        return None
 
 
 def load_baseline_cache():
@@ -50,294 +99,308 @@ def load_baseline_cache():
     except Exception:
         return pd.DataFrame()
 
-    if 'n_samples' in df.columns:
-        df['n_samples'] = pd.to_numeric(df['n_samples'], errors='coerce')
-    if 'pre_revision' in df.columns:
-        df['pre_revision'] = df['pre_revision'].astype(str).str.strip().str.lower().replace('', 'none')
-    if 'model_type' in df.columns:
-        df['model_type'] = df['model_type'].astype(str)
+    if df.empty:
+        return df
+
+    for col in ['model_type', 'pre_revision']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.lower()
+    for col in ['n_samples', 'j_percentage']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
 
-def baseline_stats(df, model_type, n_samples, pre_revision, metric_col):
-    if df.empty or metric_col not in df.columns or n_samples is None:
+def baseline_stats(df, metric_col, model_type='beta', n_samples=1, pre_revision='none', j_percentage=None):
+    if df.empty or metric_col not in df.columns:
         return None, None
-    sub = df[
-        (df['model_type'] == str(model_type)) &
-        (df['n_samples'] == int(n_samples)) &
-        (df['pre_revision'] == str(pre_revision).strip().lower())
-    ]
+
+    sub = df[(df['model_type'] == str(model_type).lower())]
+    if 'n_samples' in sub.columns and n_samples is not None:
+        sub = sub[sub['n_samples'] == float(n_samples)]
+    if 'pre_revision' in sub.columns and pre_revision is not None:
+        sub = sub[sub['pre_revision'] == str(pre_revision).strip().lower()]
+    if 'j_percentage' in sub.columns and j_percentage is not None:
+        sub = sub[np.isclose(sub['j_percentage'].astype(float), float(j_percentage), atol=1e-9)]
+
     vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
     if vals.empty:
         return None, None
     return float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0)
 
 
-def infer_baseline_key_from_df(df, setup, size):
-    if df is None or df.empty:
-        return None, None
-    model_type = 'bernoulli' if setup == 'bernoulli' else 'beta'
-    if 'scenario' in df.columns and df['scenario'].notna().any():
-        pre_val = str(df['scenario'].dropna().iloc[0]).replace('Pre-', '').strip().lower()
-        pre_revision = pre_val if pre_val else 'none'
-    else:
-        pre_revision = 'none' if setup == 'bernoulli' else str(size).strip().lower()
-
-    if 'n_samples' in df.columns:
-        n_vals = pd.to_numeric(df['n_samples'], errors='coerce').dropna()
-        n_samples = int(n_vals.iloc[0]) if not n_vals.empty else None
-    else:
-        if str(size).lower() == 'max':
-            n_samples = None
-        else:
-            try:
-                n_samples = int(size)
-            except ValueError:
-                n_samples = None
-    return model_type, pre_revision, n_samples
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Logic
-# ══════════════════════════════════════════════════════════════════════════════
-
-def load_metrics(setup, model, size):
-    """Loads AUC and RMSE metrics for a given model and setup."""
-    # Bernoulli uses n_1 (minimal sampling), Beta uses n_max (full averaging)
-    n_suffix = "n_1" if setup == 'bernoulli' else "n_max"
-    
-    # Try multiple patterns for the filename
+def load_beta_agent_metrics(model, size):
+    n_suffix = 'n_max'
     options = [
-        f"amortized_irt_{model}_{setup}_pre_{size}_{n_suffix}.csv",
-        f"amortized_irt_{model}_{setup}_n_{size}.csv" if setup == 'bernoulli' else f"amortized_irt_{model}_{setup}_n_max.csv"
+        os.path.join(RESULT_DIR, f'amortized_irt_{model}_beta_pre_{size}_{n_suffix}.csv'),
+        os.path.join(RESULT_DIR, f'amortized_irt_{model}_beta_n_max.csv'),
     ]
-    
-    path = None
-    for opt in options:
-        p = os.path.join(RESULT_DIR, opt)
-        if os.path.exists(p):
-            path = p
-            break
-            
-    if path is None:
-        return None
-    
-    try:
-        df = pd.read_csv(path)
-        # Select rows with the best lambda_tau by mean AUC
-        if 'lambda_tau' in df.columns:
-            tau_stats = df.groupby('lambda_tau')['auc_amortized'].mean()
-            best_tau = tau_stats.idxmax()
-            best_df = df[df['lambda_tau'] == best_tau]
-        else:
-            best_df = df
-            
-        metrics = {}
-        for metric in ['auc', 'rmse']:
-            for suffix in ['amortized', 'rasch', '2pl', 'mirt']:
-                col = f'{metric}_{suffix}'
-                if col in best_df.columns:
-                    metrics[col] = (best_df[col].mean(), best_df[col].sem())
-                else:
-                    metrics[col] = (None, None)
-        return metrics
-    except Exception as e:
-        print(f"Error reading {path}: {e}")
-        return None
+    for path in options:
+        metrics = _load_metrics_from_file(path)
+        if metrics is not None:
+            return metrics
+    return None
 
-def gather_data(setup):
-    sizes = SIZES_BERNOULLI if setup == 'bernoulli' else SIZES_BETA
-    x_vals = X_VALS_BERNOULLI if setup == 'bernoulli' else X_VALS_BETA
-    
-    model_data_auc = {m: [] for m in MODELS}
-    model_data_rmse = {m: [] for m in MODELS}
-    
-    rasch_data_auc, rasch_data_rmse = [], []
-    twopl_data_auc, twopl_data_rmse = [], []
-    mirt_data_auc, mirt_data_rmse = [], []
-    baseline_df = load_baseline_cache()
-    
-    for i, size in enumerate(sizes):
-        raw_vals = {met: {bm: [] for bm in ['rasch', '2pl', 'mirt']} for met in ['auc', 'rmse']}
-        example_df = None
-        
-        # Check standard models (they contain internal baselines)
-        for model in MODELS:
-            metrics = load_metrics(setup, model, size)
-            if metrics:
-                if example_df is None:
-                    try:
-                        n_suffix = "n_1" if setup == 'bernoulli' else "n_max"
-                        p1 = os.path.join(RESULT_DIR, f"amortized_irt_{model}_{setup}_pre_{size}_{n_suffix}.csv")
-                        p2 = os.path.join(RESULT_DIR, f"amortized_irt_{model}_{setup}_n_{size}.csv" if setup == 'bernoulli' else f"amortized_irt_{model}_{setup}_n_max.csv")
-                        if os.path.exists(p1):
-                            example_df = pd.read_csv(p1, on_bad_lines='skip')
-                        elif os.path.exists(p2):
-                            example_df = pd.read_csv(p2, on_bad_lines='skip')
-                    except Exception:
-                        example_df = None
-                if metrics['auc_amortized'][0] is not None:
-                    model_data_auc[model].append((x_vals[i], metrics['auc_amortized'][0], metrics['auc_amortized'][1]))
-                if metrics['rmse_amortized'][0] is not None:
-                    model_data_rmse[model].append((x_vals[i], metrics['rmse_amortized'][0], metrics['rmse_amortized'][1]))
-                
-                for met in ['auc', 'rmse']:
-                    for bm in ['rasch', '2pl', 'mirt']:
-                        if metrics[f'{met}_{bm}'][0] is not None:
-                            raw_vals[met][bm].append(metrics[f'{met}_{bm}'])
-        
-        # Check standalone baseline files for scaling data
-        for b_name in ['rasch_2pl', 'nonamortised_mirt']:
-            metrics = load_metrics(setup, b_name, size)
-            if metrics:
-                for met in ['auc', 'rmse']:
-                    for bm in ['rasch', '2pl', 'mirt']:
-                        if metrics[f'{met}_{bm}'][0] is not None:
-                            raw_vals[met][bm].append(metrics[f'{met}_{bm}'])
 
-        model_type_key, pre_key, n_key = infer_baseline_key_from_df(example_df, setup, size)
-        if model_type_key is not None and n_key is not None:
-            for met in ['auc', 'rmse']:
-                for bm in ['rasch', '2pl', 'mirt']:
-                    mean_val, sem_val = baseline_stats(baseline_df, model_type_key, n_key, pre_key, f'{met}_{bm}')
-                    if mean_val is not None:
-                        raw_vals[met][bm].append((mean_val, sem_val))
+def load_beta_item_metrics(model, j_pct):
+    # 100% uses the original non-subsampled file (no _j suffix).
+    if float(j_pct) >= 1.0:
+        filename = f'amortized_irt_{model}_beta_pre_32_n_max.csv'
+    else:
+        filename = f'amortized_irt_{model}_beta_pre_32_n_max_j{j_pct}.csv'
+    path = os.path.join(RESULT_DIR, filename)
+    return _load_metrics_from_file(path)
 
-        # Aggregate baselines
-        if raw_vals['auc']['rasch']:
-            rasch_data_auc.append((x_vals[i], np.mean([v[0] for v in raw_vals['auc']['rasch']]), np.mean([v[1] for v in raw_vals['auc']['rasch'] if v[1] is not None])))
-        if raw_vals['auc']['2pl']:
-            twopl_data_auc.append((x_vals[i], np.mean([v[0] for v in raw_vals['auc']['2pl']]), np.mean([v[1] for v in raw_vals['auc']['2pl'] if v[1] is not None])))
-        if raw_vals['auc']['mirt']:
-            mirt_data_auc.append((x_vals[i], np.mean([v[0] for v in raw_vals['auc']['mirt']]), np.mean([v[1] for v in raw_vals['auc']['mirt'] if v[1] is not None])))
 
-        if raw_vals['rmse']['rasch']:
-            rasch_data_rmse.append((x_vals[i], np.mean([v[0] for v in raw_vals['rmse']['rasch']]), np.mean([v[1] for v in raw_vals['rmse']['rasch'] if v[1] is not None])))
-        if raw_vals['rmse']['2pl']:
-            twopl_data_rmse.append((x_vals[i], np.mean([v[0] for v in raw_vals['rmse']['2pl']]), np.mean([v[1] for v in raw_vals['rmse']['2pl'] if v[1] is not None])))
-        if raw_vals['rmse']['mirt']:
-            mirt_data_rmse.append((x_vals[i], np.mean([v[0] for v in raw_vals['rmse']['mirt']]), np.mean([v[1] for v in raw_vals['rmse']['mirt'] if v[1] is not None])))
-            
-    return {
-        'auc': {
-            'model_data': model_data_auc,
-            'rasch': rasch_data_auc,
-            '2pl': twopl_data_auc,
-            'mirt': mirt_data_auc
+def gather_beta_agent_data():
+    data = {
+        'auc': {m: [] for m in MODELS},
+        'rmse': {m: [] for m in MODELS},
+        'baselines': {
+            'auc': {b: [] for b in BASELINE_KEYS},
+            'rmse': {b: [] for b in BASELINE_KEYS},
         },
-        'rmse': {
-            'model_data': model_data_rmse,
-            'rasch': rasch_data_rmse,
-            '2pl': twopl_data_rmse,
-            'mirt': mirt_data_rmse
-        },
-        'x_vals': x_vals
     }
+    baseline_df = load_baseline_cache()
+    for i, size in enumerate(SIZES_BETA):
+        x = X_VALS_BETA[i]
+        for model in MODELS:
+            metrics = load_beta_agent_metrics(model, size)
+            if metrics is None:
+                continue
+            for metric in ['auc', 'rmse']:
+                mean_val, sem_val = metrics[metric]
+                if mean_val is not None:
+                    data[metric][model].append((x, mean_val, sem_val))
 
-def plot_on_ax(ax, data, setup, metric):
-    res = data[metric]
-    x_vals = data['x_vals']
-    
-    # 1. Base levels
+        for metric in ['auc', 'rmse']:
+            for b in BASELINE_KEYS:
+                mean_val, sem_val = baseline_stats(
+                    baseline_df,
+                    metric_col=f'{metric}_{b}',
+                    model_type='beta',
+                    n_samples=1,
+                    pre_revision=size,
+                    j_percentage=1.0,
+                )
+                if mean_val is not None:
+                    data['baselines'][metric][b].append((x, mean_val, sem_val))
+    return data
+
+
+def gather_beta_item_data():
+    data = {
+        'auc': {m: [] for m in MODELS},
+        'rmse': {m: [] for m in MODELS},
+        'baselines': {
+            'auc': {b: [] for b in BASELINE_KEYS},
+            'rmse': {b: [] for b in BASELINE_KEYS},
+        },
+    }
+    baseline_df = load_baseline_cache()
+    for j_pct in J_PCTS:
+        x = int(round(j_pct * 100))
+        for model in MODELS:
+            metrics = load_beta_item_metrics(model, j_pct)
+            if metrics is None:
+                continue
+            for metric in ['auc', 'rmse']:
+                mean_val, sem_val = metrics[metric]
+                if mean_val is not None:
+                    data[metric][model].append((x, mean_val, sem_val))
+
+        for metric in ['auc', 'rmse']:
+            for b in BASELINE_KEYS:
+                mean_val, sem_val = baseline_stats(
+                    baseline_df,
+                    metric_col=f'{metric}_{b}',
+                    model_type='beta',
+                    n_samples=1,
+                    pre_revision='32',
+                    j_percentage=j_pct,
+                )
+                if mean_val is not None:
+                    data['baselines'][metric][b].append((x, mean_val, sem_val))
+    return data
+
+
+def plot_model_curves(ax, series_by_model, baseline_series, metric, title, x_ticks, x_ticklabels, log2_x=False):
+    for b in BASELINE_KEYS:
+        series = baseline_series.get(b, [])
+        if not series:
+            continue
+        x, y, e = zip(*series)
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        e = np.asarray(e, dtype=float)
+        ax.fill_between(
+            x,
+            y - e,
+            y + e,
+            color=BASELINE_COLORS[b],
+            alpha=0.12,
+            linewidth=0,
+            zorder=1,
+        )
+        ax.plot(
+            x,
+            y,
+            color=BASELINE_COLORS[b],
+            label=BASELINE_LABELS[b],
+            marker=BASELINE_MARKERS[b],
+            linestyle='--',
+            markersize=BASELINE_MARKER_SIZE,
+            alpha=0.75,
+            zorder=2,
+        )
+
+    for model in MODELS:
+        series = series_by_model.get(model, [])
+        if not series:
+            continue
+        x, y, e = zip(*series)
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        e = np.asarray(e, dtype=float)
+        ax.fill_between(
+            x,
+            y - e,
+            y + e,
+            color=MODEL_COLORS[model],
+            alpha=0.15,
+            linewidth=0,
+            zorder=1,
+        )
+        ax.plot(
+            x,
+            y,
+            color=MODEL_COLORS[model],
+            label=MODEL_LABELS[model],
+            marker='o',
+            linestyle='-',
+            markersize=MODEL_MARKER_SIZE,
+            linewidth=1.5,
+            alpha=0.85,
+            zorder=2,
+        )
+
     if metric == 'auc':
         ax.axhline(0.5, color=BASELINE_GRAY, linestyle='--', linewidth=1, alpha=0.8)
-    
-    # 2. Baselines
-    if res['rasch']:
-        x, y, e = zip(*res['rasch'])
-        ax.errorbar(x, y, yerr=e, color='#95a5a6', label='Rasch (1PL)', 
-                   marker='o', linestyle='--', capsize=2, markersize=3, alpha=0.6)
-    
-    if res['2pl']:
-        x, y, e = zip(*res['2pl'])
-        ax.errorbar(x, y, yerr=e, color='#7f8c8d', label='2PL IRT', 
-                   marker='s', linestyle='--', capsize=2, markersize=3, alpha=0.6)
-                   
-    if res['mirt']:
-        x, y, e = zip(*res['mirt'])
-        ax.errorbar(x, y, yerr=e, color='#34495e', label='Standal. MIRT', 
-                   marker='^', linestyle='--', capsize=2, markersize=3, alpha=0.6)
-    
-    # 3. Amortized Models
-    for model in MODELS:
-        m_data = res['model_data'][model]
-        if m_data:
-            x, y, e = zip(*m_data)
-            ax.errorbar(x, y, yerr=e, color=MODEL_COLORS[model], label=MODEL_LABELS[model], 
-                       marker='o', linestyle='-', capsize=2, markersize=4, 
-                       linewidth=1.5, alpha=0.8)
-    
-    # Formatting
-    t_map = {
-        ('auc', 'bernoulli'): 'Bernoulli (AUC)',
-        ('auc', 'beta'): 'Beta (AUC)',
-        ('rmse', 'bernoulli'): 'Bernoulli (RMSE)',
-        ('rmse', 'beta'): 'Beta (RMSE)'
-    }
-    ax.set_title(t_map.get((metric, setup), f"{setup} ({metric})"), fontsize=10, fontweight='bold')
-    
-    ax.set_xscale('log', base=2)
-    ax.set_xticks(x_vals)
-    ax.tick_params(axis='both', labelsize=8)
-    ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-    
-    xticklabels = [str(v) for v in x_vals[:-1]] + ['143']
-    ax.set_xticklabels(xticklabels)
-    
+        ax.text(
+            0.5,
+            0.505,
+            'Naive Baseline',
+            transform=ax.get_yaxis_transform(),
+            ha='center',
+            va='bottom',
+            fontsize=FONT_SIZE_ANNOTATION,
+            color=BASELINE_GRAY,
+        )
+
+    if log2_x:
+        ax.set_xscale('log', base=2)
+        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(x_ticklabels)
+    ax.set_title(title, fontsize=FONT_SIZE_TITLE)
+    ax.tick_params(axis='both', labelsize=FONT_SIZE_TICK)
+
     if metric == 'auc':
         ax.set_yticks([0.5, 0.6, 0.7, 0.8])
         ax.set_ylim(0.48, 0.78)
     else:
-        # RMSE typically ranges from 0.4 to 0.6
         ax.set_yticks([0.4, 0.5, 0.6])
         ax.set_ylim(0.38, 0.65)
-        
+
     ax.grid(True, axis='y', linestyle=':', alpha=0.6)
 
-def plot_combined():
-    print("Generating 4-panel horizontal plot for bernoulli and beta setups (AUC and RMSE)...")
-    
-    data_bernoulli = gather_data('bernoulli')
-    data_beta = gather_data('beta')
-    
-    plt.rcParams.update(bundles.icml2024(usetex=False, family="serif"))
-    # One row, four columns. Share Y within metric pairs.
-    fig, axes = plt.subplots(1, 4, figsize=(11, 2.8))
-    (ax1, ax2, ax3, ax4) = axes
-    
-    # 1. AUC Panel
-    plot_on_ax(ax1, data_bernoulli, 'bernoulli', 'auc')
-    plot_on_ax(ax2, data_beta, 'beta', 'auc')
-    ax1.set_ylabel('AUC', fontsize=10)
-    
-    # 2. RMSE Panel
-    plot_on_ax(ax3, data_bernoulli, 'bernoulli', 'rmse')
-    plot_on_ax(ax4, data_beta, 'beta', 'rmse')
-    ax3.set_ylabel('RMSE', fontsize=10)
-    
-    # Sync Y scales for metric pairs
-    ax2.set_ylim(ax1.get_ylim())
-    ax4.set_ylim(ax3.get_ylim())
-    
-    # Shared X label
-    fig.supxlabel('Number of Agents ($N$)', fontsize=10, y=0.18)
-    
-    # Shared legend - extract from one of the axes
+
+def plot_combined_beta_quad():
+    print('Generating Beta-only 4-panel plot (AUC/RMSE by Agents and Item Percentage)...')
+
+    beta_agents = gather_beta_agent_data()
+    beta_items = gather_beta_item_data()
+
+    plt.rcParams.update(bundles.icml2024(usetex=False, family='serif'))
+    # Keep the original formatting style: one row with four panels.
+    fig, axes = plt.subplots(1, 4, figsize=(11, 2.8), constrained_layout=False)
+    ax1, ax2, ax3, ax4 = axes
+
+    plot_model_curves(
+        ax1,
+        beta_agents['auc'],
+        beta_agents['baselines']['auc'],
+        metric='auc',
+        title='AUC',
+        x_ticks=X_VALS_BETA,
+        x_ticklabels=[str(v) for v in X_VALS_BETA[:-1]] + ['143'],
+        log2_x=True,
+    )
+
+    plot_model_curves(
+        ax2,
+        beta_agents['rmse'],
+        beta_agents['baselines']['rmse'],
+        metric='rmse',
+        title='RMSE',
+        x_ticks=X_VALS_BETA,
+        x_ticklabels=[str(v) for v in X_VALS_BETA[:-1]] + ['143'],
+        log2_x=True,
+    )
+
+    plot_model_curves(
+        ax3,
+        beta_items['auc'],
+        beta_items['baselines']['auc'],
+        metric='auc',
+        title='AUC',
+        x_ticks=[10, 30, 50, 70, 90],
+        x_ticklabels=['10', '30', '50', '70', '90'],
+        log2_x=False,
+    )
+
+    plot_model_curves(
+        ax4,
+        beta_items['rmse'],
+        beta_items['baselines']['rmse'],
+        metric='rmse',
+        title='RMSE',
+        x_ticks=[10, 30, 50, 70, 90],
+        x_ticklabels=['10', '30', '50', '70', '90'],
+        log2_x=False,
+    )
+
+    # Sync Y-scales by metric pair to match original behavior.
+    ax3.set_ylim(ax1.get_ylim())
+    ax4.set_ylim(ax2.get_ylim())
+
+    # Grouped shared x-axis labels centered from the actual subplot geometry.
+    left_pair_center = 0.5 * (ax1.get_position().x0 + ax2.get_position().x1)
+    right_pair_center = 0.5 * (ax3.get_position().x0 + ax4.get_position().x1)
+    fig.text(left_pair_center, 0.18, 'Number of Agents ($N$)', ha='center', va='center', fontsize=FONT_SIZE_GROUP_LABEL)
+    fig.text(right_pair_center, 0.18, 'Percentage of Items ($J\\%$)', ha='center', va='center', fontsize=FONT_SIZE_GROUP_LABEL)
+
     handles, labels = ax1.get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.05), 
-               ncol=6, fontsize=8, frameon=True)
-    
-    plt.tight_layout()
-    # Adjust layout to make room for legend and labels
+    fig.legend(
+        handles,
+        labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=5,
+        fontsize=FONT_SIZE_LEGEND,
+        frameon=True,
+    )
+
     plt.subplots_adjust(bottom=0.32, top=0.88, wspace=0.35)
-    
+
     out_pdf = os.path.join(FIGURE_DIR, 'sample_size_quad.pdf')
     plt.savefig(out_pdf, bbox_inches='tight', dpi=300)
     plt.close()
-    
-    print(f"Success! 4-panel plot generated: {out_pdf}")
+    print(f'Success! 4-panel beta plot generated: {out_pdf}')
 
 def main():
-    plot_combined()
+    plot_combined_beta_quad()
 
 if __name__ == "__main__":
     main()
