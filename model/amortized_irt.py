@@ -1514,7 +1514,11 @@ def main():
                     np.isclose(df_baseline['j_percentage'].astype(float), key_j, atol=1e-6)
                 )
                 if mask.any():
-                    completed_configs.add((int(seed), float(taus[0])))
+                    matched = df_baseline.loc[mask]
+                    metric_block = matched[BASELINE_METRIC_COLS].apply(pd.to_numeric, errors='coerce')
+                    has_complete_row = metric_block.notna().all(axis=1).any()
+                    if has_complete_row:
+                        completed_configs.add((int(seed), float(taus[0])))
         except Exception:
             pass
     elif output_path is not None and os.path.exists(output_path):
