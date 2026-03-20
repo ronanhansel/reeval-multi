@@ -3,9 +3,9 @@
 | Model Configuration           | AUC         | RMSE        |
 |:------------------------------|:------------|:------------|
 | Naive (Post-max Baseline)     | 0.500       | 0.266±0.002 |
-| Rasch IRT (Post-max Baseline) | 0.571±0.006 | 0.272±0.002 |
+| Rasch IRT (Post-max Baseline) | 0.570±0.006 | 0.272±0.002 |
 | Naive (Post-1 Baseline)       | 0.500       | 0.266±0.002 |
-| Rasch IRT (Post-1 Baseline)   | 0.574±0.004 | 0.340±0.005 |
+| Rasch IRT (Post-1 Baseline)   | 0.574±0.005 | 0.340±0.005 |
 | SAE Post (N=1)                | 0.697±0.001 | 0.252±0.000 |
 | SAE Post (N=max)              | 0.693±0.001 | 0.256±0.000 |
 | PCA Post (N=1)                | 0.706±0.001 | 0.250±0.000 |
