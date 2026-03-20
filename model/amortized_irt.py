@@ -1194,21 +1194,32 @@ def baseline_row_matches(df, key):
     if df.empty:
         return df
 
-    mask = (
-        (df['seed'].astype(int) == int(key['seed'])) &
-        (df['model_type'].astype(str) == str(key['model_type'])) &
-        (df['n_samples'].astype(int) == int(key['n_samples'])) &
-        (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
-        np.isclose(df['j_percentage'].astype(float), float(key['j_percentage']), atol=1e-6)
+    seed_col = pd.to_numeric(df['seed'], errors='coerce')
+    n_samples_col = pd.to_numeric(df['n_samples'], errors='coerce')
+    j_percentage_col = pd.to_numeric(df['j_percentage'], errors='coerce')
+    j_match = pd.Series(
+        np.isclose(j_percentage_col.to_numpy(dtype=float), float(key['j_percentage']), atol=1e-6, equal_nan=False),
+        index=df.index,
     )
-    return df[mask]
+    mask = (
+        (seed_col == int(key['seed'])) &
+        (df['model_type'].astype(str) == str(key['model_type'])) &
+        (n_samples_col == int(key['n_samples'])) &
+        (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
+        j_match
+    )
+    return df[mask.fillna(False)]
 
 
 def mirt_sweep_row_matches(df, key):
     """Return rows matching a per-dimension MIRT sweep key."""
     if df.empty:
         return df
-    return baseline_row_matches(df, key)[lambda x: x['mirt_dim'].astype(int) == int(key['mirt_dim'])]
+    match = baseline_row_matches(df, key)
+    if match.empty:
+        return match
+    mirt_dim_col = pd.to_numeric(match['mirt_dim'], errors='coerce')
+    return match[mirt_dim_col == int(key['mirt_dim'])]
 
 
 def load_baseline_store(path):
@@ -1258,6 +1269,7 @@ def append_baseline_row(path, row):
             row['agent_batch_size'] = compute_agent_batch_size(row.get('pre_revision', 'none'), row.get('n_samples', 0))
         df_new = pd.DataFrame([row])
         df = pd.concat([df_old, df_new], ignore_index=True)
+        df = df.dropna(subset=BASELINE_KEY_COLS)
         # Keep latest row per unique baseline key
         df = df.drop_duplicates(subset=BASELINE_KEY_COLS, keep='last')
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1271,6 +1283,7 @@ def append_mirt_sweep_row(path, row):
         df_old = load_mirt_sweep_store(path)
         df_new = pd.DataFrame([row])
         df = pd.concat([df_old, df_new], ignore_index=True)
+        df = df.dropna(subset=MIRT_SWEEP_KEY_COLS)
         df = df.drop_duplicates(subset=MIRT_SWEEP_KEY_COLS, keep='last')
         os.makedirs(os.path.dirname(path), exist_ok=True)
         df.to_csv(path, index=False)
