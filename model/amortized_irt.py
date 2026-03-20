@@ -58,16 +58,21 @@ os.makedirs(RESULT_DIR, exist_ok=True)
 BASELINE_DIR = os.path.join(RESULT_DIR, 'baselines')
 os.makedirs(BASELINE_DIR, exist_ok=True)
 DEFAULT_BASELINE_OUTPUT = os.path.join(BASELINE_DIR, 'baseline_metrics.csv')
+DEFAULT_MIRT_SWEEP_OUTPUT = os.path.join(BASELINE_DIR, 'mirt_sweep.csv')
 
 BASELINE_METRIC_COLS = [
     'rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt',
     'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt',
     'rmse_knn', 'auc_knn'
 ]
+NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
-BASELINE_AUX_COLS = ['agent_batch_size']
+BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max']
+
+MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt']
+MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
 
 # Data paths
 HF_REPO_ID = "ronanhansel/data-reeval-multi"
@@ -688,9 +693,9 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
     return N, J, y_train, train_mask_current_t
 
 
-def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-                             model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K):
-    """Compute naive + Rasch + 2PL + standalone MIRT baselines for one configuration."""
+def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+                                      model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K):
+    """Compute non-MIRT baselines for one configuration."""
     # 1. Naive item-mean baseline
     valid_counts = train_mask_current_t.sum(dim=0)
     item_sums = (y_train * train_mask_current_t).sum(dim=0)
@@ -711,40 +716,7 @@ def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test
     rmse_2pl = compute_rmse(p_2pl.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
     auc_2pl = evaluate_auc(p_2pl, y_oracle, test_mask_t)
 
-    # 4. Non-Amortized MIRT
-    mirt_model = MIRTModel(N, J, K_MODEL).to(device)
-    mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
-    mirt_model.train()
-
-    best_mirt_rmse = float('inf')
-    best_p_mirt = None
-
-    for _ in range(EPOCHS // 2):
-        mirt_optimizer.zero_grad()
-        p_mirt = mirt_model()
-        p_m_clamp = p_mirt[train_mask_current_t].clamp(1e-6, 1 - 1e-6)
-        y_m_clamp = y_train[train_mask_current_t]
-
-        if model_type == 'beta':
-            y_m_clamp = y_m_clamp.clamp(1e-6, 1 - 1e-6)
-            dist = torch.distributions.Beta(p_m_clamp * beta_phi, (1 - p_m_clamp) * beta_phi)
-            loss = -dist.log_prob(y_m_clamp).mean()
-        else:
-            dist = torch.distributions.Bernoulli(probs=p_m_clamp)
-            loss = -dist.log_prob(y_m_clamp).mean()
-
-        loss.backward()
-        mirt_optimizer.step()
-
-        with torch.no_grad():
-            curr_m_rmse = compute_rmse(p_mirt.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-            if curr_m_rmse < best_mirt_rmse:
-                best_mirt_rmse = curr_m_rmse
-                best_p_mirt = p_mirt.clone()
-
-    auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
-
-    # 5. Embedding kNN cold-start baseline (predict held-out items from nearest train items)
+    # 4. Embedding kNN cold-start baseline (predict held-out items from nearest train items)
     # Uses item embeddings only and observed user responses on train items.
     if x_j is None:
         p_knn = p_naive.clone()
@@ -805,20 +777,132 @@ def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test
         'rmse_naive': rmse_naive,
         'rmse_rasch': rmse_rasch,
         'rmse_2pl': rmse_2pl,
-        'rmse_mirt': best_mirt_rmse,
         'auc_naive': auc_naive,
         'auc_rasch': auc_rasch,
         'auc_2pl': auc_2pl,
-        'auc_mirt': auc_mirt,
         'rmse_knn': rmse_knn,
         'auc_knn': auc_knn,
+    }
+
+
+def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+                                model_type='beta', beta_phi=BETA_PHI, mirt_dim=K_MODEL):
+    """Train one standalone MIRT baseline at a specific latent dimension."""
+    mirt_model = MIRTModel(N, J, mirt_dim).to(device)
+    mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
+    mirt_model.train()
+
+    best_mirt_rmse = float('inf')
+    best_p_mirt = None
+
+    for _ in range(EPOCHS // 2):
+        mirt_optimizer.zero_grad()
+        p_mirt = mirt_model()
+        p_m_clamp = p_mirt[train_mask_current_t].clamp(1e-6, 1 - 1e-6)
+        y_m_clamp = y_train[train_mask_current_t]
+
+        if model_type == 'beta':
+            y_m_clamp = y_m_clamp.clamp(1e-6, 1 - 1e-6)
+            dist = torch.distributions.Beta(p_m_clamp * beta_phi, (1 - p_m_clamp) * beta_phi)
+            loss = -dist.log_prob(y_m_clamp).mean()
+        else:
+            dist = torch.distributions.Bernoulli(probs=p_m_clamp)
+            loss = -dist.log_prob(y_m_clamp).mean()
+
+        loss.backward()
+        mirt_optimizer.step()
+
+        with torch.no_grad():
+            curr_m_rmse = compute_rmse(p_mirt.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
+            if curr_m_rmse < best_mirt_rmse:
+                best_mirt_rmse = curr_m_rmse
+                best_p_mirt = p_mirt.clone()
+
+    auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
+
+    return {
+        'rmse_mirt': best_mirt_rmse,
+        'auc_mirt': auc_mirt,
+        'mirt_dim': int(mirt_dim),
         'mirt_state': mirt_model.state_dict(),
     }
 
 
+def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+                             model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
+                             mirt_dim=K_MODEL):
+    """Compute naive + Rasch + 2PL + standalone MIRT baselines for one configuration."""
+    results = compute_non_mirt_baseline_metrics(
+        N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+        model_type=model_type, beta_phi=beta_phi, x_j=x_j, knn_k=knn_k
+    )
+    results.update(
+        compute_single_mirt_metrics(
+            N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+            model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim
+        )
+    )
+    return results
+
+
+def _optional_int(value):
+    if pd.isna(value):
+        return None
+    return int(value)
+
+
+def _optional_float(value):
+    if pd.isna(value):
+        return None
+    return float(value)
+
+
+def _row_has_complete_metrics(row, metric_cols):
+    return all(not pd.isna(row.get(col)) for col in metric_cols)
+
+
+def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max):
+    if not _row_has_complete_metrics(row, BASELINE_METRIC_COLS):
+        return False
+
+    selected_dim = _optional_int(row.get('selected_mirt_dim'))
+    sweep_min = _optional_int(row.get('mirt_sweep_min'))
+    sweep_max = _optional_int(row.get('mirt_sweep_max'))
+
+    if selected_dim is None and sweep_min is None and sweep_max is None:
+        return int(mirt_dim_min) == K_MODEL and int(mirt_dim_max) == K_MODEL
+
+    return (
+        selected_dim is not None and
+        sweep_min == int(mirt_dim_min) and
+        sweep_max == int(mirt_dim_max)
+    )
+
+
+def _baseline_payload_from_row(row):
+    payload = {k: float(row[k]) for k in BASELINE_METRIC_COLS}
+    selected_dim = _optional_int(row.get('selected_mirt_dim'))
+    if selected_dim is not None:
+        payload['selected_mirt_dim'] = selected_dim
+    return payload
+
+
+def select_best_mirt_result(results):
+    """Pick the best MIRT sweep candidate by AUC, then RMSE, then smaller dimension."""
+    return max(
+        results,
+        key=lambda r: (
+            float(r['auc_mirt']),
+            -float(r['rmse_mirt']),
+            -int(r['mirt_dim']),
+        )
+    )
+
+
 def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, model_type='beta', beta_phi=BETA_PHI,
                              baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
-                             allow_compute=True, quiet=False):
+                             allow_compute=True, quiet=False, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
+                             mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
     baseline_key = {
         'seed': int(RANDOM_SEED),
@@ -828,7 +912,12 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         'j_percentage': normalize_j_percentage(j_percentage),
     }
 
-    cached = try_get_cached_baseline(baseline_output, baseline_key)
+    cached = try_get_cached_baseline(
+        baseline_output,
+        baseline_key,
+        mirt_dim_min=mirt_dim_min,
+        mirt_dim_max=mirt_dim_max,
+    )
     if cached is not None:
         return cached, None
 
@@ -838,32 +927,100 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
             f"Run with --baseline-only first or set allow_compute=True."
         )
 
+    existing_row = load_existing_baseline_row(baseline_output, baseline_key)
+    non_mirt_metrics = None
+    if existing_row is not None and _row_has_complete_metrics(existing_row, NON_MIRT_METRIC_COLS):
+        non_mirt_metrics = {k: float(existing_row[k]) for k in NON_MIRT_METRIC_COLS}
+
     N, J, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
     )
 
-    computed = compute_baseline_metrics(
-        N, J, y_train, train_mask_current_t,
-        data['y_oracle'], data['test_mask'], data['test_mask_t'],
-        model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j')
-    )
+    if non_mirt_metrics is None:
+        non_mirt_metrics = compute_non_mirt_baseline_metrics(
+            N, J, y_train, train_mask_current_t,
+            data['y_oracle'], data['test_mask'], data['test_mask_t'],
+            model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j')
+        )
+
+    mirt_results = []
+    legacy_30_imported = False
+    for mirt_dim in range(int(mirt_dim_min), int(mirt_dim_max) + 1):
+        sweep_key = baseline_key.copy()
+        sweep_key['mirt_dim'] = int(mirt_dim)
+        cached_mirt = try_get_cached_mirt_sweep_row(mirt_sweep_output, sweep_key)
+        if cached_mirt is not None:
+            mirt_results.append(cached_mirt)
+            continue
+
+        can_import_legacy_30 = (
+            int(mirt_dim) == K_MODEL and
+            existing_row is not None and
+            not legacy_30_imported
+        )
+        if can_import_legacy_30:
+            legacy_selected_dim = _optional_int(existing_row.get('selected_mirt_dim'))
+            legacy_sweep_min = _optional_int(existing_row.get('mirt_sweep_min'))
+            legacy_sweep_max = _optional_int(existing_row.get('mirt_sweep_max'))
+            is_legacy_fixed_30 = (
+                _row_has_complete_metrics(existing_row, ['rmse_mirt', 'auc_mirt']) and
+                (
+                    (legacy_selected_dim is None and legacy_sweep_min is None and legacy_sweep_max is None) or
+                    (legacy_selected_dim == K_MODEL and legacy_sweep_min == K_MODEL and legacy_sweep_max == K_MODEL)
+                )
+            )
+            if is_legacy_fixed_30:
+                cached_mirt = {
+                    'rmse_mirt': float(existing_row['rmse_mirt']),
+                    'auc_mirt': float(existing_row['auc_mirt']),
+                    'mirt_dim': K_MODEL,
+                }
+                append_mirt_sweep_row(mirt_sweep_output, {**sweep_key, **cached_mirt})
+                mirt_results.append(cached_mirt)
+                legacy_30_imported = True
+                if not quiet:
+                    print(f"[MIRT] Reused legacy cached 30D baseline for seed={baseline_key['seed']}, n={n_files}.")
+                continue
+
+        computed_mirt = compute_single_mirt_metrics(
+            N, J, y_train, train_mask_current_t,
+            data['y_oracle'], data['test_mask'], data['test_mask_t'],
+            model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim
+        )
+        append_mirt_sweep_row(
+            mirt_sweep_output,
+            {
+                **sweep_key,
+                'rmse_mirt': float(computed_mirt['rmse_mirt']),
+                'auc_mirt': float(computed_mirt['auc_mirt']),
+            }
+        )
+        mirt_results.append(computed_mirt)
+
+    best_mirt = select_best_mirt_result(mirt_results)
 
     baseline_row = baseline_key.copy()
     baseline_row['agent_batch_size'] = compute_agent_batch_size(
         baseline_key['pre_revision'], baseline_key['n_samples']
     )
-    for col in BASELINE_METRIC_COLS:
-        baseline_row[col] = float(computed[col])
+    for col, value in non_mirt_metrics.items():
+        baseline_row[col] = float(value)
+    baseline_row['rmse_mirt'] = float(best_mirt['rmse_mirt'])
+    baseline_row['auc_mirt'] = float(best_mirt['auc_mirt'])
+    baseline_row['selected_mirt_dim'] = int(best_mirt['mirt_dim'])
+    baseline_row['mirt_sweep_min'] = int(mirt_dim_min)
+    baseline_row['mirt_sweep_max'] = int(mirt_dim_max)
     append_baseline_row(baseline_output, baseline_row)
 
-    cached_now = {k: float(computed[k]) for k in BASELINE_METRIC_COLS}
-    return cached_now, computed.get('mirt_state')
+    cached_now = _baseline_payload_from_row(baseline_row)
+    return cached_now, best_mirt.get('mirt_state')
 
 
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
                    beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None,
                    baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
-                   allow_compute_baselines=True):
+                   allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
+                   mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -894,12 +1051,16 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         j_percentage=j_percentage,
         allow_compute=allow_compute_baselines,
         quiet=quiet,
+        mirt_dim_min=mirt_dim_min,
+        mirt_dim_max=mirt_dim_max,
+        mirt_sweep_output=mirt_sweep_output,
     )
 
     rmse_2pl = baselines['rmse_2pl']
     best_mirt_rmse = baselines['rmse_mirt']
     auc_2pl = baselines['auc_2pl']
     auc_mirt = baselines['auc_mirt']
+    selected_mirt_dim = int(baselines.get('selected_mirt_dim', K_MODEL))
 
     if embedding_type == 'rasch_2pl':
         return {
@@ -925,9 +1086,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'lambda_tau': LAMBDA_TAU,
             'rmse_amortized': best_mirt_rmse,
             'auc_amortized': auc_mirt,
-            'active_dims': K_MODEL,
-            'active_indices': str(list(range(K_MODEL))),
-            'tau_values': str([1.0]*K_MODEL),
+            'active_dims': selected_mirt_dim,
+            'active_indices': str(list(range(selected_mirt_dim))),
+            'tau_values': str([1.0] * selected_mirt_dim),
             'model_state': model_state,
             'final_state': model_state
         }
@@ -1043,6 +1204,13 @@ def baseline_row_matches(df, key):
     return df[mask]
 
 
+def mirt_sweep_row_matches(df, key):
+    """Return rows matching a per-dimension MIRT sweep key."""
+    if df.empty:
+        return df
+    return baseline_row_matches(df, key)[lambda x: x['mirt_dim'].astype(int) == int(key['mirt_dim'])]
+
+
 def load_baseline_store(path):
     """Load baseline store or return an empty frame with required schema."""
     if os.path.exists(path):
@@ -1065,6 +1233,22 @@ def load_baseline_store(path):
     return pd.DataFrame(columns=cols)
 
 
+def load_mirt_sweep_store(path):
+    """Load MIRT sweep store or return an empty frame with required schema."""
+    if os.path.exists(path):
+        try:
+            df = pd.read_csv(path)
+            for col in MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS:
+                if col not in df.columns:
+                    df[col] = np.nan
+            return df
+        except Exception:
+            pass
+
+    cols = MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS
+    return pd.DataFrame(columns=cols)
+
+
 def append_baseline_row(path, row):
     """Atomically append or upsert one baseline row in the baseline cache file."""
     lock = FileLock(f"{path}.lock", timeout=600)
@@ -1080,8 +1264,20 @@ def append_baseline_row(path, row):
         df.to_csv(path, index=False)
 
 
-def try_get_cached_baseline(path, key):
-    """Lookup cached baseline row by key. Returns dict or None."""
+def append_mirt_sweep_row(path, row):
+    """Atomically append or upsert one MIRT sweep row."""
+    lock = FileLock(f"{path}.lock", timeout=600)
+    with lock:
+        df_old = load_mirt_sweep_store(path)
+        df_new = pd.DataFrame([row])
+        df = pd.concat([df_old, df_new], ignore_index=True)
+        df = df.drop_duplicates(subset=MIRT_SWEEP_KEY_COLS, keep='last')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_csv(path, index=False)
+
+
+def load_existing_baseline_row(path, key):
+    """Lookup baseline row by key without enforcing MIRT sweep coverage."""
     if not os.path.exists(path):
         return None
 
@@ -1097,8 +1293,85 @@ def try_get_cached_baseline(path, key):
     if match.empty:
         return None
 
+    return match.iloc[-1].to_dict()
+
+
+def try_get_cached_baseline(path, key, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL):
+    """Lookup cached baseline row by key and requested MIRT sweep range."""
+    row = load_existing_baseline_row(path, key)
+    if row is None or not _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max):
+        return None
+    return _baseline_payload_from_row(row)
+
+
+def try_get_cached_mirt_sweep_row(path, key):
+    """Lookup one cached MIRT sweep row by key."""
+    if not os.path.exists(path):
+        return None
+
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return None
+
+    if any(c not in df.columns for c in MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS):
+        return None
+
+    match = mirt_sweep_row_matches(df, key)
+    if match.empty:
+        return None
+
     row = match.iloc[-1].to_dict()
-    return {k: float(row[k]) for k in BASELINE_METRIC_COLS}
+    if not _row_has_complete_metrics(row, MIRT_SWEEP_METRIC_COLS):
+        return None
+    return {
+        'rmse_mirt': float(row['rmse_mirt']),
+        'auc_mirt': float(row['auc_mirt']),
+        'mirt_dim': int(row['mirt_dim']),
+    }
+
+
+def seed_mirt_sweep_from_baseline_store(baseline_output, mirt_sweep_output, quiet=False):
+    """Populate exact-dimension MIRT sweep rows from legacy or exact baseline rows."""
+    baseline_df = load_baseline_store(baseline_output)
+    if baseline_df.empty:
+        return
+
+    seed_rows = []
+    for _, row in baseline_df.iterrows():
+        if not _row_has_complete_metrics(row, ['rmse_mirt', 'auc_mirt']):
+            continue
+
+        selected_dim = _optional_int(row.get('selected_mirt_dim'))
+        sweep_min = _optional_int(row.get('mirt_sweep_min'))
+        sweep_max = _optional_int(row.get('mirt_sweep_max'))
+
+        if selected_dim is None and sweep_min is None and sweep_max is None:
+            exact_dim = K_MODEL
+        elif selected_dim is not None and sweep_min == selected_dim and sweep_max == selected_dim:
+            exact_dim = selected_dim
+        else:
+            continue
+
+        seed_row = {k: row[k] for k in BASELINE_KEY_COLS}
+        seed_row['mirt_dim'] = int(exact_dim)
+        seed_row['rmse_mirt'] = float(row['rmse_mirt'])
+        seed_row['auc_mirt'] = float(row['auc_mirt'])
+        seed_rows.append(seed_row)
+
+    if not seed_rows:
+        return
+
+    lock = FileLock(f"{mirt_sweep_output}.lock", timeout=600)
+    with lock:
+        existing = load_mirt_sweep_store(mirt_sweep_output)
+        combined = pd.concat([existing, pd.DataFrame(seed_rows)], ignore_index=True)
+        combined = combined.drop_duplicates(subset=MIRT_SWEEP_KEY_COLS, keep='last')
+        os.makedirs(os.path.dirname(mirt_sweep_output), exist_ok=True)
+        combined.to_csv(mirt_sweep_output, index=False)
+
+    if not quiet:
+        print(f"Seeded {len(seed_rows)} exact-dimension MIRT rows into {mirt_sweep_output}")
 
 
 def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
@@ -1146,6 +1419,9 @@ def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
             compute_agent_batch_size(pre_revision, ns)
             for ns in sub['n_samples'].tolist()
         ]
+        sub['selected_mirt_dim'] = K_MODEL
+        sub['mirt_sweep_min'] = K_MODEL
+        sub['mirt_sweep_max'] = K_MODEL
         sub = sub[BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS]
         migrated_rows.append(sub)
 
@@ -1300,6 +1576,9 @@ def run_single_config(config, args, n_values):
                     j_percentage=args.j_percentage,
                     allow_compute=True,
                     quiet=quiet,
+                    mirt_dim_min=args.mirt_dim_min,
+                    mirt_dim_max=args.mirt_dim_max,
+                    mirt_sweep_output=args.mirt_sweep_output,
                 )
                 continue
 
@@ -1309,7 +1588,10 @@ def run_single_config(config, args, n_values):
                                     baseline_output=args.baseline_output,
                                     pre_revision=args.pre_revision,
                                     j_percentage=args.j_percentage,
-                                    allow_compute_baselines=True)
+                                    allow_compute_baselines=True,
+                                    mirt_dim_min=args.mirt_dim_min,
+                                    mirt_dim_max=args.mirt_dim_max,
+                                    mirt_sweep_output=args.mirt_sweep_output)
                                     
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -1407,6 +1689,12 @@ def main():
     parser.add_argument('--baseline-only', action='store_true', help='Only compute/cache baselines and skip amortized outputs.')
     parser.add_argument('--baseline-output', type=str, default=DEFAULT_BASELINE_OUTPUT,
                         help='Path to baseline cache CSV (default: model/result/baselines/baseline_metrics.csv).')
+    parser.add_argument('--mirt-sweep-output', type=str, default=DEFAULT_MIRT_SWEEP_OUTPUT,
+                        help='Path to per-dimension MIRT sweep cache CSV.')
+    parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
+                        help='Minimum MIRT dimension to evaluate for the baseline sweep.')
+    parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,
+                        help='Maximum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--migrate-baselines', action='store_true',
                         help='Migrate baseline columns from existing amortized_irt_*.csv files into baseline-output and exit.')
     parser.add_argument('--migrate-all-csvs', action='store_true',
@@ -1427,10 +1715,12 @@ def main():
 
     if args.migrate_baselines:
         migrate_existing_baselines(args.migrate_source_dir, args.baseline_output, quiet=args.quiet)
+        seed_mirt_sweep_from_baseline_store(args.baseline_output, args.mirt_sweep_output, quiet=args.quiet)
         return
 
     if args.migrate_all_csvs:
         migrate_existing_baselines(args.migrate_source_dir, args.baseline_output, quiet=args.quiet)
+        seed_mirt_sweep_from_baseline_store(args.baseline_output, args.mirt_sweep_output, quiet=args.quiet)
         strip_inline_baseline_columns(args.migrate_source_dir, quiet=args.quiet)
         return
 
@@ -1443,11 +1733,15 @@ def main():
     if args.snapping_threshold is not None:
         SNAPPING_THRESHOLD = args.snapping_threshold
 
+    seed_mirt_sweep_from_baseline_store(args.baseline_output, args.mirt_sweep_output, quiet=args.quiet)
+
     # Parse multi-experiment parameters
     seeds = [int(s.strip()) for s in str(args.seed).split(',') if s.strip()]
     taus = [float(t.strip()) for t in str(args.lambda_tau).split(',') if t.strip()]
     if args.baseline_only and len(taus) > 1:
         taus = [taus[0]]
+    if args.mirt_dim_min < 1 or args.mirt_dim_max < 1 or args.mirt_dim_min > args.mirt_dim_max:
+        raise ValueError('Require 1 <= --mirt-dim-min <= --mirt-dim-max.')
 
     print(f"Embedding type: {args.embedding_type}")
     if args.model_type == 'beta':
@@ -1502,23 +1796,22 @@ def main():
     # accurately check completion now
     if args.baseline_only:
         try:
-            df_baseline = load_baseline_store(args.baseline_output)
-            key_pre = normalize_pre_revision(args.pre_revision)
-            key_j = normalize_j_percentage(args.j_percentage)
             for seed in seeds:
-                mask = (
-                    (df_baseline['seed'].astype(int) == int(seed)) &
-                    (df_baseline['model_type'].astype(str) == args.model_type) &
-                    (df_baseline['n_samples'].astype(int) == int(max_n)) &
-                    (df_baseline['pre_revision'].astype(str) == key_pre) &
-                    np.isclose(df_baseline['j_percentage'].astype(float), key_j, atol=1e-6)
+                baseline_key = {
+                    'seed': int(seed),
+                    'model_type': str(args.model_type),
+                    'n_samples': int(max_n),
+                    'pre_revision': normalize_pre_revision(args.pre_revision),
+                    'j_percentage': normalize_j_percentage(args.j_percentage),
+                }
+                cached = try_get_cached_baseline(
+                    args.baseline_output,
+                    baseline_key,
+                    mirt_dim_min=args.mirt_dim_min,
+                    mirt_dim_max=args.mirt_dim_max,
                 )
-                if mask.any():
-                    matched = df_baseline.loc[mask]
-                    metric_block = matched[BASELINE_METRIC_COLS].apply(pd.to_numeric, errors='coerce')
-                    has_complete_row = metric_block.notna().all(axis=1).any()
-                    if has_complete_row:
-                        completed_configs.add((int(seed), float(taus[0])))
+                if cached is not None:
+                    completed_configs.add((int(seed), float(taus[0])))
         except Exception:
             pass
     elif output_path is not None and os.path.exists(output_path):

@@ -659,7 +659,7 @@ def plot_double_stacked_performance_bars():
     """Double-bar architecture: Pre (Left, Red) vs Post (Right, Blue). Exports both Stacked and Base versions."""
     plt.rcParams.update(get_bundle())
     
-    architectures = ['Naive', 'Rasch', 'kNN', 'IRT-2PL', 'MIRT', 'SAE', 'PCA', 'RAW']
+    architectures = ['Naive', 'Rasch', 'kNN', 'MIRT', 'SAE', 'PCA', 'RAW']
     
     baseline_df = load_baseline_cache()
 
@@ -684,7 +684,7 @@ def plot_double_stacked_performance_bars():
                 best_df = df[df['lambda_tau'] == best_tau]
                 metric_col = 'auc_amortized'
             else:
-                # Naive or Rasch are sourced from the dedicated baseline cache.
+                # Classical baselines are sourced from the dedicated baseline cache.
                 model_type = 'bernoulli' if '_bernoulli_' in filename else 'beta'
                 if 'scenario' in df.columns and df['scenario'].notna().any():
                     pre_revision = str(df['scenario'].dropna().iloc[0]).replace('Pre-', '').strip().lower()
@@ -700,7 +700,6 @@ def plot_double_stacked_performance_bars():
                     'Naive': 'auc_naive',
                     'Rasch': 'auc_rasch',
                     'kNN': 'auc_knn',
-                    'IRT-2PL': 'auc_2pl',
                     'MIRT': 'auc_mirt',
                 }
                 metric_col = metric_col_map.get(arch_type)
@@ -743,14 +742,6 @@ def plot_double_stacked_performance_bars():
         'kNN': {
             # kNN is sourced from baseline cache via lookup_baseline_auc.
             # Use the same context files used by other classical baselines.
-            'pre32': 'amortized_irt_ones_bernoulli_pre_32_n_1.csv',
-            'premax': 'amortized_irt_ones_beta_pre_max_n_max.csv',
-            'bernoulli': 'amortized_irt_ones_bernoulli_n_1.csv',
-            'beta': 'amortized_irt_ones_beta_n_max.csv',
-        },
-        'IRT-2PL': {
-            # Use the same setup context as other baselines for apples-to-apples
-            # comparisons in hybrid bars (Pre-32, Post Bernoulli N=1, Post Beta N=max).
             'pre32': 'amortized_irt_ones_bernoulli_pre_32_n_1.csv',
             'premax': 'amortized_irt_ones_beta_pre_max_n_max.csv',
             'bernoulli': 'amortized_irt_ones_bernoulli_n_1.csv',
@@ -823,7 +814,7 @@ def plot_double_stacked_performance_bars():
         curr_pbeta_s = np.array(pbeta_s)
 
         if mode in ['full', 'base']:
-            mask = [i for i, a in enumerate(curr_archs) if a not in ['IRT-2PL', 'MIRT']]
+            mask = [i for i, a in enumerate(curr_archs) if a != 'MIRT']
             curr_archs = [curr_archs[i] for i in mask]
             curr_pre_base = curr_pre_base[mask]
             curr_pre_stack = curr_pre_stack[mask]
@@ -835,8 +826,8 @@ def plot_double_stacked_performance_bars():
             curr_pbeta_s = curr_pbeta_s[mask]
 
         if mode == 'hybrid':
-            # Hybrid order: Naive, Rasch, kNN, IRT (2PL), MIRT, ARAF (RAW)
-            hybrid_order = ['Naive', 'Rasch', 'kNN', 'IRT-2PL', 'MIRT', 'RAW']
+            # Hybrid order: Naive, Rasch, MIRT, kNN, ARAF (RAW)
+            hybrid_order = ['Naive', 'Rasch', 'MIRT', 'kNN', 'RAW']
             index_by_arch = {a: i for i, a in enumerate(curr_archs)}
             order_idx = [index_by_arch[a] for a in hybrid_order if a in index_by_arch]
 
@@ -881,8 +872,6 @@ def plot_double_stacked_performance_bars():
         for arch in curr_archs:
             if mode == 'hybrid' and arch == 'RAW':
                 display_labels.append('ARAF')
-            elif mode == 'hybrid' and arch == 'IRT-2PL':
-                display_labels.append('IRT (2PL)')
             elif arch in ['SAE', 'PCA', 'RAW']:
                 display_labels.append(f"ARAF\n({arch})")
             else:

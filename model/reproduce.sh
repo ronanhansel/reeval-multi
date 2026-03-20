@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 RESULT_DIR="${SCRIPT_DIR}/result"
 BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
+MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -28,6 +29,8 @@ PARALLEL=1
 CLEAN_RESULTS=false
 OVERRIDE_RESULTS=false
 QUIET=false
+MIRT_DIM_MIN=2
+MIRT_DIM_MAX=30
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -82,6 +85,7 @@ echo "  REPRODUCE — Amortized IRT"
 echo "=========================================================="
 echo "  Working dir : ${SCRIPT_DIR}"
 echo "  Output dir  : ${RESULT_DIR}"
+echo "  MIRT sweep  : ${MIRT_DIM_MIN}-${MIRT_DIM_MAX} dims (cache: ${MIRT_SWEEP_CSV})"
 echo ""
 
 # ── Clean/Verify results ─────────────────────────────────────────────────────
@@ -148,7 +152,7 @@ fi
 echo ""
 
 echo "[BASELINE] Migrating existing CSVs to separated baseline schema..."
-baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${RESULT_DIR} --baseline-output ${BASELINE_CSV}"
+baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
 if $QUIET; then
     baseline_migrate_cmd="$baseline_migrate_cmd --quiet"
 fi
@@ -165,7 +169,7 @@ run_baseline() {
     local seeds_csv=${seeds// /,}
     # Baseline cache now includes an embedding-kNN zero-shot baseline.
     # We pin baseline embedding type to PCA for a stable, single reference baseline.
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type pca --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type pca --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
@@ -204,7 +208,7 @@ run_exp() {
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi

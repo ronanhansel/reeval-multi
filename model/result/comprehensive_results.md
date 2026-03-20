@@ -1,32 +1,223 @@
-# Comprehensive Model Comparison
-
-| Model Configuration           | AUC         | RMSE        |
-|:------------------------------|:------------|:------------|
-| Naive (Post-max Baseline)     | 0.500       | 0.266±0.002 |
-| Rasch IRT (Post-max Baseline) | 0.570±0.006 | 0.272±0.002 |
-| Naive (Post-1 Baseline)       | 0.500       | 0.266±0.002 |
-| Rasch IRT (Post-1 Baseline)   | 0.574±0.005 | 0.340±0.005 |
-| SAE Post (N=1)                | 0.697±0.001 | 0.252±0.000 |
-| SAE Post (N=max)              | 0.693±0.001 | 0.256±0.000 |
-| PCA Post (N=1)                | 0.706±0.001 | 0.250±0.000 |
-| PCA Post (N=max)              | 0.710±0.001 | 0.251±0.000 |
-| RAW Post (N=1)                | 0.697±0.001 | 0.263±0.000 |
-| RAW Post (N=max)              | 0.714±0.000 | 0.253±0.000 |
-| Naive-32 (Pre Baseline)       | 0.000       | 0.000       |
-| Rasch-32 (Pre Baseline)       | 0.000       | 0.000       |
-| SAE Pre-32 (N=1)              | 0.687±0.000 | 0.419±0.000 |
-| PCA Pre-32 (N=1)              | 0.695±0.000 | 0.416±0.000 |
-| RAW Pre-32 (N=1)              | 0.683±0.000 | 0.433±0.000 |
-| Naive Pre-max (Baseline)      | 0.000       | 0.000       |
-| Rasch Pre-max (Baseline)      | 0.000       | 0.000       |
-| SAE Pre-max (N=max)           | 0.726±0.000 | 0.423±0.000 |
-| PCA Pre-max (N=max)           | 0.728±0.001 | 0.422±0.000 |
-| RAW Pre-max (N=max)           | 0.722±0.001 | 0.435±0.000 |
-| SAE Post (N=1, No-TAU)        | 0.691±0.011 | 0.250±0.002 |
-| SAE Post (N=max, No-TAU)      | 0.686±0.007 | 0.253±0.002 |
-| PCA Post (N=max, No-TAU)      | 0.660±0.008 | 0.246±0.002 |
-| RAW Post (N=max, No-TAU)      | 0.665±0.006 | 0.244±0.002 |
-| ONES Post (N=1)               | 0.572±0.000 | 0.261±0.000 |
-| ONES Post (N=max)             | 0.570±0.000 | 0.266±0.000 |
-| ONES Pre-32 (N=1)             | 0.622±0.000 | 0.434±0.000 |
-| ONES Pre-max (N=max)          | 0.676±0.000 | 0.452±0.000 |
+| Model Configuration                                                       | AUC         | RMSE        | Best Tau   |   Seeds @ Best Tau | Source File                                        |
+|:--------------------------------------------------------------------------|:------------|:------------|:-----------|-------------------:|:---------------------------------------------------|
+| Naive-Baseline | model=bernoulli | n=1 | pre=none | tau=baseline | j=1    | 0.500       | 0.266±0.002 | baseline   |                 50 | baseline_naive_bernoulli_pre_none_n_1_j1.csv       |
+| Naive-Baseline | model=bernoulli | n=32 | pre=none | tau=baseline | j=1   | 0.500       | 0.269±0.002 | baseline   |                 50 | baseline_naive_bernoulli_pre_none_n_32_j1.csv      |
+| Naive-Baseline | model=bernoulli | n=1 | pre=4 | tau=baseline | j=1       | 0.500       | 0.454±0.002 | baseline   |                 50 | baseline_naive_bernoulli_pre_4_n_1_j1.csv          |
+| Naive-Baseline | model=bernoulli | n=1 | pre=8 | tau=baseline | j=1       | 0.500       | 0.455±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_8_n_1_j1.csv          |
+| Naive-Baseline | model=bernoulli | n=1 | pre=16 | tau=baseline | j=1      | 0.500       | 0.445±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_16_n_1_j1.csv         |
+| Naive-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.1    | 0.500       | 0.452±0.003 | baseline   |                 50 | baseline_naive_bernoulli_pre_32_n_1_j0.1.csv       |
+| Naive-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.3    | 0.500       | 0.452±0.002 | baseline   |                 50 | baseline_naive_bernoulli_pre_32_n_1_j0.3.csv       |
+| Naive-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.5    | 0.500       | 0.449±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_32_n_1_j0.5.csv       |
+| Naive-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.7    | 0.500       | 0.452±0.002 | baseline   |                 50 | baseline_naive_bernoulli_pre_32_n_1_j0.7.csv       |
+| Naive-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.9    | 0.500       | 0.447±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_32_n_1_j0.9.csv       |
+| Naive-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=1      | 0.500       | 0.447±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_32_n_1_j1.csv         |
+| Naive-Baseline | model=bernoulli | n=1 | pre=64 | tau=baseline | j=1      | 0.500       | 0.453±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_64_n_1_j1.csv         |
+| Naive-Baseline | model=bernoulli | n=1 | pre=max | tau=baseline | j=1     | 0.500       | 0.449±0.001 | baseline   |                 50 | baseline_naive_bernoulli_pre_max_n_1_j1.csv        |
+| Naive-Baseline | model=beta | n=54 | pre=none | tau=baseline | j=1        | 0.500       | 0.266±0.002 | baseline   |                 50 | baseline_naive_beta_pre_none_n_54_j1.csv           |
+| Naive-Baseline | model=beta | n=1 | pre=4 | tau=baseline | j=1            | 0.500       | 0.454±0.001 | baseline   |                 50 | baseline_naive_beta_pre_4_n_1_j1.csv               |
+| Naive-Baseline | model=beta | n=1 | pre=8 | tau=baseline | j=1            | 0.500       | 0.455±0.001 | baseline   |                 50 | baseline_naive_beta_pre_8_n_1_j1.csv               |
+| Naive-Baseline | model=beta | n=1 | pre=16 | tau=baseline | j=1           | 0.500       | 0.445±0.001 | baseline   |                 50 | baseline_naive_beta_pre_16_n_1_j1.csv              |
+| Naive-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.1         | 0.500       | 0.452±0.003 | baseline   |                 50 | baseline_naive_beta_pre_32_n_1_j0.1.csv            |
+| Naive-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.3         | 0.500       | 0.451±0.002 | baseline   |                 50 | baseline_naive_beta_pre_32_n_1_j0.3.csv            |
+| Naive-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.5         | 0.500       | 0.449±0.001 | baseline   |                 50 | baseline_naive_beta_pre_32_n_1_j0.5.csv            |
+| Naive-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.7         | 0.500       | 0.451±0.001 | baseline   |                 50 | baseline_naive_beta_pre_32_n_1_j0.7.csv            |
+| Naive-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.9         | 0.500       | 0.447±0.001 | baseline   |                 50 | baseline_naive_beta_pre_32_n_1_j0.9.csv            |
+| Naive-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=1           | 0.500       | 0.447±0.001 | baseline   |                 50 | baseline_naive_beta_pre_32_n_1_j1.csv              |
+| Naive-Baseline | model=beta | n=1 | pre=64 | tau=baseline | j=1           | 0.500       | 0.453±0.001 | baseline   |                 50 | baseline_naive_beta_pre_64_n_1_j1.csv              |
+| Naive-Baseline | model=beta | n=1 | pre=max | tau=baseline | j=1          | 0.500       | 0.449±0.001 | baseline   |                 50 | baseline_naive_beta_pre_max_n_1_j1.csv             |
+| Rasch-1PL | model=bernoulli | n=1 | pre=none | tau=baseline | j=1         | 0.574±0.005 | 0.340±0.005 | baseline   |                 50 | baseline_rasch_bernoulli_pre_none_n_1_j1.csv       |
+| Rasch-1PL | model=bernoulli | n=32 | pre=none | tau=baseline | j=1        | 0.578±0.005 | 0.360±0.003 | baseline   |                 50 | baseline_rasch_bernoulli_pre_none_n_32_j1.csv      |
+| Rasch-1PL | model=bernoulli | n=1 | pre=4 | tau=baseline | j=1            | 0.541±0.009 | 0.518±0.005 | baseline   |                 50 | baseline_rasch_bernoulli_pre_4_n_1_j1.csv          |
+| Rasch-1PL | model=bernoulli | n=1 | pre=8 | tau=baseline | j=1            | 0.551±0.005 | 0.528±0.005 | baseline   |                 50 | baseline_rasch_bernoulli_pre_8_n_1_j1.csv          |
+| Rasch-1PL | model=bernoulli | n=1 | pre=16 | tau=baseline | j=1           | 0.593±0.003 | 0.561±0.005 | baseline   |                 50 | baseline_rasch_bernoulli_pre_16_n_1_j1.csv         |
+| Rasch-1PL | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.1         | 0.577±0.011 | 0.526±0.009 | baseline   |                 50 | baseline_rasch_bernoulli_pre_32_n_1_j0.1.csv       |
+| Rasch-1PL | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.3         | 0.610±0.005 | 0.566±0.008 | baseline   |                 50 | baseline_rasch_bernoulli_pre_32_n_1_j0.3.csv       |
+| Rasch-1PL | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.5         | 0.606±0.004 | 0.549±0.006 | baseline   |                 50 | baseline_rasch_bernoulli_pre_32_n_1_j0.5.csv       |
+| Rasch-1PL | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.7         | 0.618±0.003 | 0.554±0.008 | baseline   |                 50 | baseline_rasch_bernoulli_pre_32_n_1_j0.7.csv       |
+| Rasch-1PL | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.9         | 0.615±0.003 | 0.512±0.006 | baseline   |                 50 | baseline_rasch_bernoulli_pre_32_n_1_j0.9.csv       |
+| Rasch-1PL | model=bernoulli | n=1 | pre=32 | tau=baseline | j=1           | 0.614±0.003 | 0.501±0.004 | baseline   |                 50 | baseline_rasch_bernoulli_pre_32_n_1_j1.csv         |
+| Rasch-1PL | model=bernoulli | n=1 | pre=64 | tau=baseline | j=1           | 0.612±0.002 | 0.452±0.002 | baseline   |                 50 | baseline_rasch_bernoulli_pre_64_n_1_j1.csv         |
+| Rasch-1PL | model=bernoulli | n=1 | pre=max | tau=baseline | j=1          | 0.646±0.004 | 0.447±0.002 | baseline   |                 50 | baseline_rasch_bernoulli_pre_max_n_1_j1.csv        |
+| Rasch-1PL | model=beta | n=54 | pre=none | tau=baseline | j=1             | 0.570±0.006 | 0.272±0.002 | baseline   |                 50 | baseline_rasch_beta_pre_none_n_54_j1.csv           |
+| Rasch-1PL | model=beta | n=1 | pre=4 | tau=baseline | j=1                 | 0.541±0.009 | 0.537±0.006 | baseline   |                 50 | baseline_rasch_beta_pre_4_n_1_j1.csv               |
+| Rasch-1PL | model=beta | n=1 | pre=8 | tau=baseline | j=1                 | 0.551±0.006 | 0.490±0.004 | baseline   |                 50 | baseline_rasch_beta_pre_8_n_1_j1.csv               |
+| Rasch-1PL | model=beta | n=1 | pre=16 | tau=baseline | j=1                | 0.594±0.004 | 0.497±0.004 | baseline   |                 50 | baseline_rasch_beta_pre_16_n_1_j1.csv              |
+| Rasch-1PL | model=beta | n=1 | pre=32 | tau=baseline | j=0.1              | 0.583±0.011 | 0.479±0.007 | baseline   |                 50 | baseline_rasch_beta_pre_32_n_1_j0.1.csv            |
+| Rasch-1PL | model=beta | n=1 | pre=32 | tau=baseline | j=0.3              | 0.612±0.006 | 0.468±0.004 | baseline   |                 50 | baseline_rasch_beta_pre_32_n_1_j0.3.csv            |
+| Rasch-1PL | model=beta | n=1 | pre=32 | tau=baseline | j=0.5              | 0.607±0.004 | 0.461±0.003 | baseline   |                 50 | baseline_rasch_beta_pre_32_n_1_j0.5.csv            |
+| Rasch-1PL | model=beta | n=1 | pre=32 | tau=baseline | j=0.7              | 0.620±0.003 | 0.460±0.003 | baseline   |                 50 | baseline_rasch_beta_pre_32_n_1_j0.7.csv            |
+| Rasch-1PL | model=beta | n=1 | pre=32 | tau=baseline | j=0.9              | 0.615±0.003 | 0.451±0.002 | baseline   |                 50 | baseline_rasch_beta_pre_32_n_1_j0.9.csv            |
+| Rasch-1PL | model=beta | n=1 | pre=32 | tau=baseline | j=1                | 0.615±0.003 | 0.452±0.003 | baseline   |                 50 | baseline_rasch_beta_pre_32_n_1_j1.csv              |
+| Rasch-1PL | model=beta | n=1 | pre=64 | tau=baseline | j=1                | 0.612±0.002 | 0.442±0.001 | baseline   |                 50 | baseline_rasch_beta_pre_64_n_1_j1.csv              |
+| Rasch-1PL | model=beta | n=1 | pre=max | tau=baseline | j=1               | 0.648±0.004 | 0.436±0.002 | baseline   |                 50 | baseline_rasch_beta_pre_max_n_1_j1.csv             |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=none | tau=baseline | j=1  | 0.525±0.005 | 0.358±0.003 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_none_n_1_j1.csv     |
+| IRT-2PL-Baseline | model=bernoulli | n=32 | pre=none | tau=baseline | j=1 | 0.534±0.003 | 0.363±0.003 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_none_n_32_j1.csv    |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=4 | tau=baseline | j=1     | 0.544±0.009 | 0.513±0.011 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_4_n_1_j1.csv        |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=8 | tau=baseline | j=1     | 0.548±0.006 | 0.650±0.004 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_8_n_1_j1.csv        |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=16 | tau=baseline | j=1    | 0.584±0.003 | 0.654±0.004 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_16_n_1_j1.csv       |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.1  | 0.547±0.012 | 0.618±0.010 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_32_n_1_j0.1.csv     |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.3  | 0.598±0.006 | 0.615±0.007 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_32_n_1_j0.3.csv     |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.5  | 0.589±0.004 | 0.609±0.009 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_32_n_1_j0.5.csv     |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.7  | 0.605±0.004 | 0.601±0.009 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_32_n_1_j0.7.csv     |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.9  | 0.606±0.003 | 0.575±0.012 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_32_n_1_j0.9.csv     |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=1    | 0.601±0.003 | 0.588±0.010 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_32_n_1_j1.csv       |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=64 | tau=baseline | j=1    | 0.588±0.003 | 0.530±0.005 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_64_n_1_j1.csv       |
+| IRT-2PL-Baseline | model=bernoulli | n=1 | pre=max | tau=baseline | j=1   | 0.581±0.006 | 0.596±0.005 | baseline   |                 50 | baseline_irt_2pl_bernoulli_pre_max_n_1_j1.csv      |
+| IRT-2PL-Baseline | model=beta | n=54 | pre=none | tau=baseline | j=1      | 0.538±0.007 | 0.354±0.003 | baseline   |                 50 | baseline_irt_2pl_beta_pre_none_n_54_j1.csv         |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=4 | tau=baseline | j=1          | 0.544±0.009 | 0.463±0.003 | baseline   |                 50 | baseline_irt_2pl_beta_pre_4_n_1_j1.csv             |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=8 | tau=baseline | j=1          | 0.549±0.006 | 0.468±0.002 | baseline   |                 50 | baseline_irt_2pl_beta_pre_8_n_1_j1.csv             |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=16 | tau=baseline | j=1         | 0.591±0.004 | 0.503±0.004 | baseline   |                 50 | baseline_irt_2pl_beta_pre_16_n_1_j1.csv            |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.1       | 0.544±0.014 | 0.596±0.011 | baseline   |                 50 | baseline_irt_2pl_beta_pre_32_n_1_j0.1.csv          |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.3       | 0.596±0.006 | 0.607±0.008 | baseline   |                 50 | baseline_irt_2pl_beta_pre_32_n_1_j0.3.csv          |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.5       | 0.586±0.004 | 0.598±0.005 | baseline   |                 50 | baseline_irt_2pl_beta_pre_32_n_1_j0.5.csv          |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.7       | 0.598±0.004 | 0.599±0.006 | baseline   |                 50 | baseline_irt_2pl_beta_pre_32_n_1_j0.7.csv          |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.9       | 0.596±0.003 | 0.591±0.005 | baseline   |                 50 | baseline_irt_2pl_beta_pre_32_n_1_j0.9.csv          |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=1         | 0.593±0.003 | 0.588±0.005 | baseline   |                 50 | baseline_irt_2pl_beta_pre_32_n_1_j1.csv            |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=64 | tau=baseline | j=1         | 0.585±0.003 | 0.578±0.007 | baseline   |                 50 | baseline_irt_2pl_beta_pre_64_n_1_j1.csv            |
+| IRT-2PL-Baseline | model=beta | n=1 | pre=max | tau=baseline | j=1        | 0.552±0.007 | 0.587±0.005 | baseline   |                 50 | baseline_irt_2pl_beta_pre_max_n_1_j1.csv           |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=none | tau=baseline | j=1     | 0.564±0.004 | 0.291±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_none_n_1_j1.csv        |
+| MIRT-Baseline | model=bernoulli | n=32 | pre=none | tau=baseline | j=1    | 0.569±0.005 | 0.291±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_none_n_32_j1.csv       |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=4 | tau=baseline | j=1        | 0.531±0.007 | 0.451±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_4_n_1_j1.csv           |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=8 | tau=baseline | j=1        | 0.544±0.005 | 0.452±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_8_n_1_j1.csv           |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=16 | tau=baseline | j=1       | 0.569±0.003 | 0.441±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_16_n_1_j1.csv          |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.1     | 0.582±0.009 | 0.444±0.002 | baseline   |                 50 | baseline_mirt_bernoulli_pre_32_n_1_j0.1.csv        |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.3     | 0.602±0.005 | 0.442±0.002 | baseline   |                 50 | baseline_mirt_bernoulli_pre_32_n_1_j0.3.csv        |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.5     | 0.595±0.004 | 0.441±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_32_n_1_j0.5.csv        |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.7     | 0.601±0.004 | 0.442±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_32_n_1_j0.7.csv        |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.9     | 0.600±0.003 | 0.439±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_32_n_1_j0.9.csv        |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=1       | 0.597±0.002 | 0.440±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_32_n_1_j1.csv          |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=64 | tau=baseline | j=1       | 0.599±0.001 | 0.445±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_64_n_1_j1.csv          |
+| MIRT-Baseline | model=bernoulli | n=1 | pre=max | tau=baseline | j=1      | 0.637±0.003 | 0.437±0.001 | baseline   |                 50 | baseline_mirt_bernoulli_pre_max_n_1_j1.csv         |
+| MIRT-Baseline | model=beta | n=54 | pre=none | tau=baseline | j=1         | 0.568±0.005 | 0.296±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_none_n_54_j1.csv            |
+| MIRT-Baseline | model=beta | n=1 | pre=4 | tau=baseline | j=1             | 0.531±0.008 | 0.451±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_4_n_1_j1.csv                |
+| MIRT-Baseline | model=beta | n=1 | pre=8 | tau=baseline | j=1             | 0.544±0.005 | 0.452±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_8_n_1_j1.csv                |
+| MIRT-Baseline | model=beta | n=1 | pre=16 | tau=baseline | j=1            | 0.575±0.003 | 0.440±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_16_n_1_j1.csv               |
+| MIRT-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.1          | 0.581±0.008 | 0.443±0.003 | baseline   |                 50 | baseline_mirt_beta_pre_32_n_1_j0.1.csv             |
+| MIRT-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.3          | 0.597±0.006 | 0.441±0.002 | baseline   |                 50 | baseline_mirt_beta_pre_32_n_1_j0.3.csv             |
+| MIRT-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.5          | 0.587±0.004 | 0.441±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_32_n_1_j0.5.csv             |
+| MIRT-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.7          | 0.592±0.003 | 0.442±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_32_n_1_j0.7.csv             |
+| MIRT-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.9          | 0.591±0.003 | 0.439±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_32_n_1_j0.9.csv             |
+| MIRT-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=1            | 0.587±0.002 | 0.440±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_32_n_1_j1.csv               |
+| MIRT-Baseline | model=beta | n=1 | pre=64 | tau=baseline | j=1            | 0.595±0.001 | 0.445±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_64_n_1_j1.csv               |
+| MIRT-Baseline | model=beta | n=1 | pre=max | tau=baseline | j=1           | 0.624±0.003 | 0.437±0.001 | baseline   |                 50 | baseline_mirt_beta_pre_max_n_1_j1.csv              |
+| kNN-Baseline | model=bernoulli | n=1 | pre=none | tau=baseline | j=1      | 0.666±0.010 | 0.273±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_none_n_1_j1.csv         |
+| kNN-Baseline | model=bernoulli | n=32 | pre=none | tau=baseline | j=1     | 0.722±0.006 | 0.264±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_none_n_32_j1.csv        |
+| kNN-Baseline | model=bernoulli | n=1 | pre=4 | tau=baseline | j=1         | 0.668±0.007 | 0.437±0.003 | baseline   |                 50 | baseline_knn_bernoulli_pre_4_n_1_j1.csv            |
+| kNN-Baseline | model=bernoulli | n=1 | pre=8 | tau=baseline | j=1         | 0.664±0.006 | 0.439±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_8_n_1_j1.csv            |
+| kNN-Baseline | model=bernoulli | n=1 | pre=16 | tau=baseline | j=1        | 0.683±0.005 | 0.425±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_16_n_1_j1.csv           |
+| kNN-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.1      | 0.616±0.016 | 0.451±0.005 | baseline   |                 50 | baseline_knn_bernoulli_pre_32_n_1_j0.1.csv         |
+| kNN-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.3      | 0.643±0.009 | 0.442±0.004 | baseline   |                 50 | baseline_knn_bernoulli_pre_32_n_1_j0.3.csv         |
+| kNN-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.5      | 0.644±0.006 | 0.441±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_32_n_1_j0.5.csv         |
+| kNN-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.7      | 0.664±0.005 | 0.436±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_32_n_1_j0.7.csv         |
+| kNN-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=0.9      | 0.666±0.004 | 0.431±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_32_n_1_j0.9.csv         |
+| kNN-Baseline | model=bernoulli | n=1 | pre=32 | tau=baseline | j=1        | 0.667±0.005 | 0.431±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_32_n_1_j1.csv           |
+| kNN-Baseline | model=bernoulli | n=1 | pre=64 | tau=baseline | j=1        | 0.656±0.004 | 0.440±0.002 | baseline   |                 50 | baseline_knn_bernoulli_pre_64_n_1_j1.csv           |
+| kNN-Baseline | model=bernoulli | n=1 | pre=max | tau=baseline | j=1       | 0.707±0.006 | 0.419±0.003 | baseline   |                 50 | baseline_knn_bernoulli_pre_max_n_1_j1.csv          |
+| kNN-Baseline | model=beta | n=54 | pre=none | tau=baseline | j=1          | 0.733±0.005 | 0.246±0.002 | baseline   |                 50 | baseline_knn_beta_pre_none_n_54_j1.csv             |
+| kNN-Baseline | model=beta | n=1 | pre=4 | tau=baseline | j=1              | 0.670±0.007 | 0.434±0.003 | baseline   |                 50 | baseline_knn_beta_pre_4_n_1_j1.csv                 |
+| kNN-Baseline | model=beta | n=1 | pre=8 | tau=baseline | j=1              | 0.663±0.006 | 0.437±0.002 | baseline   |                 50 | baseline_knn_beta_pre_8_n_1_j1.csv                 |
+| kNN-Baseline | model=beta | n=1 | pre=16 | tau=baseline | j=1             | 0.683±0.005 | 0.423±0.002 | baseline   |                 50 | baseline_knn_beta_pre_16_n_1_j1.csv                |
+| kNN-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.1           | 0.624±0.016 | 0.446±0.005 | baseline   |                 50 | baseline_knn_beta_pre_32_n_1_j0.1.csv              |
+| kNN-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.3           | 0.644±0.009 | 0.438±0.004 | baseline   |                 50 | baseline_knn_beta_pre_32_n_1_j0.3.csv              |
+| kNN-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.5           | 0.648±0.006 | 0.436±0.002 | baseline   |                 50 | baseline_knn_beta_pre_32_n_1_j0.5.csv              |
+| kNN-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.7           | 0.669±0.005 | 0.431±0.002 | baseline   |                 50 | baseline_knn_beta_pre_32_n_1_j0.7.csv              |
+| kNN-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=0.9           | 0.671±0.004 | 0.427±0.002 | baseline   |                 50 | baseline_knn_beta_pre_32_n_1_j0.9.csv              |
+| kNN-Baseline | model=beta | n=1 | pre=32 | tau=baseline | j=1             | 0.671±0.005 | 0.428±0.002 | baseline   |                 50 | baseline_knn_beta_pre_32_n_1_j1.csv                |
+| kNN-Baseline | model=beta | n=1 | pre=64 | tau=baseline | j=1             | 0.661±0.004 | 0.436±0.002 | baseline   |                 50 | baseline_knn_beta_pre_64_n_1_j1.csv                |
+| kNN-Baseline | model=beta | n=1 | pre=max | tau=baseline | j=1            | 0.710±0.006 | 0.415±0.003 | baseline   |                 50 | baseline_knn_beta_pre_max_n_1_j1.csv               |
+| SAE | model=bernoulli | n=1 | pre=none | tau=on | j=1.0                   | 0.700±0.009 | 0.251±0.002 | 0.3        |                 50 | amortized_irt_sae_bernoulli_n_1.csv                |
+| SAE | model=bernoulli | n=1 | pre=none | tau=off | j=1.0                  | 0.691±0.011 | 0.250±0.002 | 1          |                 50 | amortized_irt_sae_bernoulli_n_1_notau.csv          |
+| SAE | model=bernoulli | n=1 | pre=4 | tau=on | j=1.0                      | 0.664±0.007 | 0.428±0.002 | 0.002      |                 50 | amortized_irt_sae_bernoulli_pre_4_n_1.csv          |
+| SAE | model=bernoulli | n=1 | pre=8 | tau=on | j=1.0                      | 0.660±0.007 | 0.430±0.002 | 0.004      |                 50 | amortized_irt_sae_bernoulli_pre_8_n_1.csv          |
+| SAE | model=bernoulli | n=1 | pre=16 | tau=on | j=1.0                     | 0.688±0.005 | 0.416±0.002 | 0.004      |                 50 | amortized_irt_sae_bernoulli_pre_16_n_1.csv         |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=on | j=0.1                     | 0.642±0.017 | 0.437±0.005 | 0.005      |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1_j0.1.csv    |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=on | j=0.3                     | 0.668±0.010 | 0.425±0.003 | 0.005      |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1_j0.3.csv    |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=on | j=0.5                     | 0.677±0.006 | 0.422±0.002 | 0.004      |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1_j0.5.csv    |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=on | j=0.7                     | 0.691±0.005 | 0.420±0.002 | 0.002      |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1_j0.7.csv    |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=on | j=0.9                     | 0.692±0.004 | 0.416±0.001 | 0.002      |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1_j0.9.csv    |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=on | j=1.0                     | 0.695±0.004 | 0.415±0.001 | 0.002      |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1.csv         |
+| SAE | model=bernoulli | n=1 | pre=32 | tau=off | j=1.0                    | 0.696±0.004 | 0.415±0.002 | 1          |                 50 | amortized_irt_sae_bernoulli_pre_32_n_1_notau.csv   |
+| SAE | model=bernoulli | n=1 | pre=64 | tau=on | j=1.0                     | 0.684±0.004 | 0.423±0.001 | 0.002      |                 50 | amortized_irt_sae_bernoulli_pre_64_n_1.csv         |
+| SAE | model=bernoulli | n=1 | pre=max | tau=on | j=1.0                    | 0.730±0.005 | 0.403±0.002 | 0.002      |                 50 | amortized_irt_sae_bernoulli_pre_max_n_1.csv        |
+| SAE | model=beta | n=max | pre=none | tau=on | j=1.0                      | 0.702±0.006 | 0.253±0.002 | 0.002      |                 50 | amortized_irt_sae_beta_n_max.csv                   |
+| SAE | model=beta | n=max | pre=none | tau=off | j=1.0                     | 0.686±0.007 | 0.253±0.002 | 1          |                 50 | amortized_irt_sae_beta_n_max_notau.csv             |
+| SAE | model=beta | n=max | pre=4 | tau=on | j=1.0                         | 0.662±0.008 | 0.457±0.004 | 0.0535     |                 50 | amortized_irt_sae_beta_pre_4_n_max.csv             |
+| SAE | model=beta | n=max | pre=8 | tau=on | j=1.0                         | 0.658±0.007 | 0.451±0.003 | 0.105      |                 50 | amortized_irt_sae_beta_pre_8_n_max.csv             |
+| SAE | model=beta | n=max | pre=16 | tau=on | j=1.0                        | 0.682±0.005 | 0.456±0.003 | 0.024      |                 50 | amortized_irt_sae_beta_pre_16_n_max.csv            |
+| SAE | model=beta | n=max | pre=32 | tau=on | j=0.1                        | 0.622±0.016 | 0.497±0.009 | 0.038      |                 50 | amortized_irt_sae_beta_pre_32_n_max_j0.1.csv       |
+| SAE | model=beta | n=max | pre=32 | tau=on | j=0.3                        | 0.666±0.009 | 0.455±0.005 | 0.078      |                 50 | amortized_irt_sae_beta_pre_32_n_max_j0.3.csv       |
+| SAE | model=beta | n=max | pre=32 | tau=on | j=0.5                        | 0.675±0.006 | 0.452±0.003 | 0.038      |                 50 | amortized_irt_sae_beta_pre_32_n_max_j0.5.csv       |
+| SAE | model=beta | n=max | pre=32 | tau=on | j=0.7                        | 0.688±0.005 | 0.451±0.003 | 0.032      |                 50 | amortized_irt_sae_beta_pre_32_n_max_j0.7.csv       |
+| SAE | model=beta | n=max | pre=32 | tau=on | j=0.9                        | 0.689±0.004 | 0.458±0.003 | 0.022      |                 50 | amortized_irt_sae_beta_pre_32_n_max_j0.9.csv       |
+| SAE | model=beta | n=max | pre=32 | tau=on | j=1.0                        | 0.693±0.005 | 0.453±0.003 | 0.024      |                 50 | amortized_irt_sae_beta_pre_32_n_max.csv            |
+| SAE | model=beta | n=max | pre=64 | tau=on | j=1.0                        | 0.683±0.004 | 0.464±0.002 | 0.002      |                 50 | amortized_irt_sae_beta_pre_64_n_max.csv            |
+| SAE | model=beta | n=max | pre=max | tau=on | j=1.0                       | 0.727±0.005 | 0.439±0.003 | 0.02       |                 50 | amortized_irt_sae_beta_pre_max_n_max.csv           |
+| SAE | model=beta | n=max | pre=max | tau=off | j=1.0                      | 0.725±0.005 | 0.411±0.002 | 1          |                 50 | amortized_irt_sae_beta_pre_max_n_max_notau.csv     |
+| PCA | model=bernoulli | n=1 | pre=none | tau=on | j=1.0                   | 0.711±0.009 | 0.250±0.002 | 0.02       |                 50 | amortized_irt_pca_bernoulli_n_1.csv                |
+| PCA | model=bernoulli | n=1 | pre=none | tau=off | j=1.0                  | 0.677±0.011 | 0.249±0.002 | 1          |                 50 | amortized_irt_pca_bernoulli_n_1_notau.csv          |
+| PCA | model=bernoulli | n=1 | pre=4 | tau=on | j=1.0                      | 0.689±0.008 | 0.427±0.003 | 0.036      |                 50 | amortized_irt_pca_bernoulli_pre_4_n_1.csv          |
+| PCA | model=bernoulli | n=1 | pre=8 | tau=on | j=1.0                      | 0.670±0.007 | 0.430±0.002 | 0.5        |                 50 | amortized_irt_pca_bernoulli_pre_8_n_1.csv          |
+| PCA | model=bernoulli | n=1 | pre=16 | tau=on | j=1.0                     | 0.696±0.006 | 0.415±0.002 | 0.036      |                 50 | amortized_irt_pca_bernoulli_pre_16_n_1.csv         |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=on | j=0.1                     | 0.634±0.019 | 0.434±0.007 | 0.014      |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1_j0.1.csv    |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=on | j=0.3                     | 0.681±0.008 | 0.422±0.003 | 0.005      |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1_j0.3.csv    |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=on | j=0.5                     | 0.684±0.005 | 0.419±0.002 | 0.008      |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1_j0.5.csv    |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=on | j=0.7                     | 0.694±0.005 | 0.419±0.002 | 0.002      |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1_j0.7.csv    |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=on | j=0.9                     | 0.702±0.005 | 0.414±0.002 | 0.002      |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1_j0.9.csv    |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=on | j=1.0                     | 0.701±0.005 | 0.413±0.001 | 0.002      |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1.csv         |
+| PCA | model=bernoulli | n=1 | pre=32 | tau=off | j=1.0                    | 0.702±0.005 | 0.412±0.002 | 1          |                 50 | amortized_irt_pca_bernoulli_pre_32_n_1_notau.csv   |
+| PCA | model=bernoulli | n=1 | pre=64 | tau=on | j=1.0                     | 0.692±0.004 | 0.420±0.001 | 0.002      |                 50 | amortized_irt_pca_bernoulli_pre_64_n_1.csv         |
+| PCA | model=bernoulli | n=1 | pre=max | tau=on | j=1.0                    | 0.737±0.005 | 0.401±0.002 | 0.002      |                 50 | amortized_irt_pca_bernoulli_pre_max_n_1.csv        |
+| PCA | model=beta | n=max | pre=none | tau=on | j=1.0                      | 0.726±0.007 | 0.245±0.002 | 0.005      |                 50 | amortized_irt_pca_beta_n_max.csv                   |
+| PCA | model=beta | n=max | pre=none | tau=off | j=1.0                     | 0.660±0.008 | 0.246±0.002 | 1          |                 50 | amortized_irt_pca_beta_n_max_notau.csv             |
+| PCA | model=beta | n=max | pre=4 | tau=on | j=1.0                         | 0.674±0.008 | 0.455±0.004 | 0.052      |                 50 | amortized_irt_pca_beta_pre_4_n_max.csv             |
+| PCA | model=beta | n=max | pre=8 | tau=on | j=1.0                         | 0.662±0.007 | 0.448±0.003 | 0.105      |                 50 | amortized_irt_pca_beta_pre_8_n_max.csv             |
+| PCA | model=beta | n=max | pre=16 | tau=on | j=1.0                        | 0.689±0.006 | 0.451±0.004 | 0.034      |                 50 | amortized_irt_pca_beta_pre_16_n_max.csv            |
+| PCA | model=beta | n=max | pre=32 | tau=on | j=0.1                        | 0.631±0.018 | 0.470±0.010 | 0.062      |                 50 | amortized_irt_pca_beta_pre_32_n_max_j0.1.csv       |
+| PCA | model=beta | n=max | pre=32 | tau=on | j=0.3                        | 0.668±0.009 | 0.448±0.005 | 0.094      |                 50 | amortized_irt_pca_beta_pre_32_n_max_j0.3.csv       |
+| PCA | model=beta | n=max | pre=32 | tau=on | j=0.5                        | 0.676±0.006 | 0.441±0.003 | 0.115      |                 50 | amortized_irt_pca_beta_pre_32_n_max_j0.5.csv       |
+| PCA | model=beta | n=max | pre=32 | tau=on | j=0.7                        | 0.687±0.005 | 0.447±0.003 | 0.04       |                 50 | amortized_irt_pca_beta_pre_32_n_max_j0.7.csv       |
+| PCA | model=beta | n=max | pre=32 | tau=on | j=0.9                        | 0.695±0.005 | 0.440±0.002 | 0.04       |                 50 | amortized_irt_pca_beta_pre_32_n_max_j0.9.csv       |
+| PCA | model=beta | n=max | pre=32 | tau=on | j=1.0                        | 0.696±0.005 | 0.452±0.003 | 0.004      |                 50 | amortized_irt_pca_beta_pre_32_n_max.csv            |
+| PCA | model=beta | n=max | pre=64 | tau=on | j=1.0                        | 0.690±0.004 | 0.457±0.002 | 0.01       |                 50 | amortized_irt_pca_beta_pre_64_n_max.csv            |
+| PCA | model=beta | n=max | pre=max | tau=on | j=1.0                       | 0.733±0.005 | 0.435±0.003 | 0.0159     |                 50 | amortized_irt_pca_beta_pre_max_n_max.csv           |
+| PCA | model=beta | n=max | pre=max | tau=off | j=1.0                      | 0.726±0.005 | 0.410±0.002 | 1          |                 50 | amortized_irt_pca_beta_pre_max_n_max_notau.csv     |
+| RAW | model=bernoulli | n=1 | pre=none | tau=on | j=1.0                   | 0.701±0.011 | 0.260±0.002 | 0.006      |                 50 | amortized_irt_raw_bernoulli_n_1.csv                |
+| RAW | model=bernoulli | n=1 | pre=none | tau=off | j=1.0                  | 0.705±0.011 | 0.245±0.002 | 1          |                 50 | amortized_irt_raw_bernoulli_n_1_notau.csv          |
+| RAW | model=bernoulli | n=1 | pre=4 | tau=on | j=1.0                      | 0.656±0.008 | 0.469±0.004 | 200        |                 50 | amortized_irt_raw_bernoulli_pre_4_n_1.csv          |
+| RAW | model=bernoulli | n=1 | pre=8 | tau=on | j=1.0                      | 0.657±0.007 | 0.461±0.003 | 1000       |                 50 | amortized_irt_raw_bernoulli_pre_8_n_1.csv          |
+| RAW | model=bernoulli | n=1 | pre=16 | tau=on | j=1.0                     | 0.702±0.006 | 0.433±0.003 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_16_n_1.csv         |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=on | j=0.1                     | 0.626±0.018 | 0.467±0.008 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1_j0.1.csv    |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=on | j=0.3                     | 0.666±0.010 | 0.450±0.005 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1_j0.3.csv    |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=on | j=0.5                     | 0.658±0.007 | 0.450±0.003 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1_j0.5.csv    |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=on | j=0.7                     | 0.676±0.006 | 0.443±0.003 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1_j0.7.csv    |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=on | j=0.9                     | 0.687±0.005 | 0.433±0.002 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1_j0.9.csv    |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=on | j=1.0                     | 0.690±0.004 | 0.431±0.002 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1.csv         |
+| RAW | model=bernoulli | n=1 | pre=32 | tau=off | j=1.0                    | 0.716±0.004 | 0.410±0.001 | 1          |                 50 | amortized_irt_raw_bernoulli_pre_32_n_1_notau.csv   |
+| RAW | model=bernoulli | n=1 | pre=64 | tau=on | j=1.0                     | 0.674±0.004 | 0.439±0.002 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_64_n_1.csv         |
+| RAW | model=bernoulli | n=1 | pre=max | tau=on | j=1.0                    | 0.727±0.005 | 0.414±0.002 | 0.002      |                 50 | amortized_irt_raw_bernoulli_pre_max_n_1.csv        |
+| RAW | model=beta | n=max | pre=none | tau=on | j=1.0                      | 0.745±0.000 | 0.233±0.000 | 0.11       |                 50 | amortized_irt_raw_beta_n_max.csv                   |
+| RAW | model=beta | n=max | pre=none | tau=off | j=1.0                     | 0.665±0.006 | 0.244±0.002 | 1          |                 50 | amortized_irt_raw_beta_n_max_notau.csv             |
+| RAW | model=beta | n=max | pre=4 | tau=on | j=1.0                         | 0.659±0.008 | 0.477±0.004 | 1000       |                 50 | amortized_irt_raw_beta_pre_4_n_max.csv             |
+| RAW | model=beta | n=max | pre=8 | tau=on | j=1.0                         | 0.667±0.007 | 0.471±0.004 | 0.074      |                 50 | amortized_irt_raw_beta_pre_8_n_max.csv             |
+| RAW | model=beta | n=max | pre=16 | tau=on | j=1.0                        | 0.696±0.006 | 0.448±0.003 | 0.05       |                 50 | amortized_irt_raw_beta_pre_16_n_max.csv            |
+| RAW | model=beta | n=max | pre=32 | tau=on | j=0.1                        | 0.623±0.017 | 0.474±0.009 | 0.084      |                 50 | amortized_irt_raw_beta_pre_32_n_max_j0.1.csv       |
+| RAW | model=beta | n=max | pre=32 | tau=on | j=0.3                        | 0.669±0.010 | 0.463±0.006 | 0.018      |                 50 | amortized_irt_raw_beta_pre_32_n_max_j0.3.csv       |
+| RAW | model=beta | n=max | pre=32 | tau=on | j=0.5                        | 0.668±0.007 | 0.464±0.003 | 0.022      |                 50 | amortized_irt_raw_beta_pre_32_n_max_j0.5.csv       |
+| RAW | model=beta | n=max | pre=32 | tau=on | j=0.7                        | 0.686±0.006 | 0.459±0.003 | 0.012      |                 50 | amortized_irt_raw_beta_pre_32_n_max_j0.7.csv       |
+| RAW | model=beta | n=max | pre=32 | tau=on | j=0.9                        | 0.695±0.004 | 0.451±0.003 | 0.002      |                 50 | amortized_irt_raw_beta_pre_32_n_max_j0.9.csv       |
+| RAW | model=beta | n=max | pre=32 | tau=on | j=1.0                        | 0.694±0.005 | 0.449±0.002 | 0.002      |                 50 | amortized_irt_raw_beta_pre_32_n_max.csv            |
+| RAW | model=beta | n=max | pre=64 | tau=on | j=1.0                        | 0.687±0.004 | 0.459±0.002 | 0.002      |                 50 | amortized_irt_raw_beta_pre_64_n_max.csv            |
+| RAW | model=beta | n=max | pre=max | tau=on | j=1.0                       | 0.730±0.005 | 0.434±0.003 | 0.002      |                 50 | amortized_irt_raw_beta_pre_max_n_max.csv           |
+| RAW | model=beta | n=max | pre=max | tau=off | j=1.0                      | 0.721±0.005 | 0.416±0.002 | 1          |                 50 | amortized_irt_raw_beta_pre_max_n_max_notau.csv     |
+| ONES | model=bernoulli | n=1 | pre=none | tau=on | j=1.0                  | 0.573±0.004 | 0.261±0.002 | 0.005      |                 50 | amortized_irt_ones_bernoulli_n_1.csv               |
+| ONES | model=bernoulli | n=1 | pre=none | tau=off | j=1.0                 | 0.570±0.004 | 0.261±0.002 | 1          |                 50 | amortized_irt_ones_bernoulli_n_1_notau.csv         |
+| ONES | model=bernoulli | n=1 | pre=32 | tau=on | j=1.0                    | 0.622±0.003 | 0.433±0.001 | 0.002      |                 50 | amortized_irt_ones_bernoulli_pre_32_n_1.csv        |
+| ONES | model=bernoulli | n=1 | pre=32 | tau=off | j=1.0                   | 0.622±0.003 | 0.432±0.001 | 1          |                 50 | amortized_irt_ones_bernoulli_pre_32_n_1_notau.csv  |
+| ONES | model=beta | n=max | pre=none | tau=on | j=1.0                     | 0.570±0.004 | 0.268±0.002 | 0.0151     |                 50 | amortized_irt_ones_beta_n_max.csv                  |
+| ONES | model=beta | n=max | pre=none | tau=off | j=1.0                    | 0.569±0.004 | 0.266±0.002 | 1          |                 50 | amortized_irt_ones_beta_n_max_notau.csv            |
+| ONES | model=beta | n=max | pre=max | tau=on | j=1.0                      | 0.676±0.005 | 0.458±0.003 | 0.002      |                 50 | amortized_irt_ones_beta_pre_max_n_max.csv          |
+| ONES | model=beta | n=max | pre=max | tau=off | j=1.0                     | 0.675±0.005 | 0.452±0.003 | 1          |                 50 | amortized_irt_ones_beta_pre_max_n_max_notau.csv    |
+| Rasch-2PL | model=bernoulli | n=32 | pre=none | tau=on | j=1.0            | 0.534±0.003 | 0.362±0.003 | 1          |                 50 | amortized_irt_rasch_2pl_bernoulli_n_32.csv         |
+| Rasch-2PL | model=beta | n=max | pre=none | tau=on | j=1.0                | 0.548±0.007 | 0.321±0.004 | 1          |                 50 | amortized_irt_rasch_2pl_beta_n_max.csv             |
+| NonAmortised-MIRT | model=bernoulli | n=32 | pre=none | tau=on | j=1.0    | 0.568±0.005 | 0.291±0.001 | 1          |                 50 | amortized_irt_nonamortised_mirt_bernoulli_n_32.csv |
+| NonAmortised-MIRT | model=beta | n=max | pre=none | tau=on | j=1.0        | 0.570±0.005 | 0.296±0.001 | 1          |                 50 | amortized_irt_nonamortised_mirt_beta_n_max.csv     |

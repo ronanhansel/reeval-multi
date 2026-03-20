@@ -36,18 +36,31 @@ MODELS = ['sae', 'pca', 'raw']
 MODEL_LABELS = {'sae': 'ARAF (SAE)', 'pca': 'ARAF (PCA)', 'raw': 'ARAF (RAW)'}
 MODEL_COLORS = {'sae': "lightblue", 'pca': "deepskyblue", 'raw': "steelblue"}
 BASELINE_GRAY = 'slategray'
-BASELINE_KEYS = ['rasch', 'mirt']
+BASELINE_KEYS = ['rasch', 'mirt', 'knn']
 BASELINE_LABELS = {
     'rasch': 'Rasch',
     'mirt': 'MIRT',
+    'knn': 'kNN',
 }
 BASELINE_COLORS = {
-    'rasch': 'darkslategray',
-    'mirt': 'darkgray',
+    'rasch': '#B9C4CC',
+    'mirt': '#D3D8DE',
+    'knn': '#5F6F7A',
 }
 BASELINE_MARKERS = {
     'rasch': 'o',
     'mirt': 'o',
+    'knn': 'o',
+}
+BASELINE_LINE_ALPHA = {
+    'rasch': 0.65,
+    'mirt': 0.6,
+    'knn': 0.9,
+}
+BASELINE_FILL_ALPHA = {
+    'rasch': 0.08,
+    'mirt': 0.06,
+    'knn': 0.12,
 }
 
 # Typography
@@ -238,7 +251,7 @@ def plot_model_curves(ax, series_by_model, baseline_series, metric, title, x_tic
             y - e,
             y + e,
             color=BASELINE_COLORS[b],
-            alpha=0.12,
+            alpha=BASELINE_FILL_ALPHA[b],
             linewidth=0,
             zorder=1,
         )
@@ -250,7 +263,7 @@ def plot_model_curves(ax, series_by_model, baseline_series, metric, title, x_tic
             marker=BASELINE_MARKERS[b],
             linestyle='--',
             markersize=BASELINE_MARKER_SIZE,
-            alpha=0.75,
+            alpha=BASELINE_LINE_ALPHA[b],
             zorder=2,
         )
 
@@ -386,8 +399,8 @@ def plot_combined_beta_quad():
         handles,
         labels,
         loc='lower center',
-        bbox_to_anchor=(0.5, 0.02),
-        ncol=5,
+        bbox_to_anchor=(0.5, -0.05),
+        ncol=3,
         fontsize=FONT_SIZE_LEGEND,
         frameon=True,
     )

@@ -6,23 +6,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULT_CSV = REPO_ROOT / "model" / "result" / "comprehensive_results.csv"
-BASELINE_CSV = REPO_ROOT / "model" / "result" / "baselines" / "baseline_metrics.csv"
-OUTPUT_TEX = REPO_ROOT / "paper" / "appendix_all_setups_table.tex"
-
-
-def format_res(mean: float, sem: float) -> str:
-    if pd.isna(mean):
-        return "---"
-    if sem == 0 or pd.isna(sem):
-        return f"{mean:.3f}"
-    return f"{mean:.3f}±{sem:.3f}"
-
+OUTPUT_TEX = REPO_ROOT / "paper" / "data" / "appendix_all_setups_table.tex"
 
 def latex_escape(value: object) -> str:
     text = str(value)
@@ -45,7 +34,28 @@ def latex_escape(value: object) -> str:
 
 def parse_source_filename(filename: str) -> dict[str, str]:
     stem = filename.replace(".csv", "")
-    prefix = "amortized_irt_"
+    if stem.startswith("baseline_"):
+        prefix = "baseline_"
+        tau_label = "---"
+        embedding_label_map = {
+            "naive": "Naive-Baseline",
+            "rasch": "Rasch-1PL",
+            "irt_2pl": "IRT-2PL-Baseline",
+            "mirt": "MIRT-Baseline",
+            "knn": "kNN-Baseline",
+        }
+    else:
+        prefix = "amortized_irt_"
+        tau_label = "off" if "notau" in stem else "on"
+        embedding_label_map = {
+            "sae": "SAE",
+            "pca": "PCA",
+            "raw": "RAW",
+            "ones": "ONES",
+            "rasch_2pl": "Rasch-2PL",
+            "nonamortised_mirt": "NonAmortised-MIRT",
+        }
+
     core = stem[len(prefix) :] if stem.startswith(prefix) else stem
     tokens = core.split("_")
 
@@ -70,29 +80,18 @@ def parse_source_filename(filename: str) -> dict[str, str]:
         if p_idx + 1 < len(tokens):
             pre_revision = tokens[p_idx + 1]
 
-    no_tau = "notau" in tokens
-
     j_val = "1.0"
     for token in tokens:
         if token.startswith("j") and len(token) > 1:
             j_val = token[1:]
             break
 
-    embedding_label_map = {
-        "sae": "SAE",
-        "pca": "PCA",
-        "raw": "RAW",
-        "ones": "ONES",
-        "rasch_2pl": "Rasch-2PL",
-        "nonamortised_mirt": "NonAmortised-MIRT",
-    }
-
     return {
         "embedding": embedding_label_map.get(embedding, embedding.upper()),
         "model": model,
         "n": n_samples,
         "pre": pre_revision,
-        "tau": "off" if no_tau else "on",
+        "tau": tau_label,
         "j": j_val,
     }
 
@@ -159,103 +158,6 @@ def build_table(df: pd.DataFrame) -> str:
 
     out = pd.DataFrame(records)
 
-    # Add baseline rows from the dedicated cache so appendix coverage includes
-    # baseline-only summaries across all test-taker/item configurations.
-    if BASELINE_CSV.exists():
-        baseline_df = pd.read_csv(BASELINE_CSV, on_bad_lines="skip")
-        baseline_df.columns = baseline_df.columns.str.strip()
-
-        for col in [
-            "seed",
-            "n_samples",
-            "j_percentage",
-            "auc_naive",
-            "rmse_naive",
-            "auc_rasch",
-            "rmse_rasch",
-            "auc_2pl",
-            "rmse_2pl",
-            "auc_mirt",
-            "rmse_mirt",
-        ]:
-            if col in baseline_df.columns:
-                baseline_df[col] = pd.to_numeric(baseline_df[col], errors="coerce")
-
-        required_cols = {"model_type", "pre_revision", "n_samples", "j_percentage"}
-        if required_cols.issubset(baseline_df.columns):
-            baseline_specs = [
-                ("Naive-Baseline", "auc_naive", "rmse_naive"),
-                ("Rasch-1PL", "auc_rasch", "rmse_rasch"),
-                ("IRT-2PL-Baseline", "auc_2pl", "rmse_2pl"),
-                ("MIRT-Baseline", "auc_mirt", "rmse_mirt"),
-            ]
-
-            group_cols = ["model_type", "n_samples", "pre_revision", "j_percentage"]
-            baseline_rows = []
-
-            for emb_name, auc_col, rmse_col in baseline_specs:
-                if auc_col not in baseline_df.columns or rmse_col not in baseline_df.columns:
-                    continue
-
-                curr = baseline_df.dropna(subset=[auc_col, rmse_col, "model_type", "n_samples"])
-                if curr.empty:
-                    continue
-
-                agg_df = (
-                    curr.groupby(group_cols, dropna=False)
-                    .agg(
-                        auc_mean=(auc_col, "mean"),
-                        auc_sem=(auc_col, "sem"),
-                        rmse_mean=(rmse_col, "mean"),
-                        rmse_sem=(rmse_col, "sem"),
-                        seeds=("seed", pd.Series.nunique),
-                    )
-                    .reset_index()
-                )
-
-                for _, row in agg_df.iterrows():
-                    model = str(row.get("model_type", "unknown"))
-                    n_samples = row.get("n_samples", np.nan)
-                    pre_revision = str(row.get("pre_revision", "none")).strip().lower()
-                    j_val = row.get("j_percentage", 1.0)
-
-                    if pd.isna(n_samples):
-                        n_label = "unknown"
-                    else:
-                        n_float = float(n_samples)
-                        n_label = str(int(n_float)) if n_float.is_integer() else f"{n_float:g}"
-
-                    if pre_revision in {"", "nan", "none"}:
-                        pre_label = "none"
-                    else:
-                        pre_label = pre_revision
-
-                    j_label = "1.0" if pd.isna(j_val) else f"{float(j_val):g}"
-
-                    baseline_rows.append(
-                        {
-                            "Embedding": emb_name,
-                            "Model": model,
-                            "N": normalize_n_mode(n_label),
-                            "Pre": pre_label,
-                            "Tau": "---",
-                            "j": j_label,
-                            "BestTau": "---",
-                            "AUC": format_res(
-                                float(row["auc_mean"]),
-                                float(row["auc_sem"]) if not pd.isna(row["auc_sem"]) else 0.0,
-                            ),
-                            "RMSE": format_res(
-                                float(row["rmse_mean"]),
-                                float(row["rmse_sem"]) if not pd.isna(row["rmse_sem"]) else 0.0,
-                            ),
-                            "Seeds": int(row["seeds"]) if not pd.isna(row["seeds"]) else 0,
-                        }
-                    )
-
-            if baseline_rows:
-                out = pd.concat([out, pd.DataFrame(baseline_rows)], ignore_index=True)
-
     # Explicitly separate revision stage from test-taker count shown in the table:
     # - Stage: Pre or Post
     # - TestTakers: pre-revision level for Pre runs, else N for Post runs
@@ -273,12 +175,13 @@ def build_table(df: pd.DataFrame) -> str:
         "Rasch-1PL": 1,
         "IRT-2PL-Baseline": 2,
         "MIRT-Baseline": 3,
-        "ONES": 4,
-        "SAE": 5,
-        "PCA": 6,
-        "RAW": 7,
-        "Rasch-2PL": 8,
-        "NonAmortised-MIRT": 9,
+        "kNN-Baseline": 4,
+        "ONES": 5,
+        "SAE": 6,
+        "PCA": 7,
+        "RAW": 8,
+        "Rasch-2PL": 9,
+        "NonAmortised-MIRT": 10,
     }
     model_order = {"bernoulli": 0, "beta": 1}
     stage_order = {"Pre": 0, "Post": 1}
@@ -318,7 +221,7 @@ def build_table(df: pd.DataFrame) -> str:
     lines.append(r"\scriptsize")
     lines.append(r"\setlength{\tabcolsep}{3pt}")
     lines.append(r"\begin{longtable}{llccccccccc}")
-    lines.append(r"\caption{Appendix summary of all experimental setups. Each row reports one setup from the full sweep, evaluated at the best $\tau$ (selected by highest mean $\mathrm{AUC}$). Baseline rows are also included from the baseline cache for Naive, Rasch-1PL, IRT-2PL, and MIRT, preserving variation over test takers and item subsets. Notation: \emph{Revision} indicates whether the run is pre-revision (Pre) or post-revision (Post). \emph{Test Takers} is the effective test-taker count used for that run (for Pre rows this comes from the pre-revision subset level; for Post rows this follows the run setting), with any legacy \texttt{max}/\texttt{full} test-taker setting shown as $143$. $N\in\{1,\mathrm{full}\}$ denotes repeated matrix-sampling mode, where \emph{full} uses all available repetitions for that setup. $\tau\in\{\mathrm{on},\mathrm{off},\texttt{---}\}$ indicates whether regularization is enabled (or not applicable for baseline-only rows); $j$ is the item-fraction control used in scaling-law runs; \emph{Best $\tau$} is the selected regularization value for amortized setups and \texttt{---} for baseline rows; $\mathrm{AUC}$ and $\mathrm{RMSE}$ are reported as mean $\pm$ standard error over repetitions; \emph{Seeds} is the number of random seeds contributing to that summary.}\\")
+    lines.append(r"\caption{Appendix summary of all experimental setups. Each row reports one setup from the full sweep, evaluated at the best $\tau$ (selected by highest mean $\mathrm{AUC}$). Baseline rows are also included for Naive, Rasch-1PL, IRT-2PL, MIRT, and kNN, preserving variation over test takers and item subsets. Notation: \emph{Revision} indicates whether the run is pre-revision (Pre) or post-revision (Post). \emph{Test Takers} is the effective test-taker count used for that run (for Pre rows this comes from the pre-revision subset level; for Post rows this follows the run setting), with any legacy \texttt{max}/\texttt{full} test-taker setting shown as $143$. $N\in\{1,\mathrm{full}\}$ denotes repeated matrix-sampling mode, where \emph{full} uses all available repetitions for that setup. $\tau\in\{\mathrm{on},\mathrm{off},\texttt{---}\}$ indicates whether regularization is enabled (or not applicable for baseline-only rows); $j$ is the item-fraction control used in scaling-law runs; \emph{Best $\tau$} is the selected regularization value for amortized setups and \texttt{---} for baseline rows; $\mathrm{AUC}$ and $\mathrm{RMSE}$ are reported as mean $\pm$ standard error over repetitions; \emph{Seeds} is the number of random seeds contributing to that summary.}\\")
     lines.append(r"\label{tab:appendix_all_setups}\\")
     lines.append(r"\toprule")
     lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ & Seeds \\")

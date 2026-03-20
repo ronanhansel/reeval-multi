@@ -57,6 +57,7 @@ eval_traces/
 eval_response_matrix/
 paper/
 .vscode/
+colm-26/
 
 !config/
 !config/**
