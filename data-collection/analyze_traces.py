@@ -2,7 +2,9 @@ import os
 import json
 import glob
 import sys
+import statistics
 from collections import defaultdict
+from datetime import datetime
 
 # Pricing per 1M tokens (Input, Output)
 PRICING = {
@@ -22,6 +24,72 @@ def get_price(model_name):
         if key in model_name.lower():
             return PRICING[key]
     return PRICING["default"]
+
+
+def parse_iso_timestamp(value):
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def get_runtime_stats(data):
+    raw_results = data.get("raw_logging_results", [])
+    task_durations = []
+    trace_starts = []
+    trace_ends = []
+
+    if not isinstance(raw_results, list):
+        return None, None, 0
+
+    for row in raw_results:
+        if not isinstance(row, dict):
+            continue
+        started_at = parse_iso_timestamp(row.get("started_at"))
+        ended_at = parse_iso_timestamp(row.get("ended_at"))
+        if started_at and ended_at and ended_at >= started_at:
+            duration = (ended_at - started_at).total_seconds()
+            task_durations.append(duration)
+            trace_starts.append(started_at)
+            trace_ends.append(ended_at)
+
+    wall_clock_seconds = None
+    if trace_starts and trace_ends:
+        wall_clock_seconds = (max(trace_ends) - min(trace_starts)).total_seconds()
+
+    avg_task_seconds = statistics.mean(task_durations) if task_durations else None
+    return wall_clock_seconds, avg_task_seconds, len(task_durations)
+
+
+def format_duration(seconds):
+    if seconds is None:
+        return "N/A"
+    seconds = int(round(seconds))
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
+def percentile(values, pct):
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    ordered = sorted(values)
+    index = (len(ordered) - 1) * pct
+    lower = int(index)
+    upper = min(lower + 1, len(ordered) - 1)
+    if lower == upper:
+        return ordered[lower]
+    fraction = index - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
 
 def analyze_traces(trace_dir, output_file):
     # Stats for models (tokens/cost)
@@ -46,7 +114,10 @@ def analyze_traces(trace_dir, output_file):
         "cached_tokens": 0,
         "prompt_cost": 0.0,
         "completion_cost": 0.0,
-        "total_cost": 0.0
+        "total_cost": 0.0,
+        "runtime_count": 0,
+        "runtime_seconds_total": 0.0,
+        "trace_runtimes": []
     })
 
     json_files = glob.glob(os.path.join(trace_dir, "*.json"))
@@ -80,7 +151,12 @@ def analyze_traces(trace_dir, output_file):
             benchmark_stats[benchmark]["models"].add(model)
             benchmark_stats[benchmark]["total_accuracy"] += accuracy
             benchmark_stats[benchmark]["total_correctness"] += correctness
-            
+
+            wall_clock_seconds, avg_task_seconds, task_count = get_runtime_stats(data)
+            if wall_clock_seconds is not None:
+                benchmark_stats[benchmark]["runtime_count"] += 1
+                benchmark_stats[benchmark]["runtime_seconds_total"] += wall_clock_seconds
+                benchmark_stats[benchmark]["trace_runtimes"].append(wall_clock_seconds)
             def find_usage(obj):
                 if isinstance(obj, dict):
                     if "usage" in obj and "model" in obj:
@@ -135,7 +211,9 @@ def analyze_traces(trace_dir, output_file):
         "completion": sum(s["completion_tokens"] for s in benchmark_stats.values()),
         "reasoning": sum(s["reasoning_tokens"] for s in benchmark_stats.values()),
         "cached": sum(s["cached_tokens"] for s in benchmark_stats.values()),
-        "cost": sum(s["total_cost"] for s in benchmark_stats.values())
+        "cost": sum(s["total_cost"] for s in benchmark_stats.values()),
+        "runtime": sum(s["runtime_seconds_total"] for s in benchmark_stats.values()),
+        "runtime_count": sum(s["runtime_count"] for s in benchmark_stats.values())
     }
 
     print("\n" + "="*60)
@@ -144,6 +222,9 @@ def analyze_traces(trace_dir, output_file):
     print(f"Total Traces Processed:  {processed_count}")
     print(f"Total Benchmarks:        {len(benchmark_stats)}")
     print(f"Total Estimated Cost:    ${total_agg['cost']:.4f}")
+    print(f"Cumulative Runtime:      {format_duration(total_agg['runtime'])}")
+    if total_agg["runtime_count"]:
+        print(f"Avg Trace Runtime:       {format_duration(total_agg['runtime'] / total_agg['runtime_count'])}")
     print("="*60 + "\n")
 
     # Generate Markdown Output
@@ -152,15 +233,24 @@ def analyze_traces(trace_dir, output_file):
         with open(output_file, "w") as f:
             f.write("# Experiment Appendix: Consolidated Statistics Table\n\n")
             
-            f.write("| Benchmark | Traces | Unique Models | Input Tokens | Input Cost ($) | Output Tokens | Output Cost ($) | Reasoning | Cached | Total Cost ($) |\n")
-            f.write("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
+            f.write("| Benchmark | Traces | Unique Models | Input Tokens | Input Cost ($) | Output Tokens | Output Cost ($) | Reasoning | Cached | Total Cost ($) | Cumulative Trace Runtime | Avg Trace Runtime | Median Trace Runtime | P90 Trace Runtime | Min Trace Runtime | Max Trace Runtime |\n")
+            f.write("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
             
             for b_name, b_s in sorted(benchmark_stats.items()):
+                runtimes = b_s["trace_runtimes"]
+                avg_runtime = statistics.mean(runtimes) if runtimes else None
+                median_runtime = statistics.median(runtimes) if runtimes else None
+                p90_runtime = percentile(runtimes, 0.90)
+                min_runtime = min(runtimes) if runtimes else None
+                max_runtime = max(runtimes) if runtimes else None
                 f.write(f"| {b_name} | {b_s['num_traces']} | {len(b_s['models'])} | "
                         f"{b_s['prompt_tokens']:,} | ${b_s['prompt_cost']:.2f} | "
                         f"{b_s['completion_tokens']:,} | ${b_s['completion_cost']:.2f} | "
                         f"{b_s['reasoning_tokens']:,} | {b_s['cached_tokens']:,} | "
-                        f"${b_s['total_cost']:.2f} |\n")
+                        f"${b_s['total_cost']:.2f} | {format_duration(b_s['runtime_seconds_total'])} | "
+                        f"{format_duration(avg_runtime)} | {format_duration(median_runtime)} | "
+                        f"{format_duration(p90_runtime)} | {format_duration(min_runtime)} | "
+                        f"{format_duration(max_runtime)} |\n")
 
         print(f"Consolidated statistics table exported to {output_file}")
 

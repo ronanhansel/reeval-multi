@@ -43,9 +43,9 @@ BASELINE_LABELS = {
     'knn': 'kNN',
 }
 BASELINE_COLORS = {
-    'rasch': '#B9C4CC',
-    'mirt': '#D3D8DE',
-    'knn': '#5F6F7A',
+    'rasch': 'wheat',
+    'mirt': 'tan',
+    'knn': 'orange',
 }
 BASELINE_MARKERS = {
     'rasch': 'o',
@@ -391,15 +391,15 @@ def plot_combined_beta_quad():
     # Grouped shared x-axis labels centered from the actual subplot geometry.
     left_pair_center = 0.5 * (ax1.get_position().x0 + ax2.get_position().x1)
     right_pair_center = 0.5 * (ax3.get_position().x0 + ax4.get_position().x1)
-    fig.text(left_pair_center, 0.18, 'Number of Agents ($N$)', ha='center', va='center', fontsize=FONT_SIZE_GROUP_LABEL)
-    fig.text(right_pair_center, 0.18, 'Percentage of Items ($J\\%$)', ha='center', va='center', fontsize=FONT_SIZE_GROUP_LABEL)
+    fig.text(left_pair_center, 0.18, '(a) Number of Agents ($N$)', ha='center', va='center', fontsize=FONT_SIZE_GROUP_LABEL)
+    fig.text(right_pair_center, 0.18, '(b) Percentage of Items ($J\\%$)', ha='center', va='center', fontsize=FONT_SIZE_GROUP_LABEL)
 
     handles, labels = ax1.get_legend_handles_labels()
     fig.legend(
         handles,
         labels,
         loc='lower center',
-        bbox_to_anchor=(0.5, -0.05),
+        bbox_to_anchor=(0.5, -0.075),
         ncol=3,
         fontsize=FONT_SIZE_LEGEND,
         frameon=True,
