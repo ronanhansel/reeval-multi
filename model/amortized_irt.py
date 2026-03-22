@@ -693,6 +693,157 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
     return N, J, y_train, train_mask_current_t
 
 
+def compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K):
+    """Return kNN predictions plus per-pair neighborhood support diagnostics."""
+    N, J = y_train.shape
+
+    valid_counts = train_mask_current_t.sum(dim=0)
+    item_sums = (y_train * train_mask_current_t).sum(dim=0)
+    global_mean = y_train[train_mask_current_t].mean()
+    item_means = torch.where(valid_counts > 0, item_sums / valid_counts, global_mean)
+    p_naive = item_means.unsqueeze(0).expand(N, J)
+
+    train_obs = train_mask_current_t.float()
+    user_counts = train_obs.sum(dim=1)
+    user_means = torch.where(
+        user_counts > 0,
+        (y_train * train_obs).sum(dim=1) / user_counts.clamp_min(1.0),
+        global_mean
+    )
+
+    coverage_count = torch.zeros((N, J), dtype=torch.float32, device=y_train.device)
+    coverage_rate = torch.zeros((N, J), dtype=torch.float32, device=y_train.device)
+    weighted_coverage = torch.zeros((N, J), dtype=torch.float32, device=y_train.device)
+    fallback_mask = torch.zeros((N, J), dtype=torch.bool, device=y_train.device)
+    top_similarity = torch.zeros((J,), dtype=torch.float32, device=y_train.device)
+
+    if x_j is None:
+        return p_naive.clone(), {
+            'coverage_count': coverage_count,
+            'coverage_rate': coverage_rate,
+            'weighted_coverage': weighted_coverage,
+            'fallback_mask': fallback_mask,
+            'top_similarity': top_similarity,
+            'k_eff': 0,
+        }
+
+    x = x_j
+    if x.dim() != 2 or x.shape[0] != J:
+        return p_naive.clone(), {
+            'coverage_count': coverage_count,
+            'coverage_rate': coverage_rate,
+            'weighted_coverage': weighted_coverage,
+            'fallback_mask': fallback_mask,
+            'top_similarity': top_similarity,
+            'k_eff': 0,
+        }
+
+    train_item_mask = train_mask_current_t.any(dim=0)
+    test_item_mask = torch.from_numpy(test_mask).to(y_train.device).any(dim=0)
+
+    train_item_idx = torch.where(train_item_mask)[0]
+    test_item_idx = torch.where(test_item_mask)[0]
+
+    if train_item_idx.numel() == 0 or test_item_idx.numel() == 0:
+        return user_means.unsqueeze(1).expand(N, J).clone(), {
+            'coverage_count': coverage_count,
+            'coverage_rate': coverage_rate,
+            'weighted_coverage': weighted_coverage,
+            'fallback_mask': fallback_mask,
+            'top_similarity': top_similarity,
+            'k_eff': 0,
+        }
+
+    p_knn = user_means.unsqueeze(1).expand(N, J).clone()
+
+    x_norm = F.normalize(x, dim=1)
+    sims = x_norm[test_item_idx] @ x_norm[train_item_idx].T
+    k_eff = max(1, min(int(knn_k), train_item_idx.numel()))
+    sim_vals, sim_pos = torch.topk(sims, k=k_eff, dim=1)
+    nn_item_idx = train_item_idx[sim_pos]
+    top_similarity[test_item_idx] = sim_vals[:, 0]
+
+    nn_weights = torch.clamp(sim_vals, min=0.0)
+    zero_rows = nn_weights.sum(dim=1, keepdim=True) <= 1e-12
+    if zero_rows.any():
+        nn_weights[zero_rows.squeeze(1)] = 1.0
+
+    for t in range(test_item_idx.numel()):
+        item_idx = test_item_idx[t]
+        nbrs = nn_item_idx[t]
+        w = nn_weights[t].unsqueeze(0)
+        obs = train_mask_current_t[:, nbrs].float()
+        yy = y_train[:, nbrs]
+
+        num = (yy * obs * w).sum(dim=1)
+        den = (obs * w).sum(dim=1)
+        pred = torch.where(den > 0, num / den.clamp_min(1e-12), user_means)
+        p_knn[:, item_idx] = pred
+
+        coverage_count[:, item_idx] = obs.sum(dim=1)
+        coverage_rate[:, item_idx] = obs.sum(dim=1) / float(k_eff)
+        weighted_coverage[:, item_idx] = den / w.sum()
+        fallback_mask[:, item_idx] = den <= 1e-12
+
+    return p_knn, {
+        'coverage_count': coverage_count,
+        'coverage_rate': coverage_rate,
+        'weighted_coverage': weighted_coverage,
+        'fallback_mask': fallback_mask,
+        'top_similarity': top_similarity,
+        'k_eff': k_eff,
+    }
+
+
+def build_pair_efficiency_row(n_files, model_type, pre_revision, j_percentage, embedding_type,
+                              baseline_embedding_type, observed_train_pairs, baselines,
+                              rmse_amortized, auc_amortized):
+    """Summarize one run for observed-pair efficiency analysis."""
+    return {
+        'seed': int(RANDOM_SEED),
+        'lambda_tau': float(LAMBDA_TAU),
+        'n_samples': int(n_files),
+        'model_type': str(model_type),
+        'pre_revision': normalize_pre_revision(pre_revision),
+        'j_percentage': normalize_j_percentage(j_percentage),
+        'embedding_type': str(embedding_type),
+        'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+        'observed_train_pairs': int(observed_train_pairs),
+        'auc_knn': float(baselines['auc_knn']),
+        'rmse_knn': float(baselines['rmse_knn']),
+        'auc_araf': float(auc_amortized),
+        'rmse_araf': float(rmse_amortized),
+    }
+
+
+def append_pair_efficiency_rows(path, rows):
+    """Atomically append observed-pair efficiency rows."""
+    if not path or not rows:
+        return
+
+    lock = FileLock(f"{path}.lock", timeout=600)
+    with lock:
+        if os.path.exists(path):
+            try:
+                df_old = pd.read_csv(path)
+            except Exception:
+                df_old = pd.DataFrame()
+        else:
+            df_old = pd.DataFrame()
+
+        df_new = pd.DataFrame(rows)
+        df = pd.concat([df_old, df_new], ignore_index=True)
+        dedupe_cols = [
+            'seed', 'lambda_tau', 'n_samples', 'model_type', 'pre_revision',
+            'j_percentage', 'embedding_type', 'baseline_embedding_type'
+        ]
+        present_cols = [c for c in dedupe_cols if c in df.columns]
+        if present_cols:
+            df = df.drop_duplicates(subset=present_cols, keep='last')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_csv(path, index=False)
+
+
 def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                       model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K):
     """Compute non-MIRT baselines for one configuration."""
@@ -718,57 +869,7 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
 
     # 4. Embedding kNN cold-start baseline (predict held-out items from nearest train items)
     # Uses item embeddings only and observed user responses on train items.
-    if x_j is None:
-        p_knn = p_naive.clone()
-    else:
-        x = x_j
-        if x.dim() != 2 or x.shape[0] != J:
-            p_knn = p_naive.clone()
-        else:
-            train_item_mask = train_mask_current_t.any(dim=0)
-            test_item_mask = torch.from_numpy(test_mask).to(device).any(dim=0)
-
-            train_item_idx = torch.where(train_item_mask)[0]
-            test_item_idx = torch.where(test_item_mask)[0]
-
-            if train_item_idx.numel() == 0 or test_item_idx.numel() == 0:
-                p_knn = p_naive.clone()
-            else:
-                # User fallback = mean on observed train items.
-                train_obs = train_mask_current_t.float()
-                user_counts = train_obs.sum(dim=1)
-                global_mean = y_train[train_mask_current_t].mean()
-                user_means = torch.where(
-                    user_counts > 0,
-                    (y_train * train_obs).sum(dim=1) / user_counts.clamp_min(1.0),
-                    global_mean
-                )
-
-                p_knn = user_means.unsqueeze(1).expand(N, J).clone()
-
-                # Embeddings are already normalized in data prep, but renormalize defensively.
-                x_norm = F.normalize(x, dim=1)
-                sims = x_norm[test_item_idx] @ x_norm[train_item_idx].T
-                k_eff = max(1, min(int(knn_k), train_item_idx.numel()))
-                sim_vals, sim_pos = torch.topk(sims, k=k_eff, dim=1)
-                nn_item_idx = train_item_idx[sim_pos]
-
-                # Positive similarities only; fallback to uniform if all non-positive.
-                nn_weights = torch.clamp(sim_vals, min=0.0)
-                zero_rows = nn_weights.sum(dim=1, keepdim=True) <= 1e-12
-                if zero_rows.any():
-                    nn_weights[zero_rows.squeeze(1)] = 1.0
-
-                for t in range(test_item_idx.numel()):
-                    nbrs = nn_item_idx[t]
-                    w = nn_weights[t].unsqueeze(0)
-                    obs = train_mask_current_t[:, nbrs].float()
-                    yy = y_train[:, nbrs]
-
-                    num = (yy * obs * w).sum(dim=1)
-                    den = (obs * w).sum(dim=1)
-                    pred = torch.where(den > 0, num / den.clamp_min(1e-12), user_means)
-                    p_knn[:, test_item_idx[t]] = pred
+    p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k)
 
     rmse_knn = compute_rmse(p_knn.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
     auc_knn = evaluate_auc(p_knn, y_oracle, test_mask_t)
@@ -1033,7 +1134,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
                    beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None,
                    baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
-                   baseline_embedding_type=None,
+                   baseline_embedding_type=None, pair_efficiency_output=None,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Run experiment for a specific number of sample files.
@@ -1114,6 +1215,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     _, _, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
     )
+    observed_train_pairs = int(train_mask_current_t.sum().item())
 
     # 5. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
@@ -1141,11 +1243,26 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
+        'observed_train_pairs': observed_train_pairs,
         'rmse_amortized': best_rmse,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
         'active_indices': str(active_dim_indices),
         'tau_values': str(tau_val.cpu().tolist()),
+        'pair_efficiency_rows': (
+            [build_pair_efficiency_row(
+                n_files,
+                model_type,
+                pre_revision,
+                j_percentage,
+                embedding_type,
+                baseline_embedding_type,
+                observed_train_pairs,
+                baselines,
+                best_rmse,
+                auc_amortized,
+            )] if pair_efficiency_output else []
+        ),
         'model_state': best_state,
         'final_state': final_state
     }
@@ -1631,11 +1748,16 @@ def run_single_config(config, args, n_values):
                                     pre_revision=args.pre_revision,
                                     j_percentage=args.j_percentage,
                                     baseline_embedding_type=args.baseline_embedding_type,
+                                    pair_efficiency_output=args.pair_efficiency_output,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
                                     mirt_sweep_output=args.mirt_sweep_output)
-                                    
+
+            pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
+            if args.pair_efficiency_output:
+                append_pair_efficiency_rows(args.pair_efficiency_output, pair_efficiency_rows)
+
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
                 result['scenario'] = f"Pre-{args.pre_revision}"
@@ -1737,6 +1859,8 @@ def main():
                         help='Path to baseline cache CSV (default: model/result/baselines/baseline_metrics.csv).')
     parser.add_argument('--mirt-sweep-output', type=str, default=DEFAULT_MIRT_SWEEP_OUTPUT,
                         help='Path to per-dimension MIRT sweep cache CSV.')
+    parser.add_argument('--pair-efficiency-output', type=str, default=None,
+                        help='Optional CSV path for observed-pair efficiency rows.')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
                         help='Minimum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,

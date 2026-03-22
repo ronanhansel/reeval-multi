@@ -27,6 +27,7 @@ RESULT_DIR = os.path.join(MODEL_DIR, "result")
 BASELINE_PATH = os.path.join(RESULT_DIR, "baselines", "baseline_metrics.csv")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures", "interpretability")
 EMB_DIR = os.path.join(MODEL_DIR, "processed_embeddings")
+PREFERRED_BASELINE_EMBEDDING = 'raw'
 
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
@@ -54,6 +55,12 @@ def load_baseline_cache():
         df['pre_revision'] = df['pre_revision'].astype(str).str.strip().str.lower().replace('', 'none')
     if 'model_type' in df.columns:
         df['model_type'] = df['model_type'].astype(str)
+    if 'baseline_embedding_type' in df.columns:
+        df['baseline_embedding_type'] = (
+            df['baseline_embedding_type'].astype(str).str.strip().str.lower().replace({'': 'pca', 'nan': 'pca'})
+        )
+    else:
+        df['baseline_embedding_type'] = 'pca'
     return df
 
 
@@ -65,6 +72,11 @@ def lookup_baseline_auc(baseline_df, model_type, n_samples, pre_revision, metric
         (baseline_df['n_samples'] == int(n_samples)) &
         (baseline_df['pre_revision'] == str(pre_revision).strip().lower())
     ]
+    if 'baseline_embedding_type' in sub.columns:
+        available = set(sub['baseline_embedding_type'].dropna().astype(str))
+        target = PREFERRED_BASELINE_EMBEDDING if PREFERRED_BASELINE_EMBEDDING in available else ('pca' if 'pca' in available else None)
+        if target is not None:
+            sub = sub[sub['baseline_embedding_type'] == target]
     vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
     if vals.empty:
         return None, 0.0

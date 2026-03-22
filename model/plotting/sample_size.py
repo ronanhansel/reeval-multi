@@ -26,6 +26,7 @@ RESULT_DIR = os.path.join(MODEL_DIR, 'result')
 BASELINE_PATH = os.path.join(RESULT_DIR, 'baselines', 'baseline_metrics.csv')
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
+PREFERRED_BASELINE_EMBEDDING = 'raw'
 
 # Beta setup only
 SIZES_BETA = ['4', '8', '16', '32', '64', 'max']
@@ -129,6 +130,12 @@ def load_baseline_cache():
     for col in ['model_type', 'pre_revision']:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.lower()
+    if 'baseline_embedding_type' in df.columns:
+        df['baseline_embedding_type'] = (
+            df['baseline_embedding_type'].astype(str).str.strip().str.lower().replace({'': 'pca', 'nan': 'pca'})
+        )
+    else:
+        df['baseline_embedding_type'] = 'pca'
     for col in ['n_samples', 'j_percentage']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -146,6 +153,11 @@ def baseline_stats(df, metric_col, model_type='beta', n_samples=1, pre_revision=
         sub = sub[sub['pre_revision'] == str(pre_revision).strip().lower()]
     if 'j_percentage' in sub.columns and j_percentage is not None:
         sub = sub[np.isclose(sub['j_percentage'].astype(float), float(j_percentage), atol=1e-9)]
+    if 'baseline_embedding_type' in sub.columns:
+        available = set(sub['baseline_embedding_type'].dropna().astype(str))
+        target = PREFERRED_BASELINE_EMBEDDING if PREFERRED_BASELINE_EMBEDDING in available else ('pca' if 'pca' in available else None)
+        if target is not None:
+            sub = sub[sub['baseline_embedding_type'] == target]
 
     vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
     if vals.empty:

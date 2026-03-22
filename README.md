@@ -355,7 +355,7 @@ python3 -m model.plotting.main --all
     ```bash
     python3 -m model.plotting.main --comparison
     ```
-*   **Sample Size**: Data-efficiency curves comparing ARAF to kNN/MIRT/Rasch as the number of agents or items changes, plus an observed-train-pair efficiency plot for matched budget comparisons.
+*   **Sample Size**: Data-efficiency curves comparing ARAF to kNN/MIRT/Rasch as the number of agents or items changes.
     ```bash
     python3 -m model.plotting.main --sample-size
     ```
@@ -367,7 +367,12 @@ python3 -m model.plotting.main --all
     ```bash
     python3 -m model.plotting.main --rubrics
     ```
-
+*   **Pair Efficiency Study**: Separate beta-only study comparing kNN and best-ARAF against actual observed train pairs.
+    ```bash
+    bash model/reproduce.sh --pair-efficiency-study
+    bash model/reproduce.sh --full --pair-efficiency-study
+    python3 -m model.plotting.main --pair-efficiency-study
+    ```
 The figures are saved in `paper/figures/`, and a comprehensive results report is saved to `model/result/comprehensive_results.md`.
 
 ### SOTA Hyperparameters

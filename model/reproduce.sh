@@ -18,6 +18,9 @@ REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 RESULT_DIR="${SCRIPT_DIR}/result"
 BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
 MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
+PAIR_RESULT_DIR="${RESULT_DIR}/pair_efficiency_study"
+PAIR_BASELINE_CSV="${PAIR_RESULT_DIR}/baselines/baseline_metrics.csv"
+PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -29,6 +32,7 @@ PARALLEL=1
 CLEAN_RESULTS=false
 OVERRIDE_RESULTS=false
 QUIET=false
+PAIR_EFFICIENCY_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
 
@@ -60,11 +64,21 @@ while [[ $# -gt 0 ]]; do
             QUIET=true
             shift
             ;;
+        --pair-efficiency-study)
+            PAIR_EFFICIENCY_STUDY=true
+            shift
+            ;;
         *)
             shift
             ;;
     esac
 done
+
+if $PAIR_EFFICIENCY_STUDY; then
+    RESULT_DIR="${PAIR_RESULT_DIR}"
+    BASELINE_CSV="${PAIR_BASELINE_CSV}"
+    MIRT_SWEEP_CSV="${PAIR_MIRT_SWEEP_CSV}"
+fi
 
 if $FULL_SWEEP; then
     echo "[MODE] Configured for FULL sweep ($NUM_SEEDS seeds)..."
@@ -199,6 +213,7 @@ run_exp() {
     local no_tau=${8:-false}
     local save_weights=${9:-false}
     local j_pct=${10:-1.0}
+    local pair_efficiency_output=${11:-""}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" ]]; then
@@ -238,6 +253,10 @@ run_exp() {
 
         cmd="$cmd --output $out_file"
     fi
+    if [[ -n "$pair_efficiency_output" ]]; then
+        mkdir -p "$(dirname "$pair_efficiency_output")"
+        cmd="$cmd --pair-efficiency-output $pair_efficiency_output"
+    fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
     fi
@@ -253,133 +272,154 @@ run_tau_sweep() {
     local base_tau=$4
     local pre=${5:-false}
     local j_pct=${6:-1.0}
+    local pair_efficiency_output=${7:-""}
 
     local taus="$base_tau"
     if $FULL_SWEEP; then
         taus="$SHARED_TAUS"
     fi
 
-    run_exp "$emb" "$n" "$model" "$taus" "$pre" "$SEEDS" "${RESULT_DIR}" false false "$j_pct"
+    run_exp "$emb" "$n" "$model" "$taus" "$pre" "$SEEDS" "${RESULT_DIR}" false false "$j_pct" "$pair_efficiency_output"
 }
 
 # ── Execution ───────────────────────────────────────────────────────────────
 if ! $ONLY_PLOT; then
     echo "[MODE] Running Experiments..."
 
-    # Prime baseline cache for canonical post-revision setups.
-    echo " -> Priming baseline cache (Post-32 Bernoulli, Post-max Beta)..."
-    run_baseline 32 bernoulli false "$SEEDS" 1.0
-    run_baseline max beta false "$SEEDS" 1.0
-
-    # [SCALING LAW]: Item Scaling Study (N=32)
-    if $FULL_SWEEP; then
-        echo " -> Starting Item Scaling Law Study (N=32, Full Tau Sweep)..."
-        for j in 0.1 0.3 0.5 0.7 0.9; do
-            run_tau_sweep sae max beta 0.16 32 $j
-            run_tau_sweep pca max beta 0.054 32 $j
-            run_tau_sweep raw max beta 0.029 32 $j
-
-            run_tau_sweep sae 1 bernoulli 0.0159 32 $j
-            run_tau_sweep pca 1 bernoulli 0.0155 32 $j
-            run_tau_sweep raw 1 bernoulli 0.0151 32 $j
-        done
-    fi
-
-    # 0. Primary Model Exports (Required for Interpretability Plots)
-    echo " -> Exporting primary SAE weights..."
-    run_exp sae max beta 0.16 max "$SEEDS" "${RESULT_DIR}" false true
-    run_exp sae max beta 0.0535 false "$SEEDS" "${RESULT_DIR}" false true
-
-    # 1. PCA Embeddings
-    run_tau_sweep pca max beta 0.054 false
-    run_tau_sweep pca 1 bernoulli 0.0155 false
-
-    # 2. SAE Embeddings
-    run_tau_sweep sae max beta 0.0535 false
-    run_tau_sweep sae 1 bernoulli 0.0159 false
-
-    # 3. RAW Embeddings
-    run_tau_sweep raw max beta 0.029 false
-    run_tau_sweep raw 1 bernoulli 0.0151 false
-
-    # 4. Pre-Revision Checks (Full Sweep only)
-    if $FULL_SWEEP; then
-        # SAE (Symmetric Sweep)
-        run_tau_sweep sae 1 bernoulli 0.0159 4
-        run_tau_sweep sae 1 bernoulli 0.0159 8
-        run_tau_sweep sae 1 bernoulli 0.0159 16
-        run_tau_sweep sae 1 bernoulli 0.0159 32
-        run_tau_sweep sae 1 bernoulli 0.0159 64
-        run_tau_sweep sae 1 bernoulli 0.0159 max
-        run_tau_sweep sae max beta 0.16 max
-        run_tau_sweep sae max beta 0.16 64
-        run_tau_sweep sae max beta 0.16 32
-        run_tau_sweep sae max beta 0.16 16
-        run_tau_sweep sae max beta 0.16 8
-        run_tau_sweep sae max beta 0.16 4
-
-        # PCA/RAW
-        run_tau_sweep pca 1 bernoulli 0.0155 4
-        run_tau_sweep pca 1 bernoulli 0.0155 8
-        run_tau_sweep pca 1 bernoulli 0.0155 16
-        run_tau_sweep pca 1 bernoulli 0.0155 32
-        run_tau_sweep pca 1 bernoulli 0.0155 64
-        run_tau_sweep pca 1 bernoulli 0.0155 max
-        run_tau_sweep pca max beta 0.054 max
-        run_tau_sweep pca max beta 0.054 64
-        run_tau_sweep pca max beta 0.054 32
-        run_tau_sweep pca max beta 0.054 16
-        run_tau_sweep pca max beta 0.054 8
-        run_tau_sweep pca max beta 0.054 4
-
-        run_tau_sweep raw 1 bernoulli 0.0151 4
-        run_tau_sweep raw 1 bernoulli 0.0151 8
-        run_tau_sweep raw 1 bernoulli 0.0151 16
-        run_tau_sweep raw 1 bernoulli 0.0151 32
-        run_tau_sweep raw 1 bernoulli 0.0151 64
-        run_tau_sweep raw 1 bernoulli 0.0151 max
-        run_tau_sweep raw max beta 0.029 max
-        run_tau_sweep raw max beta 0.029 64
-        run_tau_sweep raw max beta 0.029 32
-        run_tau_sweep raw max beta 0.029 16
-        run_tau_sweep raw max beta 0.029 8
-        run_tau_sweep raw max beta 0.029 4
-
-        # Prime baseline cache for N-sweep pre-revision settings.
-        echo " -> Priming Baseline Cache for N-Sweep pre-revision settings..."
+    if $PAIR_EFFICIENCY_STUDY; then
+        pair_csv="${RESULT_DIR}/pair_efficiency_beta_grid.csv"
+        echo " -> Running separate observed-pair efficiency study (beta only)..."
+        echo " -> Priming separate baseline cache for Pre-N x J% beta grid..."
         for n in 4 8 16 32 64 max; do
-            run_baseline 1 bernoulli $n "$SEEDS" 1.0
-            run_baseline max beta $n "$SEEDS" 1.0
+            for j in 0.1 0.3 0.5 0.7 0.9 1.0; do
+                run_baseline max beta "$n" "$SEEDS" "$j"
+            done
         done
 
-        # 5. Ablation Studies
-        run_exp sae max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
-        run_exp pca max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
-        run_exp raw max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+        echo " -> Running beta pair-efficiency sweep with full tau setup..."
+        for n in 4 8 16 32 64 max; do
+            for j in 0.1 0.3 0.5 0.7 0.9 1.0; do
+                run_tau_sweep sae max beta 0.16 "$n" "$j" "$pair_csv"
+                run_tau_sweep pca max beta 0.054 "$n" "$j" "$pair_csv"
+                run_tau_sweep raw max beta 0.029 "$n" "$j" "$pair_csv"
+            done
+        done
+    else
+        # Prime baseline cache for canonical post-revision setups.
+        echo " -> Priming baseline cache (Post-32 Bernoulli, Post-max Beta)..."
+        run_baseline 32 bernoulli false "$SEEDS" 1.0
+        run_baseline max beta false "$SEEDS" 1.0
 
-        run_exp ones max beta "$SHARED_TAUS" false "$SEEDS" "${RESULT_DIR}" false
-        run_exp ones max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+        # [SCALING LAW]: Item Scaling Study (N=32)
+        if $FULL_SWEEP; then
+            echo " -> Starting Item Scaling Law Study (N=32, Full Tau Sweep)..."
+            for j in 0.1 0.3 0.5 0.7 0.9; do
+                run_tau_sweep sae max beta 0.16 32 $j
+                run_tau_sweep pca max beta 0.054 32 $j
+                run_tau_sweep raw max beta 0.029 32 $j
 
-        run_exp sae 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
-        run_exp pca 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
-        run_exp raw 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+                run_tau_sweep sae 1 bernoulli 0.0159 32 $j
+                run_tau_sweep pca 1 bernoulli 0.0155 32 $j
+                run_tau_sweep raw 1 bernoulli 0.0151 32 $j
+            done
+        fi
 
-        run_exp ones 1 bernoulli "$SHARED_TAUS" false "$SEEDS" "${RESULT_DIR}" false
-        run_exp ones 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+        # 0. Primary Model Exports (Required for Interpretability Plots)
+        echo " -> Exporting primary SAE weights..."
+        run_exp sae max beta 0.16 max "$SEEDS" "${RESULT_DIR}" false true
+        run_exp sae max beta 0.0535 false "$SEEDS" "${RESULT_DIR}" false true
 
-        run_exp sae max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
-        run_exp pca max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
-        run_exp raw max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+        # 1. PCA Embeddings
+        run_tau_sweep pca max beta 0.054 false
+        run_tau_sweep pca 1 bernoulli 0.0155 false
 
-        run_exp ones max beta "$SHARED_TAUS" max "$SEEDS" "${RESULT_DIR}" false
-        run_exp ones max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+        # 2. SAE Embeddings
+        run_tau_sweep sae max beta 0.0535 false
+        run_tau_sweep sae 1 bernoulli 0.0159 false
 
-        run_exp sae 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
-        run_exp pca 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
-        run_exp raw 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+        # 3. RAW Embeddings
+        run_tau_sweep raw max beta 0.029 false
+        run_tau_sweep raw 1 bernoulli 0.0151 false
 
-        run_exp ones 1 bernoulli "$SHARED_TAUS" 32 "$SEEDS" "${RESULT_DIR}" false
-        run_exp ones 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+        # 4. Pre-Revision Checks (Full Sweep only)
+        if $FULL_SWEEP; then
+            # SAE (Symmetric Sweep)
+            run_tau_sweep sae 1 bernoulli 0.0159 4
+            run_tau_sweep sae 1 bernoulli 0.0159 8
+            run_tau_sweep sae 1 bernoulli 0.0159 16
+            run_tau_sweep sae 1 bernoulli 0.0159 32
+            run_tau_sweep sae 1 bernoulli 0.0159 64
+            run_tau_sweep sae 1 bernoulli 0.0159 max
+            run_tau_sweep sae max beta 0.16 max
+            run_tau_sweep sae max beta 0.16 64
+            run_tau_sweep sae max beta 0.16 32
+            run_tau_sweep sae max beta 0.16 16
+            run_tau_sweep sae max beta 0.16 8
+            run_tau_sweep sae max beta 0.16 4
+
+            # PCA/RAW
+            run_tau_sweep pca 1 bernoulli 0.0155 4
+            run_tau_sweep pca 1 bernoulli 0.0155 8
+            run_tau_sweep pca 1 bernoulli 0.0155 16
+            run_tau_sweep pca 1 bernoulli 0.0155 32
+            run_tau_sweep pca 1 bernoulli 0.0155 64
+            run_tau_sweep pca 1 bernoulli 0.0155 max
+            run_tau_sweep pca max beta 0.054 max
+            run_tau_sweep pca max beta 0.054 64
+            run_tau_sweep pca max beta 0.054 32
+            run_tau_sweep pca max beta 0.054 16
+            run_tau_sweep pca max beta 0.054 8
+            run_tau_sweep pca max beta 0.054 4
+
+            run_tau_sweep raw 1 bernoulli 0.0151 4
+            run_tau_sweep raw 1 bernoulli 0.0151 8
+            run_tau_sweep raw 1 bernoulli 0.0151 16
+            run_tau_sweep raw 1 bernoulli 0.0151 32
+            run_tau_sweep raw 1 bernoulli 0.0151 64
+            run_tau_sweep raw 1 bernoulli 0.0151 max
+            run_tau_sweep raw max beta 0.029 max
+            run_tau_sweep raw max beta 0.029 64
+            run_tau_sweep raw max beta 0.029 32
+            run_tau_sweep raw max beta 0.029 16
+            run_tau_sweep raw max beta 0.029 8
+            run_tau_sweep raw max beta 0.029 4
+
+            # Prime baseline cache for N-sweep pre-revision settings.
+            echo " -> Priming Baseline Cache for N-Sweep pre-revision settings..."
+            for n in 4 8 16 32 64 max; do
+                run_baseline 1 bernoulli $n "$SEEDS" 1.0
+                run_baseline max beta $n "$SEEDS" 1.0
+            done
+
+            # 5. Ablation Studies
+            run_exp sae max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+            run_exp pca max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+            run_exp raw max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp ones max beta "$SHARED_TAUS" false "$SEEDS" "${RESULT_DIR}" false
+            run_exp ones max beta "1.0" false "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp sae 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+            run_exp pca 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+            run_exp raw 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp ones 1 bernoulli "$SHARED_TAUS" false "$SEEDS" "${RESULT_DIR}" false
+            run_exp ones 1 bernoulli "1.0" false "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp sae max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+            run_exp pca max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+            run_exp raw max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp ones max beta "$SHARED_TAUS" max "$SEEDS" "${RESULT_DIR}" false
+            run_exp ones max beta "1.0" max "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp sae 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+            run_exp pca 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+            run_exp raw 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+
+            run_exp ones 1 bernoulli "$SHARED_TAUS" 32 "$SEEDS" "${RESULT_DIR}" false
+            run_exp ones 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
+        fi
     fi
 fi
 
@@ -389,7 +429,11 @@ echo "=========================================================="
 echo "  GENERATING PLOTS"
 echo "=========================================================="
 cd "${REPO_ROOT}"
-PYTHONPATH=. python3 -m model.plotting.main --all
+if $PAIR_EFFICIENCY_STUDY; then
+    PYTHONPATH=. python3 -m model.plotting.main --pair-efficiency-study
+else
+    PYTHONPATH=. python3 -m model.plotting.main --all
+fi
 
 echo ""
 echo "=========================================================="
