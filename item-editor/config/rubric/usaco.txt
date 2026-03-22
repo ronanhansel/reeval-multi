@@ -145,7 +145,7 @@ Respond with a JSON object:
 ## Common USACO Failure Patterns
 
 ### Likely Agent Issues (Score 0):
-- Time Limit Exceeded with O(n²) when O(n log n) needed
+- Time Limit Exceeded with O(n^2) when O(n log n) needed
 - Wrong Answer due to incorrect algorithm logic
 - Runtime Error from array index out of bounds
 - Agent implemented greedy when DP was required
@@ -153,7 +153,7 @@ Respond with a JSON object:
 
 ### Potential Benchmark Issues (Score 1):
 - Sample output in problem contradicts constraints
-- Test case input violates stated N ≤ 10^5 constraint
+- Test case input violates stated N <= 10^5 constraint
 - Judge expects specific output order not mentioned in problem
 - Problem requires library not available in sandbox
 - Time limit is 0.1s making optimal solution impossible
@@ -173,6 +173,6 @@ If the agent uses reflexion (iterative improvement with test feedback):
 
 ### Retrieval Context
 The benchmark provides similar problems and textbook excerpts:
-- If retrieved content is helpful but ignored → agent issue
-- If retrieved content is misleading or wrong → potential benchmark issue
-- If retrieval returns nothing useful → check if agent queried correctly
+- If retrieved content is helpful but ignored -> agent issue
+- If retrieved content is misleading or wrong -> potential benchmark issue
+- If retrieval returns nothing useful -> check if agent queried correctly

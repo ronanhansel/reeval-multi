@@ -286,6 +286,7 @@ run_pair_efficiency_study() {
     local saved_result_dir="${RESULT_DIR}"
     local saved_baseline_csv="${BASELINE_CSV}"
     local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
+    local source_result_dir="${saved_result_dir}"
 
     RESULT_DIR="${PAIR_RESULT_DIR}"
     BASELINE_CSV="${PAIR_BASELINE_CSV}"
@@ -297,6 +298,23 @@ run_pair_efficiency_study() {
     local pair_count=${#PAIR_PRE_LEVELS[@]}
     echo " -> Running separate observed-pair efficiency study (beta only)..."
     echo " -> Using ${pair_count} targeted N x J checkpoints (low -> saturation)..."
+    echo " -> Seeding pair-efficiency study from matching main result CSVs when available..."
+    for ((idx=0; idx<pair_count; idx++)); do
+        local n="${PAIR_PRE_LEVELS[$idx]}"
+        local j="${PAIR_J_LEVELS[$idx]}"
+        for emb in sae pca raw; do
+            local suffix="_pre_${n}_n_max"
+            local j_suffix=""
+            if [[ "$j" != "1.0" ]]; then
+                j_suffix="_j${j}"
+            fi
+            local fname="amortized_irt_${emb}_beta${suffix}${j_suffix}.csv"
+            if [[ -f "${source_result_dir}/${fname}" && ! -f "${RESULT_DIR}/${fname}" ]]; then
+                cp "${source_result_dir}/${fname}" "${RESULT_DIR}/${fname}"
+            fi
+        done
+    done
+
     echo " -> Priming separate baseline cache for selected beta checkpoints..."
     for ((idx=0; idx<pair_count; idx++)); do
         local n="${PAIR_PRE_LEVELS[$idx]}"
@@ -322,6 +340,13 @@ step,pre_revision,j_percentage
 4,${PAIR_PRE_LEVELS[3]},${PAIR_J_LEVELS[3]}
 5,${PAIR_PRE_LEVELS[4]},${PAIR_J_LEVELS[4]}
 EOF
+
+    echo " -> Migrating pair-efficiency rows from seeded result CSVs..."
+    local migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV} --quiet"
+    if ! $QUIET; then
+        migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV}"
+    fi
+    eval "$migrate_cmd"
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"

@@ -195,8 +195,8 @@ ScienceAgentBench tasks are derived from real scientific workflows. Consider:
 
 ### CodeBERT Similarity
 The benchmark uses CodeBERT to measure code similarity. This is a secondary metric:
-- Low similarity but correct output → agent issue (stylistic)
-- High similarity but wrong output → potential benchmark issue
+- Low similarity but correct output -> agent issue (stylistic)
+- High similarity but wrong output -> potential benchmark issue
 - Focus primarily on execution success, not code similarity
 
 ### Multi-Disciplinary Nature
@@ -207,9 +207,9 @@ Tasks span biology, chemistry, physics, etc.:
 
 ### Self-Debug Mechanism
 If agent uses self-debugging:
-- Failure to correct after feedback → agent issue
-- Incorrect feedback from environment → potential benchmark issue
-- Agent ignoring valid error messages → agent issue
+- Failure to correct after feedback -> agent issue
+- Incorrect feedback from environment -> potential benchmark issue
+- Agent ignoring valid error messages -> agent issue
 
 ---
 
@@ -302,8 +302,8 @@ Question whether the reference implementation is the only valid approach:
    - If ModuleNotFoundError appears across models, environment is likely deficient
 
 4. **"Is this a genuine capability gap or a setup issue?"**
-   - Agent can't find the right library → might be environment issue
-   - Agent uses wrong scientific method → agent capability issue
+   - Agent can't find the right library -> might be environment issue
+   - Agent uses wrong scientific method -> agent capability issue
 
 ### Known Benchmark Limitations (from Research Paper)
 

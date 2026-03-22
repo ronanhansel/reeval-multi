@@ -1609,6 +1609,113 @@ def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
         print(f"Migrated {len(migrated_df)} baseline rows into {baseline_output}")
 
 
+def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, baseline_output, quiet=False):
+    """Backfill observed-pair study rows from existing amortized result CSVs."""
+    if not os.path.isdir(source_dir):
+        if not quiet:
+            print(f"Pair-efficiency source dir not found: {source_dir}")
+        return
+
+    file_pattern = re.compile(r"amortized_irt_(sae|pca|raw)_beta_pre_([^_]+)_n_max(?:_j([0-9]+(?:\.[0-9]+)?))?\.csv$")
+    baseline_df = load_baseline_store(baseline_output)
+    rows = []
+    observed_cache = {}
+
+    for fname in sorted(os.listdir(source_dir)):
+        match = file_pattern.match(fname)
+        if not match:
+            continue
+
+        embedding_type, pre_revision, j_token = match.groups()
+        j_percentage = normalize_j_percentage(float(j_token) if j_token is not None else 1.0)
+        pre_revision = normalize_pre_revision(pre_revision)
+        path = os.path.join(source_dir, fname)
+
+        try:
+            df = pd.read_csv(path, on_bad_lines='skip')
+        except Exception:
+            continue
+        if df.empty:
+            continue
+
+        for col in ['seed', 'lambda_tau', 'n_samples', 'auc_amortized', 'rmse_amortized']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        df = df.dropna(subset=['seed', 'lambda_tau', 'auc_amortized', 'rmse_amortized'])
+        if df.empty:
+            continue
+
+        observed_key = (pre_revision, j_percentage)
+        if observed_key not in observed_cache:
+            all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
+                embedding_type='ones',
+                pre_revision=pre_revision,
+            )
+            data = prepare_experiment_data(
+                all_dfs,
+                global_shared_indices,
+                raw_embs_map,
+                embedding_type=actual_emb_type,
+                j_percentage=j_percentage,
+            )
+            n_files = len(all_dfs)
+            _, _, _, train_mask_current_t = build_training_targets(
+                n_files,
+                all_dfs,
+                global_shared_indices,
+                data,
+                model_type='beta',
+                quiet=True,
+            )
+            observed_cache[observed_key] = {
+                'n_files': n_files,
+                'observed_train_pairs': int(train_mask_current_t.sum().item()),
+            }
+
+        n_files = observed_cache[observed_key]['n_files']
+        observed_train_pairs = observed_cache[observed_key]['observed_train_pairs']
+
+        for _, row in df.iterrows():
+            baseline_key = {
+                'seed': int(row['seed']),
+                'model_type': 'beta',
+                'n_samples': int(n_files),
+                'pre_revision': pre_revision,
+                'j_percentage': j_percentage,
+                'baseline_embedding_type': 'raw',
+            }
+            baseline_row = load_existing_baseline_row(baseline_output, baseline_key)
+            if baseline_row is None:
+                if not quiet:
+                    print(f"Skipping pair-efficiency migration for missing baseline: {baseline_key}")
+                continue
+
+            rows.append({
+                'seed': int(row['seed']),
+                'lambda_tau': float(row['lambda_tau']),
+                'n_samples': int(n_files),
+                'model_type': 'beta',
+                'pre_revision': pre_revision,
+                'j_percentage': j_percentage,
+                'embedding_type': embedding_type,
+                'baseline_embedding_type': 'raw',
+                'observed_train_pairs': int(observed_train_pairs),
+                'auc_knn': float(baseline_row['auc_knn']),
+                'rmse_knn': float(baseline_row['rmse_knn']),
+                'auc_araf': float(row['auc_amortized']),
+                'rmse_araf': float(row['rmse_amortized']),
+            })
+
+    if not rows:
+        if not quiet:
+            print("No pair-efficiency rows discovered to migrate.")
+        return
+
+    append_pair_efficiency_rows(pair_efficiency_output, rows)
+    if not quiet:
+        print(f"Migrated {len(rows)} pair-efficiency rows into {pair_efficiency_output}")
+
+
 def strip_inline_baseline_columns(source_dir, quiet=False):
     """Rewrite amortized_irt CSVs by removing legacy inline baseline columns."""
     files = [f for f in os.listdir(source_dir) if f.startswith('amortized_irt_') and f.endswith('.csv')]
@@ -1891,6 +1998,8 @@ def main():
                         help='Migrate baseline cache and strip inline baseline columns from all amortized_irt_*.csv files, then exit.')
     parser.add_argument('--migrate-source-dir', type=str, default=RESULT_DIR,
                         help='Source directory containing historical amortized_irt_*.csv files for migration.')
+    parser.add_argument('--migrate-pair-efficiency', action='store_true',
+                        help='Migrate observed-pair efficiency rows from existing amortized result CSVs, then exit.')
     args = parser.parse_args()
 
     import sys, os
@@ -1912,6 +2021,15 @@ def main():
         migrate_existing_baselines(args.migrate_source_dir, args.baseline_output, quiet=args.quiet)
         seed_mirt_sweep_from_baseline_store(args.baseline_output, args.mirt_sweep_output, quiet=args.quiet)
         strip_inline_baseline_columns(args.migrate_source_dir, quiet=args.quiet)
+        return
+
+    if args.migrate_pair_efficiency:
+        migrate_pair_efficiency_from_results(
+            args.migrate_source_dir,
+            args.pair_efficiency_output,
+            args.baseline_output,
+            quiet=args.quiet,
+        )
         return
 
     if args.wd_theta is not None:
