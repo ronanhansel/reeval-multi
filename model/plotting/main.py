@@ -45,7 +45,7 @@ def main():
     if args.all or args.sample_size:
         sample_size.main()
 
-    if args.pair_efficiency_study:
+    if args.all or args.pair_efficiency_study:
         pair_efficiency.main()
 
     if args.all or args.interpretability:
