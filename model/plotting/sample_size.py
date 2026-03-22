@@ -45,7 +45,7 @@ BASELINE_LABELS = {
     'knn': 'kNN',
 }
 BASELINE_COLORS = {
-    'rasch': 'wheat',
+    'rasch': 'navajowhite',
     'mirt': 'tan',
     'knn': 'orange',
 }

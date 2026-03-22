@@ -1297,6 +1297,28 @@ def parse_n_samples(arg, total_files):
     return sorted(set(result))
 
 
+def parse_explicit_n_samples(arg):
+    """Parse --n-samples without loading data when no 'all'/'max' expansion is needed."""
+    arg = str(arg).strip()
+    if not arg or arg in {'all', 'max', '1,all'}:
+        return None
+
+    result = []
+    for part in arg.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        if part in {'all', 'max'}:
+            return None
+        if '-' in part:
+            start, end = part.split('-')
+            result.extend(range(int(start), int(end) + 1))
+        else:
+            result.append(int(part))
+
+    return sorted(set(result))
+
+
 def normalize_pre_revision(value):
     """Normalize pre-revision value to stable string key used in baseline cache."""
     if value is None:
@@ -1476,6 +1498,64 @@ def try_get_cached_mirt_sweep_row(path, key):
         'auc_mirt': float(row['auc_mirt']),
         'mirt_dim': int(row['mirt_dim']),
     }
+
+
+def infer_completed_max_n_from_output(path):
+    """Infer the max n_samples already written to an output CSV, if any."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return None
+    if df.empty or 'n_samples' not in df.columns:
+        return None
+    n_col = pd.to_numeric(df['n_samples'], errors='coerce').dropna()
+    if n_col.empty:
+        return None
+    return int(n_col.max())
+
+
+def infer_completed_max_n_from_baseline_cache(path, seed, model_type, pre_revision, j_percentage, baseline_embedding_type):
+    """Infer cached max n_samples from baseline cache for resume-only checks."""
+    df = load_baseline_store(path)
+    if df.empty:
+        return None
+
+    key = {
+        'seed': int(seed),
+        'model_type': str(model_type),
+        'n_samples': 0,  # ignored below
+        'pre_revision': normalize_pre_revision(pre_revision),
+        'j_percentage': normalize_j_percentage(j_percentage),
+        'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+    }
+
+    seed_col = pd.to_numeric(df['seed'], errors='coerce')
+    j_percentage_col = pd.to_numeric(df['j_percentage'], errors='coerce')
+    n_samples_col = pd.to_numeric(df['n_samples'], errors='coerce')
+    j_match = pd.Series(
+        np.isclose(j_percentage_col.to_numpy(dtype=float), float(key['j_percentage']), atol=1e-6, equal_nan=False),
+        index=df.index,
+    )
+    mask = (
+        (seed_col == int(key['seed'])) &
+        (df['model_type'].astype(str) == str(key['model_type'])) &
+        (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
+        j_match &
+        (
+            df['baseline_embedding_type'].astype(str).map(normalize_baseline_embedding_type) ==
+            str(key['baseline_embedding_type'])
+        )
+    )
+    match = df[mask.fillna(False)]
+    if match.empty:
+        return None
+
+    n_values = pd.to_numeric(match['n_samples'], errors='coerce').dropna()
+    if n_values.empty:
+        return None
+    return int(n_values.max())
 
 
 def seed_mirt_sweep_from_baseline_store(baseline_output, mirt_sweep_output, quiet=False):
@@ -2086,17 +2166,37 @@ def main():
         except Exception:
             pass
 
-    # We MUST load data to get total_files for parse_n_samples
-    all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
-        embedding_type=args.embedding_type,
-        embedding_dim=args.embedding_dim,
-        pre_revision=args.pre_revision
-    )
-    total_files = len(all_dfs)
-    
+    n_values = None
     if args.pre_revision != 'none':
         n_values = [1]
     else:
+        n_values = parse_explicit_n_samples(args.n_samples)
+        if n_values is None and str(args.n_samples).strip() == 'max':
+            if args.baseline_only:
+                baseline_emb_type = normalize_baseline_embedding_type(
+                    args.baseline_embedding_type if args.baseline_embedding_type is not None else args.embedding_type
+                )
+                n_inferred = infer_completed_max_n_from_baseline_cache(
+                    args.baseline_output,
+                    seed=seeds[0],
+                    model_type=args.model_type,
+                    pre_revision=args.pre_revision,
+                    j_percentage=args.j_percentage,
+                    baseline_embedding_type=baseline_emb_type,
+                )
+            else:
+                n_inferred = infer_completed_max_n_from_output(output_path)
+            if n_inferred is not None:
+                n_values = [n_inferred]
+
+    all_dfs = global_shared_indices = raw_embs_map = None
+    if n_values is None:
+        all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
+            embedding_type=args.embedding_type,
+            embedding_dim=args.embedding_dim,
+            pre_revision=args.pre_revision
+        )
+        total_files = len(all_dfs)
         n_values = parse_n_samples(args.n_samples, total_files)
 
     max_n = max(n_values)
@@ -2111,6 +2211,9 @@ def main():
                     'n_samples': int(max_n),
                     'pre_revision': normalize_pre_revision(args.pre_revision),
                     'j_percentage': normalize_j_percentage(args.j_percentage),
+                    'baseline_embedding_type': normalize_baseline_embedding_type(
+                        args.baseline_embedding_type if args.baseline_embedding_type is not None else args.embedding_type
+                    ),
                 }
                 cached = try_get_cached_baseline(
                     args.baseline_output,
@@ -2157,6 +2260,13 @@ def main():
     if len(configs) == 0:
         print("\nAll configurations already completed! Skipping PyTorch init and multiprocessing.\n")
         return
+
+    if all_dfs is None or global_shared_indices is None or raw_embs_map is None:
+        all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
+            embedding_type=args.embedding_type,
+            embedding_dim=args.embedding_dim,
+            pre_revision=args.pre_revision
+        )
 
     print(f"\nDiscovered {len(configs)} configurations to execute across {args.parallel} Python generic workers.\n")
 
