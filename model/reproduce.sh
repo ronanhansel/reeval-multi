@@ -35,6 +35,8 @@ QUIET=false
 PAIR_EFFICIENCY_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
+PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
+PAIR_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "1.0")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -292,22 +294,34 @@ run_pair_efficiency_study() {
     mkdir -p "${RESULT_DIR}"
 
     local pair_csv="${RESULT_DIR}/pair_efficiency_beta_grid.csv"
+    local pair_count=${#PAIR_PRE_LEVELS[@]}
     echo " -> Running separate observed-pair efficiency study (beta only)..."
-    echo " -> Priming separate baseline cache for Pre-N x J% beta grid..."
-    for n in 4 8 16 32 64 max; do
-        for j in 0.1 0.3 0.5 0.7 0.9 1.0; do
-            run_baseline max beta "$n" "$SEEDS" "$j"
-        done
+    echo " -> Using ${pair_count} targeted N x J checkpoints (low -> saturation)..."
+    echo " -> Priming separate baseline cache for selected beta checkpoints..."
+    for ((idx=0; idx<pair_count; idx++)); do
+        local n="${PAIR_PRE_LEVELS[$idx]}"
+        local j="${PAIR_J_LEVELS[$idx]}"
+        run_baseline max beta "$n" "$SEEDS" "$j"
     done
 
     echo " -> Running beta pair-efficiency sweep with full tau setup..."
-    for n in 4 8 16 32 64 max; do
-        for j in 0.1 0.3 0.5 0.7 0.9 1.0; do
-            run_tau_sweep sae max beta 0.16 "$n" "$j" "$pair_csv"
-            run_tau_sweep pca max beta 0.054 "$n" "$j" "$pair_csv"
-            run_tau_sweep raw max beta 0.029 "$n" "$j" "$pair_csv"
-        done
+    for ((idx=0; idx<pair_count; idx++)); do
+        local n="${PAIR_PRE_LEVELS[$idx]}"
+        local j="${PAIR_J_LEVELS[$idx]}"
+        run_tau_sweep sae max beta 0.16 "$n" "$j" "$pair_csv"
+        run_tau_sweep pca max beta 0.054 "$n" "$j" "$pair_csv"
+        run_tau_sweep raw max beta 0.029 "$n" "$j" "$pair_csv"
     done
+
+    local meta_csv="${RESULT_DIR}/pair_efficiency_checkpoints.csv"
+    cat > "${meta_csv}" <<EOF
+step,pre_revision,j_percentage
+1,${PAIR_PRE_LEVELS[0]},${PAIR_J_LEVELS[0]}
+2,${PAIR_PRE_LEVELS[1]},${PAIR_J_LEVELS[1]}
+3,${PAIR_PRE_LEVELS[2]},${PAIR_J_LEVELS[2]}
+4,${PAIR_PRE_LEVELS[3]},${PAIR_J_LEVELS[3]}
+5,${PAIR_PRE_LEVELS[4]},${PAIR_J_LEVELS[4]}
+EOF
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"

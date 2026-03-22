@@ -19,8 +19,13 @@ PAIR_CSV = os.path.join(RESULT_DIR, "pair_efficiency_beta_grid.csv")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 ARAF_VARIANTS = ['sae', 'pca', 'raw']
-PRE_LEVELS = ['4', '8', '16', '32', '64', 'max']
-J_LEVELS = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+CHECKPOINTS = [
+    ('4', 0.1, 'Low'),
+    ('8', 0.3, 'Low-Mid'),
+    ('16', 0.5, 'Mid'),
+    ('32', 0.7, 'High-Mid'),
+    ('max', 1.0, 'Saturation'),
+]
 
 
 def get_bundle():
@@ -48,8 +53,13 @@ def load_data():
 
 def select_best_points(df):
     rows = []
-    grouped = df.groupby(['pre_revision', 'j_percentage'], dropna=False)
-    for (pre_revision, j_pct), sub in grouped:
+    for order_idx, (pre_revision, j_pct, stage_label) in enumerate(CHECKPOINTS):
+        sub = df[
+            (df['pre_revision'] == str(pre_revision).lower()) &
+            (np.isclose(df['j_percentage'], float(j_pct), atol=1e-9))
+        ]
+        if sub.empty:
+            continue
         best_variant = None
         best_tau = None
         best_auc = None
@@ -75,6 +85,8 @@ def select_best_points(df):
             continue
 
         rows.append({
+            'stage_order': order_idx,
+            'stage_label': stage_label,
             'pre_revision': pre_revision,
             'j_percentage': float(j_pct),
             'best_variant': best_variant,
@@ -89,14 +101,18 @@ def select_best_points(df):
     if not rows:
         return None
     out = pd.DataFrame(rows)
-    return out.sort_values('observed_train_pairs')
+    return out.sort_values('stage_order')
 
 
 def plot(best_df):
     plt.rcParams.update(get_bundle())
     fig, axes = plt.subplots(1, 2, figsize=(7.4, 2.8), constrained_layout=True)
 
-    x = best_df['observed_train_pairs'].to_numpy()
+    x = np.arange(len(best_df))
+    labels = [
+        f"{stage}\n{int(pairs):,}"
+        for stage, pairs in zip(best_df['stage_label'], best_df['observed_train_pairs'])
+    ]
 
     axes[0].plot(x, best_df['auc_knn'], color='orange', marker='o', linewidth=1.3, label='kNN')
     axes[0].plot(x, best_df['auc_araf'], color='steelblue', marker='o', linewidth=1.3, label='ARAF')
@@ -111,7 +127,9 @@ def plot(best_df):
     for ax in axes:
         ax.grid(linestyle=':', alpha=0.8)
         ax.tick_params(labelsize=9)
-        ax.set_xlabel('Observed Train Pairs', fontsize=10)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=0)
+        ax.set_xlabel('Observed-Pair Stage (mean train pairs)', fontsize=10)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', ncol=2, frameon=True, fontsize=8)
