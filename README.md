@@ -355,6 +355,10 @@ python3 -m model.plotting.main --all
     ```bash
     python3 -m model.plotting.main --comparison
     ```
+*   **Sample Size**: Data-efficiency curves comparing ARAF to kNN/MIRT/Rasch as the number of agents or items changes, plus an observed-train-pair efficiency plot for matched budget comparisons.
+    ```bash
+    python3 -m model.plotting.main --sample-size
+    ```
 *   **Interpretability**: Latent factor projections and semantic alignment reports.
     ```bash
     python3 -m model.plotting.main --interpretability

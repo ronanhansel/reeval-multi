@@ -69,7 +69,7 @@ NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt'
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max']
+BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'observed_train_pairs']
 
 MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
@@ -884,6 +884,9 @@ def _baseline_payload_from_row(row):
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     if selected_dim is not None:
         payload['selected_mirt_dim'] = selected_dim
+    observed_train_pairs = _optional_int(row.get('observed_train_pairs'))
+    if observed_train_pairs is not None:
+        payload['observed_train_pairs'] = observed_train_pairs
     return payload
 
 
@@ -935,6 +938,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     N, J, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
     )
+    observed_train_pairs = int(train_mask_current_t.sum().item())
 
     if non_mirt_metrics is None:
         non_mirt_metrics = compute_non_mirt_baseline_metrics(
@@ -1003,6 +1007,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     baseline_row['agent_batch_size'] = compute_agent_batch_size(
         baseline_key['pre_revision'], baseline_key['n_samples']
     )
+    baseline_row['observed_train_pairs'] = observed_train_pairs
     for col, value in non_mirt_metrics.items():
         baseline_row[col] = float(value)
     baseline_row['rmse_mirt'] = float(best_mirt['rmse_mirt'])
@@ -1061,6 +1066,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     auc_2pl = baselines['auc_2pl']
     auc_mirt = baselines['auc_mirt']
     selected_mirt_dim = int(baselines.get('selected_mirt_dim', K_MODEL))
+    observed_train_pairs = baselines.get('observed_train_pairs')
 
     if embedding_type == 'rasch_2pl':
         return {
@@ -1068,6 +1074,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
+            'observed_train_pairs': observed_train_pairs,
             'rmse_amortized': rmse_2pl,
             'auc_amortized': auc_2pl,
             'active_dims': 0,
@@ -1084,6 +1091,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
+            'observed_train_pairs': observed_train_pairs,
             'rmse_amortized': best_mirt_rmse,
             'auc_amortized': auc_mirt,
             'active_dims': selected_mirt_dim,
@@ -1097,6 +1105,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     _, _, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
     )
+    observed_train_pairs = int(train_mask_current_t.sum().item())
 
     # 5. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
@@ -1124,6 +1133,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
+        'observed_train_pairs': observed_train_pairs,
         'rmse_amortized': best_rmse,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
