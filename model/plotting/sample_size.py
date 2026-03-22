@@ -10,15 +10,10 @@ Generates a 4-panel figure with:
 """
 
 import os
-import io
-import re
-import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tueplots import bundles
-from contextlib import redirect_stdout
-from functools import lru_cache
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -32,11 +27,6 @@ BASELINE_PATH = os.path.join(RESULT_DIR, 'baselines', 'baseline_metrics.csv')
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-if MODEL_DIR not in sys.path:
-    sys.path.append(MODEL_DIR)
-
-import amortized_irt as observed_pair_exp
-
 # Beta setup only
 SIZES_BETA = ['4', '8', '16', '32', '64', 'max']
 X_VALS_BETA = [4, 8, 16, 32, 64, 143]
@@ -46,7 +36,6 @@ ARAF_VARIANTS = ['sae', 'pca', 'raw']
 ARAF_KEY = 'araf'
 ARAF_LABEL = 'ARAF'
 ARAF_COLOR = 'steelblue'
-OBSERVED_PAIR_REGEX = re.compile(r'^amortized_irt_(sae|pca|raw)_beta_n_(max|\d+)(?:_j([0-9.]+))?\.csv$')
 BASELINE_GRAY = 'slategray'
 BASELINE_KEYS = ['rasch', 'mirt', 'knn']
 BASELINE_LABELS = {
@@ -211,144 +200,6 @@ def select_best_araf_point(metric, candidates):
             best_point = (mean_val, sem_val)
 
     return best_variant, best_point
-
-
-def normalize_n_token(n_token):
-    return 'max' if str(n_token) == 'max' else str(int(n_token))
-
-
-def n_token_to_int(n_token):
-    n_token = normalize_n_token(n_token)
-    if n_token == 'max':
-        return len(_get_post_revision_sources()[0])
-    return int(n_token)
-
-
-def discover_observed_pair_sweep_configs():
-    configs = {}
-    for filename in os.listdir(RESULT_DIR):
-        match = OBSERVED_PAIR_REGEX.match(filename)
-        if match is None:
-            continue
-
-        variant, n_token, j_token = match.groups()
-        j_pct = float(j_token) if j_token is not None else 1.0
-        key = (normalize_n_token(n_token), float(j_pct))
-        configs.setdefault(key, {})[variant] = os.path.join(RESULT_DIR, filename)
-    return configs
-
-
-@lru_cache(maxsize=1)
-def _get_post_revision_sources():
-    with redirect_stdout(io.StringIO()):
-        all_dfs, global_shared_indices, raw_embs_map, _ = observed_pair_exp.load_data(
-            embedding_type='pca',
-            embedding_dim=48,
-            pre_revision='none',
-        )
-    return all_dfs, global_shared_indices, raw_embs_map
-
-
-@lru_cache(maxsize=None)
-def _recompute_observed_pairs(seed, n_token, j_pct):
-    seed = int(seed)
-    n_token = normalize_n_token(n_token)
-    j_pct = float(j_pct)
-    all_dfs, global_shared_indices, raw_embs_map = _get_post_revision_sources()
-
-    observed_pair_exp.RANDOM_SEED = seed
-    with redirect_stdout(io.StringIO()):
-        data = observed_pair_exp.prepare_experiment_data(
-            all_dfs,
-            global_shared_indices,
-            raw_embs_map,
-            embedding_type='pca',
-            j_percentage=j_pct,
-        )
-    np.random.seed(seed)
-    _, _, _, train_mask_current_t = observed_pair_exp.build_training_targets(
-        n_token_to_int(n_token),
-        all_dfs,
-        global_shared_indices,
-        data,
-        model_type='beta',
-        quiet=True,
-    )
-    return int(train_mask_current_t.sum().item())
-
-
-def load_observed_pair_stats(paths_by_variant, n_token, j_pct):
-    seeds = None
-
-    for path in paths_by_variant.values():
-        df = _load_best_tau_subset(path)
-        if df is None or df.empty:
-            continue
-
-        if 'observed_train_pairs' in df.columns:
-            vals = pd.to_numeric(df['observed_train_pairs'], errors='coerce').dropna()
-            if not vals.empty:
-                return float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0)
-
-        if 'seed' in df.columns:
-            seed_vals = pd.to_numeric(df['seed'], errors='coerce').dropna().astype(int).tolist()
-            if seed_vals:
-                seeds = sorted(set(seed_vals))
-
-    if not seeds:
-        return None, None
-
-    vals = [_recompute_observed_pairs(seed, n_token, j_pct) for seed in seeds]
-    if not vals:
-        return None, None
-    vals = np.asarray(vals, dtype=float)
-    sem = float(pd.Series(vals).sem()) if len(vals) > 1 else 0.0
-    return float(vals.mean()), sem
-
-
-def gather_observed_pair_efficiency_data():
-    data = {
-        'auc': {ARAF_KEY: [], 'knn': []},
-        'rmse': {ARAF_KEY: [], 'knn': []},
-    }
-    baseline_df = load_baseline_cache()
-    configs = discover_observed_pair_sweep_configs()
-
-    for (n_token, j_pct), paths_by_variant in configs.items():
-        candidates = {
-            variant: _load_metrics_from_file(path)
-            for variant, path in paths_by_variant.items()
-        }
-        pair_mean, _ = load_observed_pair_stats(paths_by_variant, n_token, j_pct)
-        if pair_mean is None:
-            continue
-
-        n_samples = n_token_to_int(n_token)
-        for metric in ['auc', 'rmse']:
-            _, best_point = select_best_araf_point(metric, candidates)
-            if best_point is None:
-                continue
-
-            knn_mean, knn_sem = baseline_stats(
-                baseline_df,
-                metric_col=f'{metric}_knn',
-                model_type='beta',
-                n_samples=n_samples,
-                pre_revision='none',
-                j_percentage=j_pct,
-            )
-            if knn_mean is None:
-                continue
-
-            mean_val, sem_val = best_point
-            data[metric][ARAF_KEY].append((pair_mean, mean_val, sem_val))
-            data[metric]['knn'].append((pair_mean, knn_mean, knn_sem))
-
-    for metric in ['auc', 'rmse']:
-        for key in [ARAF_KEY, 'knn']:
-            data[metric][key].sort(key=lambda row: row[0])
-
-    return data
 
 
 def gather_beta_agent_data():
@@ -588,8 +439,8 @@ def plot_combined_beta_quad():
         handles,
         labels,
         loc='lower center',
-        bbox_to_anchor=(0.5, -0.075),
-        ncol=3,
+        bbox_to_anchor=(0.5, 0),
+        ncol=4,
         fontsize=FONT_SIZE_LEGEND,
         frameon=True,
     )
@@ -600,100 +451,8 @@ def plot_combined_beta_quad():
     plt.savefig(out_pdf, bbox_inches='tight', dpi=300)
     plt.close()
     print(f'Success! 4-panel beta plot generated: {out_pdf}')
-
-
-def plot_observed_pair_efficiency():
-    print('Generating observed-pair efficiency plot (post-revision beta)...')
-
-    efficiency = gather_observed_pair_efficiency_data()
-    if not efficiency['auc'][ARAF_KEY] or not efficiency['auc']['knn']:
-        print('Skipping observed-pair efficiency plot: no sweep files found.')
-        return
-
-    plt.rcParams.update(bundles.icml2024(usetex=False, family='serif'))
-    fig, axes = plt.subplots(1, 2, figsize=(5.8, 2.6), constrained_layout=False)
-
-    series_specs = [
-        ('auc', 'AUC', (0.48, 0.78)),
-        ('rmse', 'RMSE', (0.20, 0.46)),
-    ]
-    colors = {
-        ARAF_KEY: ARAF_COLOR,
-        'knn': BASELINE_COLORS['knn'],
-    }
-    labels = {
-        ARAF_KEY: ARAF_LABEL,
-        'knn': 'kNN',
-    }
-    linestyles = {
-        ARAF_KEY: '-',
-        'knn': '--',
-    }
-
-    for ax, (metric_key, title, ylim) in zip(axes, series_specs):
-        for series_key in [ARAF_KEY, 'knn']:
-            series = efficiency[metric_key][series_key]
-            if not series:
-                continue
-            x, y, e = zip(*series)
-            x = np.asarray(x, dtype=float)
-            y = np.asarray(y, dtype=float)
-            e = np.asarray(e, dtype=float)
-
-            ax.fill_between(
-                x,
-                y - e,
-                y + e,
-                color=colors[series_key],
-                alpha=0.12,
-                linewidth=0,
-                zorder=1,
-            )
-            ax.plot(
-                x,
-                y,
-                color=colors[series_key],
-                label=labels[series_key],
-                linestyle=linestyles[series_key],
-                marker='o',
-                markersize=3.0,
-                linewidth=1.5,
-                alpha=0.9,
-                zorder=2,
-            )
-
-        if metric_key == 'auc':
-            ax.axhline(0.5, color=BASELINE_GRAY, linestyle='--', linewidth=1, alpha=0.7)
-
-        ax.set_xscale('log')
-        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_title(title, fontsize=FONT_SIZE_TITLE)
-        ax.set_xlabel('Observed Train Pairs', fontsize=FONT_SIZE_TICK)
-        ax.set_ylim(*ylim)
-        ax.tick_params(axis='both', labelsize=FONT_SIZE_TICK)
-        ax.grid(True, axis='y', linestyle=':', alpha=0.6)
-
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(
-        handles,
-        labels,
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.03),
-        ncol=2,
-        fontsize=FONT_SIZE_LEGEND,
-        frameon=True,
-    )
-
-    plt.subplots_adjust(bottom=0.30, top=0.88, wspace=0.30)
-
-    out_pdf = os.path.join(FIGURE_DIR, 'observed_pair_efficiency_beta.pdf')
-    plt.savefig(out_pdf, bbox_inches='tight', dpi=300)
-    plt.close()
-    print(f'Success! Observed-pair efficiency plot generated: {out_pdf}')
-
 def main():
     plot_combined_beta_quad()
-    plot_observed_pair_efficiency()
 
 if __name__ == "__main__":
     main()

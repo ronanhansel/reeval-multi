@@ -23,10 +23,6 @@ MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
 SEEDS="42"
 NUM_SEEDS=50
 SHARED_TAUS="0.002 0.004 0.005 0.006 0.008 0.010 0.012 0.014 0.015 0.0151 0.0155 0.0159 0.016 0.018 0.020 0.022 0.024 0.025 0.026 0.028 0.029 0.030 0.032 0.034 0.035 0.036 0.038 0.040 0.042 0.044 0.045 0.046 0.048 0.050 0.052 0.0535 0.054 0.055 0.056 0.058 0.060 0.062 0.064 0.065 0.066 0.068 0.070 0.072 0.074 0.075 0.076 0.078 0.080 0.082 0.084 0.085 0.086 0.088 0.090 0.092 0.094 0.095 0.096 0.098 0.100 0.105 0.110 0.115 0.120 0.125 0.130 0.135 0.140 0.145 0.150 0.155 0.160 0.165 0.170 0.175 0.180 0.185 0.190 0.195 0.200 0.210 0.220 0.230 0.250 0.30 0.40 0.50 0.75 1.0 1.5 2.0 3.0 5.0 10.0 20.0 30.0 50.0 75.0 100.0 200.0 500.0 1000.0"
-OBS_SWEEP_NS_QUICK="1 4 16 max"
-OBS_SWEEP_JS_QUICK="0.1 0.5 1.0"
-OBS_SWEEP_NS_FULL="1 2 4 8 16 32 max"
-OBS_SWEEP_JS_FULL="0.1 0.3 0.5 0.7 0.9 1.0"
 FULL_SWEEP=false
 ONLY_PLOT=false
 PARALLEL=1
@@ -172,8 +168,8 @@ run_baseline() {
 
     local seeds_csv=${seeds// /,}
     # Baseline cache now includes an embedding-kNN zero-shot baseline.
-    # We pin baseline embedding type to PCA for a stable, single reference baseline.
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type pca --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    # We pin baseline embedding type to RAW for a stable, single reference baseline.
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type raw --baseline-embedding-type raw --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
@@ -212,7 +208,7 @@ run_exp() {
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type raw --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi
@@ -266,20 +262,6 @@ run_tau_sweep() {
     run_exp "$emb" "$n" "$model" "$taus" "$pre" "$SEEDS" "${RESULT_DIR}" false false "$j_pct"
 }
 
-run_observed_pair_sweep() {
-    local n_values=$1
-    local j_values=$2
-
-    echo " -> Starting Observed-Pair Efficiency Sweep (post-revision beta, fixed taus)..."
-    for n in $n_values; do
-        for j in $j_values; do
-            run_exp sae "$n" beta "0.0535" false "$SEEDS" "${RESULT_DIR}" false false "$j"
-            run_exp pca "$n" beta "0.054" false "$SEEDS" "${RESULT_DIR}" false false "$j"
-            run_exp raw "$n" beta "0.029" false "$SEEDS" "${RESULT_DIR}" false false "$j"
-        done
-    done
-}
-
 # ── Execution ───────────────────────────────────────────────────────────────
 if ! $ONLY_PLOT; then
     echo "[MODE] Running Experiments..."
@@ -319,13 +301,6 @@ if ! $ONLY_PLOT; then
     # 3. RAW Embeddings
     run_tau_sweep raw max beta 0.029 false
     run_tau_sweep raw 1 bernoulli 0.0151 false
-
-    # 3.5 Observed-Pair Efficiency Sweep (post-revision beta only)
-    if $FULL_SWEEP; then
-        run_observed_pair_sweep "$OBS_SWEEP_NS_FULL" "$OBS_SWEEP_JS_FULL"
-    else
-        run_observed_pair_sweep "$OBS_SWEEP_NS_QUICK" "$OBS_SWEEP_JS_QUICK"
-    fi
 
     # 4. Pre-Revision Checks (Full Sweep only)
     if $FULL_SWEEP; then

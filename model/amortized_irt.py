@@ -67,9 +67,9 @@ BASELINE_METRIC_COLS = [
 ]
 NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
 
-BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
+BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'observed_train_pairs']
+BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max']
 
 MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
@@ -884,9 +884,6 @@ def _baseline_payload_from_row(row):
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     if selected_dim is not None:
         payload['selected_mirt_dim'] = selected_dim
-    observed_train_pairs = _optional_int(row.get('observed_train_pairs'))
-    if observed_train_pairs is not None:
-        payload['observed_train_pairs'] = observed_train_pairs
     return payload
 
 
@@ -905,14 +902,20 @@ def select_best_mirt_result(results):
 def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, model_type='beta', beta_phi=BETA_PHI,
                              baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                              allow_compute=True, quiet=False, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
-                             mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
+                             mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT, embedding_type=None,
+                             baseline_embedding_type=None):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
+    actual_embedding_type = normalize_baseline_embedding_type(embedding_type)
+    baseline_embedding_type = normalize_baseline_embedding_type(
+        baseline_embedding_type if baseline_embedding_type is not None else actual_embedding_type
+    )
     baseline_key = {
         'seed': int(RANDOM_SEED),
         'model_type': str(model_type),
         'n_samples': int(n_files),
         'pre_revision': normalize_pre_revision(pre_revision),
         'j_percentage': normalize_j_percentage(j_percentage),
+        'baseline_embedding_type': baseline_embedding_type,
     }
 
     cached = try_get_cached_baseline(
@@ -938,9 +941,16 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     N, J, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
     )
-    observed_train_pairs = int(train_mask_current_t.sum().item())
 
     if non_mirt_metrics is None:
+        if baseline_embedding_type != actual_embedding_type:
+            raise RuntimeError(
+                f"Missing baseline cache row for {baseline_key}. "
+                f"Baseline computation requires embeddings '{baseline_embedding_type}', "
+                f"but this run loaded '{actual_embedding_type}'. "
+                f"Prime the cache first with --baseline-only --embedding-type {baseline_embedding_type} "
+                f"--baseline-embedding-type {baseline_embedding_type}."
+            )
         non_mirt_metrics = compute_non_mirt_baseline_metrics(
             N, J, y_train, train_mask_current_t,
             data['y_oracle'], data['test_mask'], data['test_mask_t'],
@@ -1007,7 +1017,6 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     baseline_row['agent_batch_size'] = compute_agent_batch_size(
         baseline_key['pre_revision'], baseline_key['n_samples']
     )
-    baseline_row['observed_train_pairs'] = observed_train_pairs
     for col, value in non_mirt_metrics.items():
         baseline_row[col] = float(value)
     baseline_row['rmse_mirt'] = float(best_mirt['rmse_mirt'])
@@ -1024,6 +1033,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
                    beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None,
                    baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
+                   baseline_embedding_type=None,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Run experiment for a specific number of sample files.
@@ -1059,6 +1069,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         mirt_dim_min=mirt_dim_min,
         mirt_dim_max=mirt_dim_max,
         mirt_sweep_output=mirt_sweep_output,
+        embedding_type=embedding_type,
+        baseline_embedding_type=baseline_embedding_type,
     )
 
     rmse_2pl = baselines['rmse_2pl']
@@ -1066,7 +1078,6 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     auc_2pl = baselines['auc_2pl']
     auc_mirt = baselines['auc_mirt']
     selected_mirt_dim = int(baselines.get('selected_mirt_dim', K_MODEL))
-    observed_train_pairs = baselines.get('observed_train_pairs')
 
     if embedding_type == 'rasch_2pl':
         return {
@@ -1074,7 +1085,6 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
-            'observed_train_pairs': observed_train_pairs,
             'rmse_amortized': rmse_2pl,
             'auc_amortized': auc_2pl,
             'active_dims': 0,
@@ -1091,7 +1101,6 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
-            'observed_train_pairs': observed_train_pairs,
             'rmse_amortized': best_mirt_rmse,
             'auc_amortized': auc_mirt,
             'active_dims': selected_mirt_dim,
@@ -1105,7 +1114,6 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     _, _, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
     )
-    observed_train_pairs = int(train_mask_current_t.sum().item())
 
     # 5. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
@@ -1133,7 +1141,6 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
-        'observed_train_pairs': observed_train_pairs,
         'rmse_amortized': best_rmse,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
@@ -1186,6 +1193,14 @@ def normalize_j_percentage(value):
     return float(f"{float(value):.6f}")
 
 
+def normalize_baseline_embedding_type(value):
+    """Normalize baseline embedding type and preserve PCA for legacy rows."""
+    if value is None or pd.isna(value):
+        return 'pca'
+    v = str(value).strip().lower()
+    return v if v and v != 'nan' else 'pca'
+
+
 def compute_agent_batch_size(pre_revision, n_samples):
     """Return user-facing effective batch size (pre-revision size or n_samples)."""
     pre = normalize_pre_revision(pre_revision)
@@ -1216,7 +1231,11 @@ def baseline_row_matches(df, key):
         (df['model_type'].astype(str) == str(key['model_type'])) &
         (n_samples_col == int(key['n_samples'])) &
         (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
-        j_match
+        j_match &
+        (
+            df['baseline_embedding_type'].astype(str).map(normalize_baseline_embedding_type) ==
+            str(key['baseline_embedding_type'])
+        )
     )
     return df[mask.fillna(False)]
 
@@ -1240,6 +1259,7 @@ def load_baseline_store(path):
             for col in BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS:
                 if col not in df.columns:
                     df[col] = np.nan
+            df['baseline_embedding_type'] = df['baseline_embedding_type'].map(normalize_baseline_embedding_type)
 
             # Backfill explicit effective batch size for readability.
             df['agent_batch_size'] = [
@@ -1262,6 +1282,7 @@ def load_mirt_sweep_store(path):
             for col in MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS:
                 if col not in df.columns:
                     df[col] = np.nan
+            df['baseline_embedding_type'] = df['baseline_embedding_type'].map(normalize_baseline_embedding_type)
             return df
         except Exception:
             pass
@@ -1301,15 +1322,8 @@ def append_mirt_sweep_row(path, row):
 
 def load_existing_baseline_row(path, key):
     """Lookup baseline row by key without enforcing MIRT sweep coverage."""
-    if not os.path.exists(path):
-        return None
-
-    try:
-        df = pd.read_csv(path)
-    except Exception:
-        return None
-
-    if any(c not in df.columns for c in BASELINE_KEY_COLS + BASELINE_METRIC_COLS):
+    df = load_baseline_store(path)
+    if df.empty:
         return None
 
     match = baseline_row_matches(df, key)
@@ -1329,15 +1343,8 @@ def try_get_cached_baseline(path, key, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODE
 
 def try_get_cached_mirt_sweep_row(path, key):
     """Lookup one cached MIRT sweep row by key."""
-    if not os.path.exists(path):
-        return None
-
-    try:
-        df = pd.read_csv(path)
-    except Exception:
-        return None
-
-    if any(c not in df.columns for c in MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS):
+    df = load_mirt_sweep_store(path)
+    if df.empty:
         return None
 
     match = mirt_sweep_row_matches(df, key)
@@ -1435,9 +1442,18 @@ def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
         if m_j:
             j_percentage = normalize_j_percentage(float(m_j.group(1)))
 
+        baseline_embedding_type = 'pca'
+        if 'embedding_type' in df.columns and df['embedding_type'].notna().any():
+            baseline_embedding_type = normalize_baseline_embedding_type(df['embedding_type'].dropna().iloc[0])
+        else:
+            m_emb = re.match(r"amortized_irt_([^_]+)_", fname)
+            if m_emb:
+                baseline_embedding_type = normalize_baseline_embedding_type(m_emb.group(1))
+
         sub = df[required].copy()
         sub['pre_revision'] = pre_revision
         sub['j_percentage'] = j_percentage
+        sub['baseline_embedding_type'] = baseline_embedding_type
         sub['agent_batch_size'] = [
             compute_agent_batch_size(pre_revision, ns)
             for ns in sub['n_samples'].tolist()
@@ -1462,6 +1478,7 @@ def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
     migrated_df['n_samples'] = migrated_df['n_samples'].astype(int)
     migrated_df['pre_revision'] = migrated_df['pre_revision'].astype(str).map(normalize_pre_revision)
     migrated_df['j_percentage'] = migrated_df['j_percentage'].map(normalize_j_percentage)
+    migrated_df['baseline_embedding_type'] = migrated_df['baseline_embedding_type'].map(normalize_baseline_embedding_type)
 
     lock = FileLock(f"{baseline_output}.lock", timeout=600)
     with lock:
@@ -1602,6 +1619,8 @@ def run_single_config(config, args, n_values):
                     mirt_dim_min=args.mirt_dim_min,
                     mirt_dim_max=args.mirt_dim_max,
                     mirt_sweep_output=args.mirt_sweep_output,
+                    embedding_type=actual_emb_type,
+                    baseline_embedding_type=args.baseline_embedding_type,
                 )
                 continue
 
@@ -1611,6 +1630,7 @@ def run_single_config(config, args, n_values):
                                     baseline_output=args.baseline_output,
                                     pre_revision=args.pre_revision,
                                     j_percentage=args.j_percentage,
+                                    baseline_embedding_type=args.baseline_embedding_type,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
@@ -1710,6 +1730,9 @@ def main():
     parser.add_argument('--j-percentage', type=float, default=1.0, help='Percentage of items (columns) to sample (0.0 to 1.0).')
     parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
     parser.add_argument('--baseline-only', action='store_true', help='Only compute/cache baselines and skip amortized outputs.')
+    parser.add_argument('--baseline-embedding-type', type=str, default=None,
+                        choices=['raw', 'pca', 'sae'],
+                        help='Embedding type used for the cached kNN baseline (defaults to --embedding-type).')
     parser.add_argument('--baseline-output', type=str, default=DEFAULT_BASELINE_OUTPUT,
                         help='Path to baseline cache CSV (default: model/result/baselines/baseline_metrics.csv).')
     parser.add_argument('--mirt-sweep-output', type=str, default=DEFAULT_MIRT_SWEEP_OUTPUT,
