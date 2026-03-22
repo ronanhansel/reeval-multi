@@ -1635,35 +1635,41 @@ def strip_inline_baseline_columns(source_dir, quiet=False):
         print(f"Stripped inline baseline columns from {rewritten} files ({removed_cols} columns removed total).")
 
 
-# Global variables for worker processes to avoid pickling overhead
+# Global worker-local cache. Under spawn, sending large pandas objects through
+# initargs adds noticeable startup latency, so each worker loads its data once.
 _WORKER_DFS = None
 _WORKER_INDICES = None
 _WORKER_EMBS_MAP = None
 _WORKER_EMB_TYPE = None
 
-def init_worker(dfs, indices, embs, emb_type):
-    """Initialize worker process with large shared objects to avoid pickling overhead."""
+def init_worker():
+    """Initialize worker process state lazily on first task."""
     global _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
-    _WORKER_DFS = dfs
-    _WORKER_INDICES = indices
-    _WORKER_EMBS_MAP = embs
-    _WORKER_EMB_TYPE = emb_type
+    _WORKER_DFS = None
+    _WORKER_INDICES = None
+    _WORKER_EMBS_MAP = None
+    _WORKER_EMB_TYPE = None
+
+
+def ensure_worker_data(args):
+    """Load experiment data once per worker instead of pickling it from the parent."""
+    global _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
+    if _WORKER_DFS is None or _WORKER_INDICES is None or _WORKER_EMBS_MAP is None or _WORKER_EMB_TYPE is None:
+        _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE = load_data(
+            embedding_type=args.embedding_type,
+            embedding_dim=args.embedding_dim,
+            pre_revision=args.pre_revision
+        )
+    return _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
 
 def run_single_config(config, args, n_values):
     """Worker function for running a single (seed, lambda_tau) configuration."""
     seed, lambda_tau, worker_id = config
-    
-    # Retrieve large objects from global state initialized once per process
-    global _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
-    all_dfs = _WORKER_DFS
-    global_shared_indices = _WORKER_INDICES
-    raw_embs_map = _WORKER_EMBS_MAP
-    actual_emb_type = _WORKER_EMB_TYPE
-    
+
     # Assign GPU evenly across workers
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     local_device = torch.device(f'cuda:{worker_id % num_gpus}' if torch.cuda.is_available() and num_gpus > 0 else 'cpu')
-    
+
     # Set independent random seeds
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -1672,9 +1678,22 @@ def run_single_config(config, args, n_values):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
         
-    global LAMBDA_TAU, RANDOM_SEED
+    global LAMBDA_TAU, RANDOM_SEED, WD_THETA, WD_W, EPOCHS, SNAPPING_THRESHOLD
     LAMBDA_TAU = lambda_tau
     RANDOM_SEED = seed
+    if args.wd_theta is not None:
+        WD_THETA = args.wd_theta
+    if args.wd_w is not None:
+        WD_W = args.wd_w
+    if args.epochs is not None:
+        EPOCHS = args.epochs
+    if args.snapping_threshold is not None:
+        SNAPPING_THRESHOLD = args.snapping_threshold
+
+    if not args.quiet:
+        print(f"\n[BOOT] worker {worker_id} initializing -> seed={seed}, tau={lambda_tau}")
+
+    all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = ensure_worker_data(args)
 
     j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
     output_path = None
@@ -1810,6 +1829,7 @@ def run_single_config(config, args, n_values):
 
 def main():
     global LAMBDA_TAU, WD_THETA, WD_W, EPOCHS, SNAPPING_THRESHOLD, RANDOM_SEED
+    global _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
     import argparse
     parser = argparse.ArgumentParser(description='Amortized IRT Experiment')
     parser.add_argument(
@@ -2026,12 +2046,13 @@ def main():
     if args.parallel > 1 and len(configs) > 1:
         # Prevent PyTorch from hanging with generic spawn context lock
         mp.set_start_method('spawn', force=True)
-        with mp.Pool(processes=args.parallel, initializer=init_worker, initargs=(all_dfs, global_shared_indices, raw_embs_map, actual_emb_type)) as pool:
+        with mp.Pool(processes=args.parallel, initializer=init_worker) as pool:
             worker_fn = partial(run_single_config, args=args, n_values=n_values)
             pool.map(worker_fn, configs)
     else:
         # Sequential execution
-        init_worker(all_dfs, global_shared_indices, raw_embs_map, actual_emb_type)
+        init_worker()
+        _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE = all_dfs, global_shared_indices, raw_embs_map, actual_emb_type
         for config in configs:
             run_single_config(config, args, n_values)
 
