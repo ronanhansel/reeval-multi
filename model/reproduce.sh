@@ -342,6 +342,17 @@ run_pair_efficiency_study() {
             run_baseline "${n_samples}" "${model}" "$n" "$SEEDS" "$j"
         done
 
+        if [[ ! -f "${pair_csv}" ]]; then
+            echo " -> Migrating pair-efficiency rows from seeded ${model} result CSVs..."
+            local migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV} --quiet"
+            if ! $QUIET; then
+                migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV}"
+            fi
+            eval "$migrate_cmd"
+        else
+            echo " -> Reusing existing ${model} pair-efficiency CSV; skipping migration backfill."
+        fi
+
         echo " -> Running ${model} pair-efficiency sweep with full tau setup..."
         for ((idx=0; idx<pair_count; idx++)); do
             local n="${PAIR_PRE_LEVELS[$idx]}"
@@ -356,13 +367,6 @@ run_pair_efficiency_study() {
                 run_tau_sweep raw "${n_samples}" "${model}" 0.0151 "$n" "$j" "$pair_csv"
             fi
         done
-
-        echo " -> Migrating pair-efficiency rows from seeded ${model} result CSVs..."
-        local migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV} --quiet"
-        if ! $QUIET; then
-            migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV}"
-        fi
-        eval "$migrate_cmd"
     }
 
     run_pair_mode beta max
