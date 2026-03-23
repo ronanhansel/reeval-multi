@@ -101,6 +101,11 @@ if $SUPPORT_THINNING_STUDY; then
     RUN_SUPPORT_THINNING_STUDY=true
 fi
 
+RUN_MAIN_EXPERIMENTS=true
+if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY; then
+    RUN_MAIN_EXPERIMENTS=false
+fi
+
 if $FULL_SWEEP; then
     echo "[MODE] Configured for FULL sweep ($NUM_SEEDS seeds)..."
 else
@@ -557,7 +562,7 @@ PY
 }
 
 # ── Execution ───────────────────────────────────────────────────────────────
-if ! $ONLY_PLOT; then
+if ! $ONLY_PLOT && $RUN_MAIN_EXPERIMENTS; then
     echo "[MODE] Running Experiments..."
     # Prime baseline cache for canonical post-revision setups.
     echo " -> Priming baseline cache (Post-32 Bernoulli, Post-max Beta)..."
@@ -682,6 +687,19 @@ if ! $ONLY_PLOT; then
         run_neighbor_support_study
     fi
     if $RUN_SUPPORT_THINNING_STUDY; then
+        run_support_thinning_study
+    fi
+fi
+
+if ! $ONLY_PLOT && ! $RUN_MAIN_EXPERIMENTS; then
+    echo "[MODE] Running requested study only..."
+    if $PAIR_EFFICIENCY_STUDY; then
+        run_pair_efficiency_study
+    fi
+    if $NEIGHBOR_SUPPORT_STUDY; then
+        run_neighbor_support_study
+    fi
+    if $SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
     fi
 fi
