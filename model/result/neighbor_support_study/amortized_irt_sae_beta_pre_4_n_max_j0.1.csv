@@ -1,0 +1,2 @@
+n_samples,model_type,seed,lambda_tau,observed_train_pairs,rmse_amortized,auc_amortized,active_dims,active_indices,tau_values,embedding_type,scenario
+1,beta,42,1000.0,94,0.3551642192881263,0.8095238095238095,0,[],"[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]",sae,Pre-4
