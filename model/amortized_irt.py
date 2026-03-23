@@ -850,6 +850,117 @@ def append_pair_efficiency_rows(path, rows):
         df.to_csv(path, index=False)
 
 
+NEIGHBOR_SUPPORT_BINS = [
+    ('zero', 0, 0.0, 0.0, '0%'),
+    ('very_low', 1, 0.0, 0.2, '(0,20%]'),
+    ('low_mid', 2, 0.2, 0.4, '(20,40%]'),
+    ('mid', 3, 0.4, 0.7, '(40,70%]'),
+    ('dense', 4, 0.7, 1.0, '(70,100%]'),
+]
+
+
+def build_neighbor_support_rows(n_files, model_type, pre_revision, j_percentage, embedding_type,
+                                baseline_embedding_type, support_diag, p_knn, p_amortized,
+                                y_oracle, test_mask, test_mask_t, baselines,
+                                rmse_amortized, auc_amortized):
+    """Summarize kNN vs ARAF inside local-neighborhood support bins."""
+    coverage_rate = support_diag['coverage_rate']
+    coverage_count = support_diag['coverage_count']
+    fallback_mask = support_diag['fallback_mask']
+    total_test_pairs = int(test_mask_t.sum().item())
+
+    rows = []
+    test_mask_np = np.asarray(test_mask, dtype=bool)
+    for bin_name, bin_order, low, high, label in NEIGHBOR_SUPPORT_BINS:
+        if bin_name == 'zero':
+            bin_mask_t = test_mask_t & (coverage_rate <= 1e-12)
+        elif high >= 1.0:
+            bin_mask_t = test_mask_t & (coverage_rate > low) & (coverage_rate <= high + 1e-12)
+        else:
+            bin_mask_t = test_mask_t & (coverage_rate > low) & (coverage_rate <= high)
+
+        num_pairs = int(bin_mask_t.sum().item())
+        if num_pairs > 0:
+            bin_mask_np = bin_mask_t.detach().cpu().numpy().astype(bool)
+            auc_knn = evaluate_auc(p_knn, y_oracle, bin_mask_t)
+            rmse_knn = compute_rmse(p_knn.detach().cpu().numpy(), y_oracle.detach().cpu().numpy(), bin_mask_np)
+            auc_araf_bin = evaluate_auc(p_amortized, y_oracle, bin_mask_t)
+            rmse_araf_bin = compute_rmse(
+                p_amortized.detach().cpu().numpy(),
+                y_oracle.detach().cpu().numpy(),
+                bin_mask_np,
+            )
+            mean_count = float(coverage_count[bin_mask_t].float().mean().item())
+            mean_rate = float(coverage_rate[bin_mask_t].float().mean().item())
+            fallback_rate = float(fallback_mask[bin_mask_t].float().mean().item())
+        else:
+            auc_knn = np.nan
+            rmse_knn = np.nan
+            auc_araf_bin = np.nan
+            rmse_araf_bin = np.nan
+            mean_count = np.nan
+            mean_rate = np.nan
+            fallback_rate = np.nan
+
+        rows.append({
+            'seed': int(RANDOM_SEED),
+            'lambda_tau': float(LAMBDA_TAU),
+            'n_samples': int(n_files),
+            'model_type': str(model_type),
+            'pre_revision': normalize_pre_revision(pre_revision),
+            'j_percentage': normalize_j_percentage(j_percentage),
+            'embedding_type': str(embedding_type),
+            'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+            'support_metric': 'coverage_rate',
+            'support_bin': bin_name,
+            'support_bin_order': int(bin_order),
+            'support_bin_label': label,
+            'num_pairs': int(num_pairs),
+            'pair_fraction': float(num_pairs / max(total_test_pairs, 1)),
+            'mean_coverage_count': mean_count,
+            'mean_coverage_rate': mean_rate,
+            'fallback_rate': fallback_rate,
+            'auc_knn': float(auc_knn) if not np.isnan(auc_knn) else np.nan,
+            'rmse_knn': float(rmse_knn) if not np.isnan(rmse_knn) else np.nan,
+            'auc_araf': float(auc_araf_bin) if not np.isnan(auc_araf_bin) else np.nan,
+            'rmse_araf': float(rmse_araf_bin) if not np.isnan(rmse_araf_bin) else np.nan,
+            'overall_auc_knn': float(baselines['auc_knn']),
+            'overall_rmse_knn': float(baselines['rmse_knn']),
+            'overall_auc_araf': float(auc_amortized),
+            'overall_rmse_araf': float(rmse_amortized),
+        })
+
+    return rows
+
+
+def append_neighbor_support_rows(path, rows):
+    """Atomically append neighbor-support study rows."""
+    if not path or not rows:
+        return
+
+    lock = FileLock(f"{path}.lock", timeout=600)
+    with lock:
+        if os.path.exists(path):
+            try:
+                df_old = pd.read_csv(path)
+            except Exception:
+                df_old = pd.DataFrame()
+        else:
+            df_old = pd.DataFrame()
+
+        df_new = pd.DataFrame(rows)
+        df = pd.concat([df_old, df_new], ignore_index=True)
+        dedupe_cols = [
+            'seed', 'lambda_tau', 'n_samples', 'model_type', 'pre_revision',
+            'j_percentage', 'embedding_type', 'baseline_embedding_type', 'support_bin'
+        ]
+        present_cols = [c for c in dedupe_cols if c in df.columns]
+        if present_cols:
+            df = df.drop_duplicates(subset=present_cols, keep='last')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_csv(path, index=False)
+
+
 def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                       model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K):
     """Compute non-MIRT baselines for one configuration."""
@@ -1215,6 +1326,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None,
                    baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                    baseline_embedding_type=None, pair_efficiency_output=None,
+                   neighbor_support_output=None,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Run experiment for a specific number of sample files.
@@ -1318,6 +1430,29 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         if isinstance(active_dim_indices, int):
             active_dim_indices = [active_dim_indices]
 
+    neighbor_support_rows = []
+    if neighbor_support_output:
+        p_knn, support_diag = compute_knn_predictions(
+            y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K
+        )
+        neighbor_support_rows = build_neighbor_support_rows(
+            n_files,
+            model_type,
+            pre_revision,
+            j_percentage,
+            embedding_type,
+            baseline_embedding_type,
+            support_diag,
+            p_knn,
+            p_amortized,
+            y_oracle,
+            test_mask,
+            test_mask_t,
+            baselines,
+            best_rmse,
+            auc_amortized,
+        )
+
     return {
         'n_samples': n_files,
         'model_type': model_type,
@@ -1343,6 +1478,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 auc_amortized,
             )] if pair_efficiency_output else []
         ),
+        'neighbor_support_rows': neighbor_support_rows,
         'model_state': best_state,
         'final_state': final_state
     }
@@ -2124,14 +2260,18 @@ def run_single_config(config, args, n_values):
                                     j_percentage=args.j_percentage,
                                     baseline_embedding_type=args.baseline_embedding_type,
                                     pair_efficiency_output=args.pair_efficiency_output,
+                                    neighbor_support_output=args.neighbor_support_output,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
                                     mirt_sweep_output=args.mirt_sweep_output)
 
             pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
+            neighbor_support_rows = result.pop('neighbor_support_rows', [])
             if args.pair_efficiency_output:
                 append_pair_efficiency_rows(args.pair_efficiency_output, pair_efficiency_rows)
+            if args.neighbor_support_output:
+                append_neighbor_support_rows(args.neighbor_support_output, neighbor_support_rows)
 
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -2237,6 +2377,8 @@ def main():
                         help='Path to per-dimension MIRT sweep cache CSV.')
     parser.add_argument('--pair-efficiency-output', type=str, default=None,
                         help='Optional CSV path for observed-pair efficiency rows.')
+    parser.add_argument('--neighbor-support-output', type=str, default=None,
+                        help='Optional CSV path for local neighbor-support study rows.')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
                         help='Minimum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,

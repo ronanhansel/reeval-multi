@@ -43,11 +43,6 @@ MODEL_CONFIGS = {
         'figure': os.path.join(FIGURE_DIR, 'pair_efficiency_beta_grid.pdf'),
         'title_suffix': 'Beta',
     },
-    'bernoulli': {
-        'csv': os.path.join(RESULT_DIR, 'pair_efficiency_bernoulli_grid.csv'),
-        'figure': os.path.join(FIGURE_DIR, 'pair_efficiency_bernoulli_grid.pdf'),
-        'title_suffix': 'Bernoulli',
-    },
 }
 CHECKPOINTS = [
     ('4', 0.1, 'Low'),

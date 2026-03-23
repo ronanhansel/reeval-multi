@@ -21,6 +21,7 @@ MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
 PAIR_RESULT_DIR="${RESULT_DIR}/pair_efficiency_study"
 PAIR_BASELINE_CSV="${PAIR_RESULT_DIR}/baselines/baseline_metrics.csv"
 PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
+SUPPORT_RESULT_DIR="${RESULT_DIR}/neighbor_support_study"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -33,6 +34,7 @@ CLEAN_RESULTS=false
 OVERRIDE_RESULTS=false
 QUIET=false
 PAIR_EFFICIENCY_STUDY=false
+NEIGHBOR_SUPPORT_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
 PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
@@ -70,6 +72,10 @@ while [[ $# -gt 0 ]]; do
             PAIR_EFFICIENCY_STUDY=true
             shift
             ;;
+        --neighbor-support-study)
+            NEIGHBOR_SUPPORT_STUDY=true
+            shift
+            ;;
         *)
             shift
             ;;
@@ -78,6 +84,10 @@ done
 RUN_PAIR_EFFICIENCY_STUDY=false
 if $FULL_SWEEP || $PAIR_EFFICIENCY_STUDY; then
     RUN_PAIR_EFFICIENCY_STUDY=true
+fi
+RUN_NEIGHBOR_SUPPORT_STUDY=false
+if $FULL_SWEEP || $NEIGHBOR_SUPPORT_STUDY; then
+    RUN_NEIGHBOR_SUPPORT_STUDY=true
 fi
 
 if $FULL_SWEEP; then
@@ -214,6 +224,7 @@ run_exp() {
     local save_weights=${9:-false}
     local j_pct=${10:-1.0}
     local pair_efficiency_output=${11:-""}
+    local neighbor_support_output=${12:-""}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" ]]; then
@@ -256,6 +267,10 @@ run_exp() {
     if [[ -n "$pair_efficiency_output" ]]; then
         mkdir -p "$(dirname "$pair_efficiency_output")"
         cmd="$cmd --pair-efficiency-output $pair_efficiency_output"
+    fi
+    if [[ -n "$neighbor_support_output" ]]; then
+        mkdir -p "$(dirname "$neighbor_support_output")"
+        cmd="$cmd --neighbor-support-output $neighbor_support_output"
     fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
@@ -351,7 +366,6 @@ run_pair_efficiency_study() {
     }
 
     run_pair_mode beta max
-    run_pair_mode bernoulli 1
 
     local meta_csv="${RESULT_DIR}/pair_efficiency_checkpoints.csv"
     cat > "${meta_csv}" <<EOF
@@ -362,6 +376,84 @@ step,pre_revision,j_percentage
 4,${PAIR_PRE_LEVELS[3]},${PAIR_J_LEVELS[3]}
 5,${PAIR_PRE_LEVELS[4]},${PAIR_J_LEVELS[4]}
 EOF
+
+    RESULT_DIR="${saved_result_dir}"
+    BASELINE_CSV="${saved_baseline_csv}"
+    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
+}
+
+run_neighbor_support_study() {
+    local saved_result_dir="${RESULT_DIR}"
+    local saved_baseline_csv="${BASELINE_CSV}"
+    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
+    local pair_csv="${PAIR_RESULT_DIR}/pair_efficiency_beta_grid.csv"
+    local support_csv="${SUPPORT_RESULT_DIR}/neighbor_support_beta_grid.csv"
+    local config_csv="${SUPPORT_RESULT_DIR}/neighbor_support_beta_configs.csv"
+
+    mkdir -p "${SUPPORT_RESULT_DIR}"
+
+    if [[ ! -f "${pair_csv}" ]]; then
+        echo " -> Pair-efficiency beta CSV not found; running pair-efficiency study first..."
+        run_pair_efficiency_study
+    fi
+
+    if [[ ! -f "${pair_csv}" ]]; then
+        echo " -> Neighbor-support study skipped: missing ${pair_csv}"
+        return
+    fi
+
+    echo " -> Preparing beta neighbor-support study from pair-efficiency selections..."
+    python - <<PY
+import pandas as pd
+from pathlib import Path
+
+pair_csv = Path(${pair_csv@Q})
+config_csv = Path(${config_csv@Q})
+checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
+df = pd.read_csv(pair_csv, low_memory=False)
+df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
+rows = []
+for pre, j in checkpoints:
+    sub = df[(df['pre_key'] == str(pre).lower()) & (df['j_percentage'].round(3) == j)]
+    if sub.empty:
+        continue
+    grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
+        auc_araf=('auc_araf', 'mean'),
+        rmse_araf=('rmse_araf', 'mean')
+    )
+    auc_pick = grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
+    rmse_pick = grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
+    rows.append({
+        'selection_metric': 'auc',
+        'pre_revision': pre,
+        'j_percentage': j,
+        'embedding_type': auc_pick['embedding_type'],
+        'lambda_tau': auc_pick['lambda_tau'],
+    })
+    rows.append({
+        'selection_metric': 'rmse',
+        'pre_revision': pre,
+        'j_percentage': j,
+        'embedding_type': rmse_pick['embedding_type'],
+        'lambda_tau': rmse_pick['lambda_tau'],
+    })
+out = pd.DataFrame(rows).drop_duplicates()
+config_csv.parent.mkdir(parents=True, exist_ok=True)
+out.to_csv(config_csv, index=False)
+print(out.to_string(index=False))
+PY
+
+    RESULT_DIR="${SUPPORT_RESULT_DIR}"
+    BASELINE_CSV="${PAIR_BASELINE_CSV}"
+    MIRT_SWEEP_CSV="${PAIR_MIRT_SWEEP_CSV}"
+
+    echo " -> Running beta neighbor-support study for selected checkpoint configs..."
+    while IFS=, read -r selection_metric pre_revision j_percentage embedding_type lambda_tau; do
+        if [[ "${selection_metric}" == "selection_metric" ]]; then
+            continue
+        fi
+        run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${RESULT_DIR}" false false "${j_percentage}" "" "${support_csv}"
+    done < "${config_csv}"
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"
@@ -490,6 +582,9 @@ if ! $ONLY_PLOT; then
     if $RUN_PAIR_EFFICIENCY_STUDY; then
         run_pair_efficiency_study
     fi
+    if $RUN_NEIGHBOR_SUPPORT_STUDY; then
+        run_neighbor_support_study
+    fi
 fi
 
 # ── Generate plots ───────────────────────────────────────────────────────────
@@ -498,8 +593,11 @@ echo "=========================================================="
 echo "  GENERATING PLOTS"
 echo "=========================================================="
 cd "${REPO_ROOT}"
-if $PAIR_EFFICIENCY_STUDY; then
+if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY; then
     PYTHONPATH=. python3 -m model.plotting.main --pair-efficiency-study
+    if $NEIGHBOR_SUPPORT_STUDY; then
+        PYTHONPATH=. python3 -m model.plotting.main --neighbor-support-study
+    fi
 else
     PYTHONPATH=. python3 -m model.plotting.main --all
 fi
