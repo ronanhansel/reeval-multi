@@ -1689,14 +1689,18 @@ def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
         print(f"Migrated {len(migrated_df)} baseline rows into {baseline_output}")
 
 
-def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, baseline_output, quiet=False):
+def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, baseline_output,
+                                         quiet=False, model_type_filter=None):
     """Backfill observed-pair study rows from existing amortized result CSVs."""
     if not os.path.isdir(source_dir):
         if not quiet:
             print(f"Pair-efficiency source dir not found: {source_dir}")
         return
 
-    file_pattern = re.compile(r"amortized_irt_(sae|pca|raw)_beta_pre_([^_]+)_n_max(?:_j([0-9]+(?:\.[0-9]+)?))?\.csv$")
+    file_pattern = re.compile(
+        r"amortized_irt_(sae|pca|raw)_(beta|bernoulli)_pre_([^_]+)_n_(max|1)"
+        r"(?:_j([0-9]+(?:\.[0-9]+)?))?\.csv$"
+    )
     baseline_df = load_baseline_store(baseline_output)
     rows = []
     observed_cache = {}
@@ -1706,7 +1710,9 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
         if not match:
             continue
 
-        embedding_type, pre_revision, j_token = match.groups()
+        embedding_type, model_type, pre_revision, n_token, j_token = match.groups()
+        if model_type_filter is not None and model_type != model_type_filter:
+            continue
         j_percentage = normalize_j_percentage(float(j_token) if j_token is not None else 1.0)
         pre_revision = normalize_pre_revision(pre_revision)
         path = os.path.join(source_dir, fname)
@@ -1725,7 +1731,7 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
         if df.empty:
             continue
 
-        observed_key = (pre_revision, j_percentage)
+        observed_key = (model_type, pre_revision, j_percentage)
         if observed_key not in observed_cache:
             all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
                 embedding_type='ones',
@@ -1744,7 +1750,7 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
                 all_dfs,
                 global_shared_indices,
                 data,
-                model_type='beta',
+                model_type=model_type,
                 quiet=True,
             )
             observed_cache[observed_key] = {
@@ -1758,7 +1764,7 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
         for _, row in df.iterrows():
             baseline_key = {
                 'seed': int(row['seed']),
-                'model_type': 'beta',
+                'model_type': model_type,
                 'n_samples': int(n_files),
                 'pre_revision': pre_revision,
                 'j_percentage': j_percentage,
@@ -1774,7 +1780,7 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
                 'seed': int(row['seed']),
                 'lambda_tau': float(row['lambda_tau']),
                 'n_samples': int(n_files),
-                'model_type': 'beta',
+                'model_type': model_type,
                 'pre_revision': pre_revision,
                 'j_percentage': j_percentage,
                 'embedding_type': embedding_type,
@@ -2080,6 +2086,9 @@ def main():
                         help='Source directory containing historical amortized_irt_*.csv files for migration.')
     parser.add_argument('--migrate-pair-efficiency', action='store_true',
                         help='Migrate observed-pair efficiency rows from existing amortized result CSVs, then exit.')
+    parser.add_argument('--migrate-model-type', type=str, default=None,
+                        choices=['beta', 'bernoulli'],
+                        help='Optional model type filter for pair-efficiency migration.')
     args = parser.parse_args()
 
     import sys, os
@@ -2109,6 +2118,7 @@ def main():
             args.pair_efficiency_output,
             args.baseline_output,
             quiet=args.quiet,
+            model_type_filter=args.migrate_model_type,
         )
         return
 

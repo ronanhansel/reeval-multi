@@ -294,42 +294,64 @@ run_pair_efficiency_study() {
 
     mkdir -p "${RESULT_DIR}"
 
-    local pair_csv="${RESULT_DIR}/pair_efficiency_beta_grid.csv"
     local pair_count=${#PAIR_PRE_LEVELS[@]}
-    echo " -> Running separate observed-pair efficiency study (beta only)..."
+    echo " -> Running separate observed-pair efficiency study..."
     echo " -> Using ${pair_count} targeted N x J checkpoints (low -> saturation)..."
-    echo " -> Seeding pair-efficiency study from matching main result CSVs when available..."
-    for ((idx=0; idx<pair_count; idx++)); do
-        local n="${PAIR_PRE_LEVELS[$idx]}"
-        local j="${PAIR_J_LEVELS[$idx]}"
-        for emb in sae pca raw; do
-            local suffix="_pre_${n}_n_max"
-            local j_suffix=""
-            if [[ "$j" != "1.0" ]]; then
-                j_suffix="_j${j}"
-            fi
-            local fname="amortized_irt_${emb}_beta${suffix}${j_suffix}.csv"
-            if [[ -f "${source_result_dir}/${fname}" && ! -f "${RESULT_DIR}/${fname}" ]]; then
-                cp "${source_result_dir}/${fname}" "${RESULT_DIR}/${fname}"
+
+    run_pair_mode() {
+        local model="$1"
+        local n_samples="$2"
+        local pair_csv="${RESULT_DIR}/pair_efficiency_${model}_grid.csv"
+
+        echo " -> Seeding ${model} pair-efficiency study from matching main result CSVs when available..."
+        for ((idx=0; idx<pair_count; idx++)); do
+            local n="${PAIR_PRE_LEVELS[$idx]}"
+            local j="${PAIR_J_LEVELS[$idx]}"
+            for emb in sae pca raw; do
+                local suffix="_pre_${n}_n_${n_samples}"
+                local j_suffix=""
+                if [[ "$j" != "1.0" ]]; then
+                    j_suffix="_j${j}"
+                fi
+                local fname="amortized_irt_${emb}_${model}${suffix}${j_suffix}.csv"
+                if [[ -f "${source_result_dir}/${fname}" && ! -f "${RESULT_DIR}/${fname}" ]]; then
+                    cp "${source_result_dir}/${fname}" "${RESULT_DIR}/${fname}"
+                fi
+            done
+        done
+
+        echo " -> Priming separate baseline cache for selected ${model} checkpoints..."
+        for ((idx=0; idx<pair_count; idx++)); do
+            local n="${PAIR_PRE_LEVELS[$idx]}"
+            local j="${PAIR_J_LEVELS[$idx]}"
+            run_baseline "${n_samples}" "${model}" "$n" "$SEEDS" "$j"
+        done
+
+        echo " -> Running ${model} pair-efficiency sweep with full tau setup..."
+        for ((idx=0; idx<pair_count; idx++)); do
+            local n="${PAIR_PRE_LEVELS[$idx]}"
+            local j="${PAIR_J_LEVELS[$idx]}"
+            if [[ "${model}" == "beta" ]]; then
+                run_tau_sweep sae "${n_samples}" "${model}" 0.16 "$n" "$j" "$pair_csv"
+                run_tau_sweep pca "${n_samples}" "${model}" 0.054 "$n" "$j" "$pair_csv"
+                run_tau_sweep raw "${n_samples}" "${model}" 0.029 "$n" "$j" "$pair_csv"
+            else
+                run_tau_sweep sae "${n_samples}" "${model}" 0.0159 "$n" "$j" "$pair_csv"
+                run_tau_sweep pca "${n_samples}" "${model}" 0.0155 "$n" "$j" "$pair_csv"
+                run_tau_sweep raw "${n_samples}" "${model}" 0.0151 "$n" "$j" "$pair_csv"
             fi
         done
-    done
 
-    echo " -> Priming separate baseline cache for selected beta checkpoints..."
-    for ((idx=0; idx<pair_count; idx++)); do
-        local n="${PAIR_PRE_LEVELS[$idx]}"
-        local j="${PAIR_J_LEVELS[$idx]}"
-        run_baseline max beta "$n" "$SEEDS" "$j"
-    done
+        echo " -> Migrating pair-efficiency rows from seeded ${model} result CSVs..."
+        local migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV} --quiet"
+        if ! $QUIET; then
+            migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV}"
+        fi
+        eval "$migrate_cmd"
+    }
 
-    echo " -> Running beta pair-efficiency sweep with full tau setup..."
-    for ((idx=0; idx<pair_count; idx++)); do
-        local n="${PAIR_PRE_LEVELS[$idx]}"
-        local j="${PAIR_J_LEVELS[$idx]}"
-        run_tau_sweep sae max beta 0.16 "$n" "$j" "$pair_csv"
-        run_tau_sweep pca max beta 0.054 "$n" "$j" "$pair_csv"
-        run_tau_sweep raw max beta 0.029 "$n" "$j" "$pair_csv"
-    done
+    run_pair_mode beta max
+    run_pair_mode bernoulli 1
 
     local meta_csv="${RESULT_DIR}/pair_efficiency_checkpoints.csv"
     cat > "${meta_csv}" <<EOF
@@ -340,13 +362,6 @@ step,pre_revision,j_percentage
 4,${PAIR_PRE_LEVELS[3]},${PAIR_J_LEVELS[3]}
 5,${PAIR_PRE_LEVELS[4]},${PAIR_J_LEVELS[4]}
 EOF
-
-    echo " -> Migrating pair-efficiency rows from seeded result CSVs..."
-    local migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV} --quiet"
-    if ! $QUIET; then
-        migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV}"
-    fi
-    eval "$migrate_cmd"
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"
