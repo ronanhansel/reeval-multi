@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tueplots import bundles
+from model.baseline_cache import load_baseline_store
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -117,12 +118,7 @@ def _load_best_tau_subset(path):
 
 
 def load_baseline_cache():
-    if not os.path.exists(BASELINE_PATH):
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(BASELINE_PATH, on_bad_lines='skip')
-    except Exception:
-        return pd.DataFrame()
+    df = load_baseline_store(BASELINE_PATH)
 
     if df.empty:
         return df

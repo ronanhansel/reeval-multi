@@ -13,6 +13,7 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from scipy.stats import entropy
 from matplotlib.patches import FancyBboxPatch
+from model.baseline_cache import load_baseline_store
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -42,12 +43,7 @@ def get_bundle():
 
 
 def load_baseline_cache():
-    if not os.path.exists(BASELINE_PATH):
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(BASELINE_PATH, on_bad_lines='skip')
-    except Exception:
-        return pd.DataFrame()
+    df = load_baseline_store(BASELINE_PATH)
 
     if 'n_samples' in df.columns:
         df['n_samples'] = pd.to_numeric(df['n_samples'], errors='coerce')

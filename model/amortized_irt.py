@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import ast
+import json
 import os
 import re
 import sys
@@ -47,6 +48,7 @@ import multiprocessing as mp
 from functools import partial
 
 from utils import compute_rmse, evaluate_auc
+import baseline_cache as bc
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration
@@ -66,12 +68,13 @@ BASELINE_METRIC_COLS = [
     'rmse_knn', 'auc_knn'
 ]
 NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
+MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max']
+BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 
-MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt']
+MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt', 'val_rmse_mirt', 'val_auc_mirt']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
 
 # Data paths
@@ -80,6 +83,9 @@ HF_REPO_ID = "ronanhansel/data-reeval-multi"
 # Data split
 TEST_SIZE = 0.1
 RANDOM_SEED = 42
+MIRT_SELECTION_VERSION = 2
+MIRT_VALIDATION_FRACTION = 0.15
+MIRT_VALIDATION_MIN_PAIRS = 12
 
 # Model architecture
 K_MODEL = 30
@@ -886,21 +892,90 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
     }
 
 
+def build_mirt_validation_masks(y_train, train_mask_current_t, validation_fraction=MIRT_VALIDATION_FRACTION,
+                                min_pairs=MIRT_VALIDATION_MIN_PAIRS):
+    """Split observed training entries into fit/validation masks for MIRT selection."""
+    observed_idx = torch.nonzero(train_mask_current_t, as_tuple=False)
+    n_observed = int(observed_idx.shape[0])
+    if n_observed < 8:
+        return train_mask_current_t.clone(), None
+
+    n_val = max(int(round(n_observed * validation_fraction)), int(min_pairs))
+    n_val = min(n_val, n_observed - 4)
+    if n_val < 2:
+        return train_mask_current_t.clone(), None
+
+    observed_targets = y_train[train_mask_current_t]
+    pos_pool = torch.nonzero(observed_targets > 0.5, as_tuple=False).squeeze(1).cpu().numpy()
+    neg_pool = torch.nonzero(observed_targets <= 0.5, as_tuple=False).squeeze(1).cpu().numpy()
+    rng = np.random.default_rng(RANDOM_SEED + 2027)
+
+    chosen = []
+    if len(pos_pool) > 1 and len(neg_pool) > 1:
+        n_pos = max(1, int(round(n_val * len(pos_pool) / n_observed)))
+        n_pos = min(n_pos, len(pos_pool) - 1)
+        n_neg = max(1, n_val - n_pos)
+        n_neg = min(n_neg, len(neg_pool) - 1)
+
+        while n_pos + n_neg > n_val:
+            if n_pos > n_neg and n_pos > 1:
+                n_pos -= 1
+            elif n_neg > 1:
+                n_neg -= 1
+            else:
+                break
+
+        remaining = n_val - (n_pos + n_neg)
+        pos_extra = max(0, (len(pos_pool) - 1) - n_pos)
+        neg_extra = max(0, (len(neg_pool) - 1) - n_neg)
+        add_pos = min(remaining, pos_extra)
+        n_pos += add_pos
+        remaining -= add_pos
+        n_neg += min(remaining, neg_extra)
+
+        chosen.append(rng.choice(pos_pool, size=n_pos, replace=False))
+        chosen.append(rng.choice(neg_pool, size=n_neg, replace=False))
+    else:
+        population = np.arange(n_observed)
+        keep = max(4, n_observed - n_val)
+        chosen.append(rng.choice(population, size=n_observed - keep, replace=False))
+
+    val_flat_idx = np.concatenate(chosen) if chosen else np.array([], dtype=int)
+    if val_flat_idx.size == 0:
+        return train_mask_current_t.clone(), None
+
+    val_mask_t = torch.zeros_like(train_mask_current_t, dtype=torch.bool)
+    val_coords = observed_idx[torch.as_tensor(val_flat_idx, device=observed_idx.device, dtype=torch.long)]
+    val_mask_t[val_coords[:, 0], val_coords[:, 1]] = True
+
+    fit_mask_t = train_mask_current_t & (~val_mask_t)
+    if not fit_mask_t.any():
+        return train_mask_current_t.clone(), None
+    return fit_mask_t, val_mask_t
+
+
 def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                 model_type='beta', beta_phi=BETA_PHI, mirt_dim=K_MODEL):
     """Train one standalone MIRT baseline at a specific latent dimension."""
+    fit_mask_t, val_mask_t = build_mirt_validation_masks(y_train, train_mask_current_t)
     mirt_model = MIRTModel(N, J, mirt_dim).to(device)
     mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
     mirt_model.train()
 
-    best_mirt_rmse = float('inf')
+    best_val_auc = float('-inf')
+    best_val_rmse = float('inf')
+    best_test_rmse = float('inf')
     best_p_mirt = None
+    best_state = None
+    y_train_np = y_train.detach().cpu().numpy()
+    y_oracle_np = y_oracle.detach().cpu().numpy()
+    val_mask_np = val_mask_t.detach().cpu().numpy() if val_mask_t is not None else None
 
     for _ in range(EPOCHS // 2):
         mirt_optimizer.zero_grad()
         p_mirt = mirt_model()
-        p_m_clamp = p_mirt[train_mask_current_t].clamp(1e-6, 1 - 1e-6)
-        y_m_clamp = y_train[train_mask_current_t]
+        p_m_clamp = p_mirt[fit_mask_t].clamp(1e-6, 1 - 1e-6)
+        y_m_clamp = y_train[fit_mask_t]
 
         if model_type == 'beta':
             y_m_clamp = y_m_clamp.clamp(1e-6, 1 - 1e-6)
@@ -914,18 +989,47 @@ def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, t
         mirt_optimizer.step()
 
         with torch.no_grad():
-            curr_m_rmse = compute_rmse(p_mirt.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-            if curr_m_rmse < best_mirt_rmse:
-                best_mirt_rmse = curr_m_rmse
+            p_mirt_eval = mirt_model().detach()
+            if val_mask_t is not None:
+                curr_val_rmse = compute_rmse(p_mirt_eval.cpu().numpy(), y_train_np, val_mask_np)
+                curr_val_auc = evaluate_auc(p_mirt_eval, y_train, val_mask_t)
+            else:
+                curr_val_rmse = compute_rmse(p_mirt_eval.cpu().numpy(), y_train_np, fit_mask_t.detach().cpu().numpy())
+                curr_val_auc = evaluate_auc(p_mirt_eval, y_train, fit_mask_t)
+
+            is_better = (
+                curr_val_auc > best_val_auc or
+                (np.isclose(curr_val_auc, best_val_auc) and curr_val_rmse < best_val_rmse)
+            )
+            if is_better:
+                best_val_auc = float(curr_val_auc)
+                best_val_rmse = float(curr_val_rmse)
+                best_test_rmse = compute_rmse(p_mirt_eval.cpu().numpy(), y_oracle_np, test_mask)
                 best_p_mirt = p_mirt.clone()
+                best_state = {k: v.detach().cpu().clone() for k, v in mirt_model.state_dict().items()}
+
+    if best_p_mirt is None:
+        with torch.no_grad():
+            best_p_mirt = mirt_model().detach().clone()
+            best_test_rmse = compute_rmse(best_p_mirt.cpu().numpy(), y_oracle_np, test_mask)
+            if val_mask_t is not None:
+                best_val_rmse = compute_rmse(best_p_mirt.cpu().numpy(), y_train_np, val_mask_np)
+                best_val_auc = evaluate_auc(best_p_mirt, y_train, val_mask_t)
+            else:
+                fit_mask_np = fit_mask_t.detach().cpu().numpy()
+                best_val_rmse = compute_rmse(best_p_mirt.cpu().numpy(), y_train_np, fit_mask_np)
+                best_val_auc = evaluate_auc(best_p_mirt, y_train, fit_mask_t)
+            best_state = {k: v.detach().cpu().clone() for k, v in mirt_model.state_dict().items()}
 
     auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
 
     return {
-        'rmse_mirt': best_mirt_rmse,
-        'auc_mirt': auc_mirt,
+        'rmse_mirt': float(best_test_rmse),
+        'auc_mirt': float(auc_mirt),
+        'val_rmse_mirt': float(best_val_rmse),
+        'val_auc_mirt': float(best_val_auc),
         'mirt_dim': int(mirt_dim),
-        'mirt_state': mirt_model.state_dict(),
+        'mirt_state': best_state,
     }
 
 
@@ -965,6 +1069,8 @@ def _row_has_complete_metrics(row, metric_cols):
 def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max):
     if not _row_has_complete_metrics(row, BASELINE_METRIC_COLS):
         return False
+    if _optional_int(row.get('mirt_selection_version')) != MIRT_SELECTION_VERSION:
+        return False
 
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     sweep_min = _optional_int(row.get('mirt_sweep_min'))
@@ -985,16 +1091,17 @@ def _baseline_payload_from_row(row):
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     if selected_dim is not None:
         payload['selected_mirt_dim'] = selected_dim
+    payload['mirt_selection_version'] = _optional_int(row.get('mirt_selection_version'))
     return payload
 
 
 def select_best_mirt_result(results):
-    """Pick the best MIRT sweep candidate by AUC, then RMSE, then smaller dimension."""
+    """Pick the best MIRT sweep candidate by validation AUC, then validation RMSE, then smaller dimension."""
     return max(
         results,
         key=lambda r: (
-            float(r['auc_mirt']),
-            -float(r['rmse_mirt']),
+            float(r['val_auc_mirt']),
+            -float(r['val_rmse_mirt']),
             -int(r['mirt_dim']),
         )
     )
@@ -1059,7 +1166,6 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         )
 
     mirt_results = []
-    legacy_30_imported = False
     for mirt_dim in range(int(mirt_dim_min), int(mirt_dim_max) + 1):
         sweep_key = baseline_key.copy()
         sweep_key['mirt_dim'] = int(mirt_dim)
@@ -1067,35 +1173,6 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         if cached_mirt is not None:
             mirt_results.append(cached_mirt)
             continue
-
-        can_import_legacy_30 = (
-            int(mirt_dim) == K_MODEL and
-            existing_row is not None and
-            not legacy_30_imported
-        )
-        if can_import_legacy_30:
-            legacy_selected_dim = _optional_int(existing_row.get('selected_mirt_dim'))
-            legacy_sweep_min = _optional_int(existing_row.get('mirt_sweep_min'))
-            legacy_sweep_max = _optional_int(existing_row.get('mirt_sweep_max'))
-            is_legacy_fixed_30 = (
-                _row_has_complete_metrics(existing_row, ['rmse_mirt', 'auc_mirt']) and
-                (
-                    (legacy_selected_dim is None and legacy_sweep_min is None and legacy_sweep_max is None) or
-                    (legacy_selected_dim == K_MODEL and legacy_sweep_min == K_MODEL and legacy_sweep_max == K_MODEL)
-                )
-            )
-            if is_legacy_fixed_30:
-                cached_mirt = {
-                    'rmse_mirt': float(existing_row['rmse_mirt']),
-                    'auc_mirt': float(existing_row['auc_mirt']),
-                    'mirt_dim': K_MODEL,
-                }
-                append_mirt_sweep_row(mirt_sweep_output, {**sweep_key, **cached_mirt})
-                mirt_results.append(cached_mirt)
-                legacy_30_imported = True
-                if not quiet:
-                    print(f"[MIRT] Reused legacy cached 30D baseline for seed={baseline_key['seed']}, n={n_files}.")
-                continue
 
         computed_mirt = compute_single_mirt_metrics(
             N, J, y_train, train_mask_current_t,
@@ -1108,6 +1185,8 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 **sweep_key,
                 'rmse_mirt': float(computed_mirt['rmse_mirt']),
                 'auc_mirt': float(computed_mirt['auc_mirt']),
+                'val_rmse_mirt': float(computed_mirt['val_rmse_mirt']),
+                'val_auc_mirt': float(computed_mirt['val_auc_mirt']),
             }
         )
         mirt_results.append(computed_mirt)
@@ -1125,6 +1204,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     baseline_row['selected_mirt_dim'] = int(best_mirt['mirt_dim'])
     baseline_row['mirt_sweep_min'] = int(mirt_dim_min)
     baseline_row['mirt_sweep_max'] = int(mirt_dim_max)
+    baseline_row['mirt_selection_version'] = int(MIRT_SELECTION_VERSION)
     append_baseline_row(baseline_output, baseline_row)
 
     cached_now = _baseline_payload_from_row(baseline_row)
@@ -1353,6 +1433,132 @@ def compute_agent_batch_size(pre_revision, n_samples):
         return pre
 
 
+def baseline_store_root(path):
+    """Return the file-backed baseline cache root for a legacy CSV path."""
+    return f"{os.path.splitext(path)[0]}.d"
+
+
+def mirt_sweep_store_root(path):
+    """Return the file-backed MIRT sweep cache root for a legacy CSV path."""
+    return f"{os.path.splitext(path)[0]}.d"
+
+
+def _baseline_key_rel_dir(key):
+    pre_revision = normalize_pre_revision(key['pre_revision'])
+    j_percentage = normalize_j_percentage(key['j_percentage'])
+    baseline_embedding_type = normalize_baseline_embedding_type(key['baseline_embedding_type'])
+    return os.path.join(
+        f"model_{str(key['model_type'])}",
+        f"embed_{baseline_embedding_type}",
+        f"pre_{pre_revision}",
+        f"j_{j_percentage:.6f}",
+        f"n_{int(key['n_samples'])}",
+    )
+
+
+def non_mirt_cache_file(path, key):
+    root = baseline_store_root(path)
+    return os.path.join(root, 'non_mirt', _baseline_key_rel_dir(key), f"seed_{int(key['seed'])}.json")
+
+
+def mirt_selected_cache_file(path, key):
+    root = baseline_store_root(path)
+    return os.path.join(root, 'mirt_selected', _baseline_key_rel_dir(key), f"seed_{int(key['seed'])}.json")
+
+
+def mirt_sweep_cache_file(path, key):
+    root = mirt_sweep_store_root(path)
+    return os.path.join(
+        root,
+        'rows',
+        _baseline_key_rel_dir(key),
+        f"seed_{int(key['seed'])}__dim_{int(key['mirt_dim'])}.json",
+    )
+
+
+def _write_json_atomic(path, payload):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, indent=2, sort_keys=True)
+    os.replace(tmp_path, path)
+
+
+def _read_json(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def _iter_json_rows(root):
+    if not os.path.isdir(root):
+        return
+    for dirpath, _, filenames in os.walk(root):
+        for filename in sorted(filenames):
+            if not filename.endswith('.json'):
+                continue
+            path = os.path.join(dirpath, filename)
+            try:
+                yield _read_json(path)
+            except Exception:
+                continue
+
+
+def _normalize_key_payload(payload):
+    out = dict(payload)
+    out['seed'] = int(out['seed'])
+    out['model_type'] = str(out['model_type'])
+    out['n_samples'] = int(out['n_samples'])
+    out['pre_revision'] = normalize_pre_revision(out['pre_revision'])
+    out['j_percentage'] = normalize_j_percentage(out['j_percentage'])
+    out['baseline_embedding_type'] = normalize_baseline_embedding_type(out['baseline_embedding_type'])
+    return out
+
+
+def write_non_mirt_cache(path, row):
+    key = _normalize_key_payload({k: row[k] for k in BASELINE_KEY_COLS})
+    payload = {
+        **key,
+        'agent_batch_size': row.get('agent_batch_size', compute_agent_batch_size(key['pre_revision'], key['n_samples'])),
+    }
+    for col in NON_MIRT_METRIC_COLS:
+        if col in row and not pd.isna(row[col]):
+            payload[col] = float(row[col])
+    _write_json_atomic(non_mirt_cache_file(path, key), payload)
+
+
+def write_mirt_selected_cache(path, row):
+    key = _normalize_key_payload({k: row[k] for k in BASELINE_KEY_COLS})
+    payload = {**key}
+    for col in MIRT_SUMMARY_COLS:
+        if col not in row or pd.isna(row[col]):
+            continue
+        if col in {'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version'}:
+            payload[col] = int(row[col])
+        else:
+            payload[col] = float(row[col])
+    _write_json_atomic(mirt_selected_cache_file(path, key), payload)
+
+
+def read_non_mirt_cache(path, key):
+    cache_path = non_mirt_cache_file(path, key)
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        return _read_json(cache_path)
+    except Exception:
+        return None
+
+
+def read_mirt_selected_cache(path, key):
+    cache_path = mirt_selected_cache_file(path, key)
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        return _read_json(cache_path)
+    except Exception:
+        return None
+
+
 def baseline_row_matches(df, key):
     """Return rows matching baseline key with tolerance on j_percentage."""
     if df.empty:
@@ -1392,71 +1598,28 @@ def mirt_sweep_row_matches(df, key):
 
 def load_baseline_store(path):
     """Load baseline store or return an empty frame with required schema."""
-    if os.path.exists(path):
-        try:
-            df = pd.read_csv(path)
-            for col in BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS:
-                if col not in df.columns:
-                    df[col] = np.nan
-            df['baseline_embedding_type'] = df['baseline_embedding_type'].map(normalize_baseline_embedding_type)
-
-            # Backfill explicit effective batch size for readability.
-            df['agent_batch_size'] = [
-                compute_agent_batch_size(pr, ns)
-                for pr, ns in zip(df['pre_revision'], df['n_samples'])
-            ]
-            return df
-        except Exception:
-            pass
-
-    cols = BASELINE_KEY_COLS + BASELINE_METRIC_COLS + BASELINE_AUX_COLS
-    return pd.DataFrame(columns=cols)
+    return bc.load_baseline_store(path)
 
 
 def load_mirt_sweep_store(path):
     """Load MIRT sweep store or return an empty frame with required schema."""
-    if os.path.exists(path):
-        try:
-            df = pd.read_csv(path)
-            for col in MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS:
-                if col not in df.columns:
-                    df[col] = np.nan
-            df['baseline_embedding_type'] = df['baseline_embedding_type'].map(normalize_baseline_embedding_type)
-            return df
-        except Exception:
-            pass
-
-    cols = MIRT_SWEEP_KEY_COLS + MIRT_SWEEP_METRIC_COLS
-    return pd.DataFrame(columns=cols)
+    return bc.load_mirt_sweep_store(path)
 
 
 def append_baseline_row(path, row):
     """Atomically append or upsert one baseline row in the baseline cache file."""
     lock = FileLock(f"{path}.lock", timeout=600)
     with lock:
-        df_old = load_baseline_store(path)
         if 'agent_batch_size' not in row:
             row['agent_batch_size'] = compute_agent_batch_size(row.get('pre_revision', 'none'), row.get('n_samples', 0))
-        df_new = pd.DataFrame([row])
-        df = pd.concat([df_old, df_new], ignore_index=True)
-        df = df.dropna(subset=BASELINE_KEY_COLS)
-        # Keep latest row per unique baseline key
-        df = df.drop_duplicates(subset=BASELINE_KEY_COLS, keep='last')
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        df.to_csv(path, index=False)
+        bc.write_grouped_baseline_files(path, row)
 
 
 def append_mirt_sweep_row(path, row):
     """Atomically append or upsert one MIRT sweep row."""
     lock = FileLock(f"{path}.lock", timeout=600)
     with lock:
-        df_old = load_mirt_sweep_store(path)
-        df_new = pd.DataFrame([row])
-        df = pd.concat([df_old, df_new], ignore_index=True)
-        df = df.dropna(subset=MIRT_SWEEP_KEY_COLS)
-        df = df.drop_duplicates(subset=MIRT_SWEEP_KEY_COLS, keep='last')
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        df.to_csv(path, index=False)
+        bc.write_grouped_mirt_sweep_file(path, row)
 
 
 def load_existing_baseline_row(path, key):
@@ -1464,11 +1627,9 @@ def load_existing_baseline_row(path, key):
     df = load_baseline_store(path)
     if df.empty:
         return None
-
     match = baseline_row_matches(df, key)
     if match.empty:
         return None
-
     return match.iloc[-1].to_dict()
 
 
@@ -1496,6 +1657,8 @@ def try_get_cached_mirt_sweep_row(path, key):
     return {
         'rmse_mirt': float(row['rmse_mirt']),
         'auc_mirt': float(row['auc_mirt']),
+        'val_rmse_mirt': float(row['val_rmse_mirt']),
+        'val_auc_mirt': float(row['val_auc_mirt']),
         'mirt_dim': int(row['mirt_dim']),
     }
 

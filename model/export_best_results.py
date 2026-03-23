@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from model.baseline_cache import load_baseline_store
 
 
 RESULT_DIR = Path('/Users/ronan/Developer/agent-eval/model/result')
@@ -161,13 +162,8 @@ def build_baseline_source_filename(
 
 
 def summarize_baseline_cache() -> list[dict[str, str]]:
-    if not BASELINE_CSV.exists():
-        return []
-
-    try:
-        df = pd.read_csv(BASELINE_CSV, on_bad_lines='skip')
-    except Exception as exc:
-        print(f"Warning: failed to read baseline cache {BASELINE_CSV.name}: {exc}")
+    df = load_baseline_store(str(BASELINE_CSV))
+    if df.empty:
         return []
 
     df.columns = df.columns.str.strip()

@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tueplots import bundles
 from model.plotting import colors as pc
+from model.baseline_cache import load_baseline_store
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -36,12 +37,7 @@ def get_bundle():
 
 
 def load_baseline_cache():
-    if not os.path.exists(BASELINE_PATH):
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(BASELINE_PATH, on_bad_lines='skip')
-    except Exception:
-        return pd.DataFrame()
+    df = load_baseline_store(BASELINE_PATH)
 
     expected = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage']
     expected += ['rmse_naive', 'rmse_rasch', 'rmse_2pl', 'rmse_mirt', 'auc_naive', 'auc_rasch', 'auc_2pl', 'auc_mirt']
