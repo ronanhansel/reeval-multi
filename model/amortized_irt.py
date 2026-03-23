@@ -664,7 +664,8 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 # Experiment
 # ══════════════════════════════════════════════════════════════════════════════
 
-def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_type='beta', quiet=False):
+def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_type='beta',
+                           quiet=False, train_retention=1.0):
     """Build training matrix/mask for a specific n_files configuration."""
     N = data['N']
     J = data['J']
@@ -694,6 +695,19 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
 
     train_mask_current = np.zeros_like(train_target_df.values, dtype=bool)
     train_mask_current[:, train_idx] = ~np.isnan(train_target_df.values)[:, train_idx]
+
+    train_retention = float(train_retention)
+    if train_retention < 1.0:
+        observed_coords = np.argwhere(train_mask_current)
+        if observed_coords.size > 0:
+            rng = np.random.default_rng(RANDOM_SEED + 1701)
+            keep_mask = rng.random(observed_coords.shape[0]) < train_retention
+            train_mask_current[:, :] = False
+            kept_coords = observed_coords[keep_mask]
+            if kept_coords.size == 0:
+                kept_coords = observed_coords[rng.choice(observed_coords.shape[0], size=1, replace=False)]
+            train_mask_current[kept_coords[:, 0], kept_coords[:, 1]] = True
+
     train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
 
     return N, J, y_train, train_mask_current_t
@@ -820,6 +834,54 @@ def build_pair_efficiency_row(n_files, model_type, pre_revision, j_percentage, e
         'auc_araf': float(auc_amortized),
         'rmse_araf': float(rmse_amortized),
     }
+
+
+def build_support_thinning_row(n_files, model_type, pre_revision, j_percentage, embedding_type,
+                               baseline_embedding_type, train_retention, observed_train_pairs,
+                               baselines, rmse_amortized, auc_amortized):
+    return {
+        'seed': int(RANDOM_SEED),
+        'lambda_tau': float(LAMBDA_TAU),
+        'n_samples': int(n_files),
+        'model_type': str(model_type),
+        'pre_revision': normalize_pre_revision(pre_revision),
+        'j_percentage': normalize_j_percentage(j_percentage),
+        'embedding_type': str(embedding_type),
+        'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+        'train_retention': float(train_retention),
+        'observed_train_pairs': int(observed_train_pairs),
+        'auc_knn': float(baselines['auc_knn']),
+        'rmse_knn': float(baselines['rmse_knn']),
+        'auc_araf': float(auc_amortized),
+        'rmse_araf': float(rmse_amortized),
+    }
+
+
+def append_support_thinning_rows(path, rows):
+    if not path or not rows:
+        return
+
+    lock = FileLock(f"{path}.lock", timeout=600)
+    with lock:
+        if os.path.exists(path):
+            try:
+                df_old = pd.read_csv(path)
+            except Exception:
+                df_old = pd.DataFrame()
+        else:
+            df_old = pd.DataFrame()
+
+        df_new = pd.DataFrame(rows)
+        df = pd.concat([df_old, df_new], ignore_index=True)
+        dedupe_cols = [
+            'seed', 'lambda_tau', 'n_samples', 'model_type', 'pre_revision',
+            'j_percentage', 'embedding_type', 'baseline_embedding_type', 'train_retention'
+        ]
+        present_cols = [c for c in dedupe_cols if c in df.columns]
+        if present_cols:
+            df = df.drop_duplicates(subset=present_cols, keep='last')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_csv(path, index=False)
 
 
 def append_pair_efficiency_rows(path, rows):
@@ -1222,7 +1284,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                              baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                              allow_compute=True, quiet=False, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                              mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT, embedding_type=None,
-                             baseline_embedding_type=None):
+                             baseline_embedding_type=None, train_retention=1.0):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
     actual_embedding_type = normalize_baseline_embedding_type(embedding_type)
     baseline_embedding_type = normalize_baseline_embedding_type(
@@ -1258,7 +1320,8 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         non_mirt_metrics = {k: float(existing_row[k]) for k in NON_MIRT_METRIC_COLS}
 
     N, J, y_train, train_mask_current_t = build_training_targets(
-        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
+        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
+        train_retention=train_retention
     )
 
     if non_mirt_metrics is None:
@@ -1326,7 +1389,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    beta_phi=BETA_PHI, no_tau=False, quiet=False, embedding_type=None,
                    baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                    baseline_embedding_type=None, pair_efficiency_output=None,
-                   neighbor_support_output=None,
+                   neighbor_support_output=None, support_thinning_output=None,
+                   train_retention=1.0,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Run experiment for a specific number of sample files.
@@ -1364,6 +1428,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         mirt_sweep_output=mirt_sweep_output,
         embedding_type=embedding_type,
         baseline_embedding_type=baseline_embedding_type,
+        train_retention=train_retention,
     )
 
     rmse_2pl = baselines['rmse_2pl']
@@ -1405,7 +1470,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
 
     # Build train targets only when the amortized model is needed
     _, _, y_train, train_mask_current_t = build_training_targets(
-        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet
+        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
+        train_retention=train_retention
     )
     observed_train_pairs = int(train_mask_current_t.sum().item())
 
@@ -1479,6 +1545,21 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             )] if pair_efficiency_output else []
         ),
         'neighbor_support_rows': neighbor_support_rows,
+        'support_thinning_rows': (
+            [build_support_thinning_row(
+                n_files,
+                model_type,
+                pre_revision,
+                j_percentage,
+                embedding_type,
+                baseline_embedding_type,
+                train_retention,
+                observed_train_pairs,
+                baselines,
+                best_rmse,
+                auc_amortized,
+            )] if support_thinning_output else []
+        ),
         'model_state': best_state,
         'final_state': final_state
     }
@@ -2261,6 +2342,8 @@ def run_single_config(config, args, n_values):
                                     baseline_embedding_type=args.baseline_embedding_type,
                                     pair_efficiency_output=args.pair_efficiency_output,
                                     neighbor_support_output=args.neighbor_support_output,
+                                    support_thinning_output=args.support_thinning_output,
+                                    train_retention=args.train_retention,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
@@ -2268,10 +2351,13 @@ def run_single_config(config, args, n_values):
 
             pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
             neighbor_support_rows = result.pop('neighbor_support_rows', [])
+            support_thinning_rows = result.pop('support_thinning_rows', [])
             if args.pair_efficiency_output:
                 append_pair_efficiency_rows(args.pair_efficiency_output, pair_efficiency_rows)
             if args.neighbor_support_output:
                 append_neighbor_support_rows(args.neighbor_support_output, neighbor_support_rows)
+            if args.support_thinning_output:
+                append_support_thinning_rows(args.support_thinning_output, support_thinning_rows)
 
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -2379,6 +2465,10 @@ def main():
                         help='Optional CSV path for observed-pair efficiency rows.')
     parser.add_argument('--neighbor-support-output', type=str, default=None,
                         help='Optional CSV path for local neighbor-support study rows.')
+    parser.add_argument('--support-thinning-output', type=str, default=None,
+                        help='Optional CSV path for support-thinning study rows.')
+    parser.add_argument('--train-retention', type=float, default=1.0,
+                        help='Retention rate for observed training entries (0,1].')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
                         help='Minimum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,

@@ -22,6 +22,7 @@ PAIR_RESULT_DIR="${RESULT_DIR}/pair_efficiency_study"
 PAIR_BASELINE_CSV="${PAIR_RESULT_DIR}/baselines/baseline_metrics.csv"
 PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
 SUPPORT_RESULT_DIR="${RESULT_DIR}/neighbor_support_study"
+THIN_RESULT_DIR="${RESULT_DIR}/support_thinning_study"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -35,10 +36,12 @@ OVERRIDE_RESULTS=false
 QUIET=false
 PAIR_EFFICIENCY_STUDY=false
 NEIGHBOR_SUPPORT_STUDY=false
+SUPPORT_THINNING_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
 PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
 PAIR_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "1.0")
+THIN_RETENTIONS=("1.0" "0.75" "0.5" "0.25" "0.1" "0.05")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -76,6 +79,10 @@ while [[ $# -gt 0 ]]; do
             NEIGHBOR_SUPPORT_STUDY=true
             shift
             ;;
+        --support-thinning-study)
+            SUPPORT_THINNING_STUDY=true
+            shift
+            ;;
         *)
             shift
             ;;
@@ -88,6 +95,10 @@ fi
 RUN_NEIGHBOR_SUPPORT_STUDY=false
 if $FULL_SWEEP || $NEIGHBOR_SUPPORT_STUDY; then
     RUN_NEIGHBOR_SUPPORT_STUDY=true
+fi
+RUN_SUPPORT_THINNING_STUDY=false
+if $SUPPORT_THINNING_STUDY; then
+    RUN_SUPPORT_THINNING_STUDY=true
 fi
 
 if $FULL_SWEEP; then
@@ -225,6 +236,8 @@ run_exp() {
     local j_pct=${10:-1.0}
     local pair_efficiency_output=${11:-""}
     local neighbor_support_output=${12:-""}
+    local support_thinning_output=${13:-""}
+    local train_retention=${14:-1.0}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" ]]; then
@@ -271,6 +284,13 @@ run_exp() {
     if [[ -n "$neighbor_support_output" ]]; then
         mkdir -p "$(dirname "$neighbor_support_output")"
         cmd="$cmd --neighbor-support-output $neighbor_support_output"
+    fi
+    if [[ -n "$support_thinning_output" ]]; then
+        mkdir -p "$(dirname "$support_thinning_output")"
+        cmd="$cmd --support-thinning-output $support_thinning_output"
+    fi
+    if [[ "$train_retention" != "1.0" ]]; then
+        cmd="$cmd --train-retention $train_retention"
     fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
@@ -464,6 +484,78 @@ PY
     MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
 }
 
+run_support_thinning_study() {
+    local saved_result_dir="${RESULT_DIR}"
+    local saved_baseline_csv="${BASELINE_CSV}"
+    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
+    local pair_csv="${PAIR_RESULT_DIR}/pair_efficiency_beta_grid.csv"
+    local thin_csv="${THIN_RESULT_DIR}/support_thinning_beta_grid.csv"
+    local config_csv="${THIN_RESULT_DIR}/support_thinning_beta_configs.csv"
+
+    mkdir -p "${THIN_RESULT_DIR}"
+
+    if [[ ! -f "${pair_csv}" ]]; then
+        echo " -> Pair-efficiency beta CSV not found; running pair-efficiency study first..."
+        run_pair_efficiency_study
+    fi
+
+    if [[ ! -f "${pair_csv}" ]]; then
+        echo " -> Support-thinning study skipped: missing ${pair_csv}"
+        return
+    fi
+
+    echo " -> Preparing beta support-thinning study from pair-efficiency selections..."
+    python - <<PY
+import pandas as pd
+from pathlib import Path
+
+pair_csv = Path(${pair_csv@Q})
+config_csv = Path(${config_csv@Q})
+checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
+df = pd.read_csv(pair_csv, low_memory=False)
+df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
+rows = []
+for pre, j in checkpoints:
+    sub = df[(df['pre_key'] == str(pre).lower()) & (df['j_percentage'].round(3) == j)]
+    if sub.empty:
+        continue
+    grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
+        auc_araf=('auc_araf', 'mean'),
+        rmse_araf=('rmse_araf', 'mean')
+    )
+    auc_pick = grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
+    rmse_pick = grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
+    rows.append({'selection_metric': 'auc', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': auc_pick['embedding_type'], 'lambda_tau': auc_pick['lambda_tau']})
+    rows.append({'selection_metric': 'rmse', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': rmse_pick['embedding_type'], 'lambda_tau': rmse_pick['lambda_tau']})
+out = pd.DataFrame(rows).drop_duplicates()
+config_csv.parent.mkdir(parents=True, exist_ok=True)
+out.to_csv(config_csv, index=False)
+print(out.to_string(index=False))
+PY
+
+    echo " -> Running beta support-thinning study across retention levels..."
+    for retention in "${THIN_RETENTIONS[@]}"; do
+        local ret_label
+        ret_label=$(printf "retain_%0.3f" "$retention")
+        local ret_dir="${THIN_RESULT_DIR}/${ret_label}"
+        RESULT_DIR="${ret_dir}"
+        BASELINE_CSV="${ret_dir}/baselines/baseline_metrics.csv"
+        MIRT_SWEEP_CSV="${ret_dir}/baselines/mirt_sweep.csv"
+        mkdir -p "${ret_dir}"
+
+        while IFS=, read -r selection_metric pre_revision j_percentage embedding_type lambda_tau; do
+            if [[ "${selection_metric}" == "selection_metric" ]]; then
+                continue
+            fi
+            run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${ret_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "${retention}"
+        done < "${config_csv}"
+    done
+
+    RESULT_DIR="${saved_result_dir}"
+    BASELINE_CSV="${saved_baseline_csv}"
+    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
+}
+
 # ── Execution ───────────────────────────────────────────────────────────────
 if ! $ONLY_PLOT; then
     echo "[MODE] Running Experiments..."
@@ -589,6 +681,9 @@ if ! $ONLY_PLOT; then
     if $RUN_NEIGHBOR_SUPPORT_STUDY; then
         run_neighbor_support_study
     fi
+    if $RUN_SUPPORT_THINNING_STUDY; then
+        run_support_thinning_study
+    fi
 fi
 
 # ── Generate plots ───────────────────────────────────────────────────────────
@@ -602,6 +697,11 @@ if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY; then
     if $NEIGHBOR_SUPPORT_STUDY; then
         PYTHONPATH=. python3 -m model.plotting.main --neighbor-support-study
     fi
+    if $SUPPORT_THINNING_STUDY; then
+        PYTHONPATH=. python3 -m model.plotting.main --support-thinning-study
+    fi
+elif $SUPPORT_THINNING_STUDY; then
+    PYTHONPATH=. python3 -m model.plotting.main --support-thinning-study
 else
     PYTHONPATH=. python3 -m model.plotting.main --all
 fi
