@@ -43,7 +43,7 @@ MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
 PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
 PAIR_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "1.0")
-THIN_RETENTIONS=("1.0" "0.75" "0.5" "0.25" "0.1" "0.05")
+THIN_RETENTIONS=("0.05" "0.1" "0.25" "0.5" "1.0")
 THIN_ARAF_EMBEDDINGS=("raw" "pca")
 THIN_KNN_EMBEDDINGS=("raw" "pca")
 THIN_K_VALUES=("5" "10" "20" "50")
@@ -521,7 +521,7 @@ run_support_thinning_study() {
 
     mkdir -p "${THIN_RESULT_DIR}"
 
-    echo " -> Running beta support-thinning study across retention levels..."
+    echo " -> Running beta support-thinning ladder on Pre-max, J=1.0..."
     for retention in "${THIN_RETENTIONS[@]}"; do
         local ret_label
         ret_label=$(printf "retain_%0.3f" "$retention")
@@ -533,21 +533,18 @@ run_support_thinning_study() {
                 MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
                 mkdir -p "${combo_dir}"
 
-                local pair_count=${#PAIR_PRE_LEVELS[@]}
-                for ((idx=0; idx<pair_count; idx++)); do
-                    local pre_revision="${PAIR_PRE_LEVELS[$idx]}"
-                    local j_percentage="${PAIR_J_LEVELS[$idx]}"
-                    for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
-                        local taus
-                        if $FULL_SWEEP; then
-                            taus="$SHARED_TAUS"
-                        elif [[ "${araf_emb}" == "raw" ]]; then
-                            taus="0.029"
-                        else
-                            taus="0.054"
-                        fi
-                        run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${combo_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "" "${retention}" "${knn_emb}" "${knn_k}"
-                    done
+                local pre_revision="max"
+                local j_percentage="1.0"
+                for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
+                    local taus
+                    if $FULL_SWEEP; then
+                        taus="$SHARED_TAUS"
+                    elif [[ "${araf_emb}" == "raw" ]]; then
+                        taus="0.029"
+                    else
+                        taus="0.054"
+                    fi
+                    run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${combo_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "" "${retention}" "${knn_emb}" "${knn_k}"
                 done
             done
         done
