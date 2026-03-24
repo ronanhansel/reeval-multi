@@ -23,6 +23,7 @@ PAIR_BASELINE_CSV="${PAIR_RESULT_DIR}/baselines/baseline_metrics.csv"
 PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
 SUPPORT_RESULT_DIR="${RESULT_DIR}/neighbor_support_study"
 THIN_RESULT_DIR="${RESULT_DIR}/support_thinning_study"
+OUTLIER_RESULT_DIR="${RESULT_DIR}/outlier_robustness_study"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -37,6 +38,7 @@ QUIET=false
 PAIR_EFFICIENCY_STUDY=false
 NEIGHBOR_SUPPORT_STUDY=false
 SUPPORT_THINNING_STUDY=false
+OUTLIER_ROBUSTNESS_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
 PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
@@ -83,6 +85,10 @@ while [[ $# -gt 0 ]]; do
             SUPPORT_THINNING_STUDY=true
             shift
             ;;
+        --outlier-robustness-study)
+            OUTLIER_ROBUSTNESS_STUDY=true
+            shift
+            ;;
         *)
             shift
             ;;
@@ -100,9 +106,13 @@ RUN_SUPPORT_THINNING_STUDY=false
 if $SUPPORT_THINNING_STUDY; then
     RUN_SUPPORT_THINNING_STUDY=true
 fi
+RUN_OUTLIER_ROBUSTNESS_STUDY=false
+if $OUTLIER_ROBUSTNESS_STUDY; then
+    RUN_OUTLIER_ROBUSTNESS_STUDY=true
+fi
 
 RUN_MAIN_EXPERIMENTS=true
-if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY; then
+if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY || $OUTLIER_ROBUSTNESS_STUDY; then
     RUN_MAIN_EXPERIMENTS=false
 fi
 
@@ -242,7 +252,8 @@ run_exp() {
     local pair_efficiency_output=${11:-""}
     local neighbor_support_output=${12:-""}
     local support_thinning_output=${13:-""}
-    local train_retention=${14:-1.0}
+    local outlier_robustness_output=${14:-""}
+    local train_retention=${15:-1.0}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" ]]; then
@@ -293,6 +304,10 @@ run_exp() {
     if [[ -n "$support_thinning_output" ]]; then
         mkdir -p "$(dirname "$support_thinning_output")"
         cmd="$cmd --support-thinning-output $support_thinning_output"
+    fi
+    if [[ -n "$outlier_robustness_output" ]]; then
+        mkdir -p "$(dirname "$outlier_robustness_output")"
+        cmd="$cmd --outlier-robustness-output $outlier_robustness_output"
     fi
     if [[ "$train_retention" != "1.0" ]]; then
         cmd="$cmd --train-retention $train_retention"
@@ -552,9 +567,75 @@ PY
             if [[ "${selection_metric}" == "selection_metric" ]]; then
                 continue
             fi
-            run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${ret_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "${retention}"
+            run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${ret_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "" "${retention}"
         done < "${config_csv}"
     done
+
+    RESULT_DIR="${saved_result_dir}"
+    BASELINE_CSV="${saved_baseline_csv}"
+    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
+}
+
+run_outlier_robustness_study() {
+    local saved_result_dir="${RESULT_DIR}"
+    local saved_baseline_csv="${BASELINE_CSV}"
+    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
+    local pair_csv="${PAIR_RESULT_DIR}/pair_efficiency_beta_grid.csv"
+    local robust_csv="${OUTLIER_RESULT_DIR}/outlier_robustness_beta_grid.csv"
+    local config_csv="${OUTLIER_RESULT_DIR}/outlier_robustness_beta_configs.csv"
+
+    mkdir -p "${OUTLIER_RESULT_DIR}"
+
+    if [[ ! -f "${pair_csv}" ]]; then
+        echo " -> Pair-efficiency beta CSV not found; running pair-efficiency study first..."
+        run_pair_efficiency_study
+    fi
+
+    if [[ ! -f "${pair_csv}" ]]; then
+        echo " -> Outlier-robustness study skipped: missing ${pair_csv}"
+        return
+    fi
+
+    echo " -> Preparing beta outlier-robustness study from pair-efficiency selections..."
+    python - <<PY
+import pandas as pd
+from pathlib import Path
+
+pair_csv = Path(${pair_csv@Q})
+config_csv = Path(${config_csv@Q})
+checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
+df = pd.read_csv(pair_csv, low_memory=False)
+df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
+rows = []
+for pre, j in checkpoints:
+    sub = df[(df['pre_key'] == str(pre).lower()) & (df['j_percentage'].round(3) == j)]
+    if sub.empty:
+        continue
+    grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
+        auc_araf=('auc_araf', 'mean'),
+        rmse_araf=('rmse_araf', 'mean')
+    )
+    auc_pick = grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
+    rmse_pick = grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
+    rows.append({'selection_metric': 'auc', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': auc_pick['embedding_type'], 'lambda_tau': auc_pick['lambda_tau']})
+    rows.append({'selection_metric': 'rmse', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': rmse_pick['embedding_type'], 'lambda_tau': rmse_pick['lambda_tau']})
+out = pd.DataFrame(rows).drop_duplicates()
+config_csv.parent.mkdir(parents=True, exist_ok=True)
+out.to_csv(config_csv, index=False)
+print(out.to_string(index=False))
+PY
+
+    RESULT_DIR="${OUTLIER_RESULT_DIR}"
+    BASELINE_CSV="${PAIR_BASELINE_CSV}"
+    MIRT_SWEEP_CSV="${PAIR_MIRT_SWEEP_CSV}"
+
+    echo " -> Running beta outlier-item / robustness study..."
+    while IFS=, read -r selection_metric pre_revision j_percentage embedding_type lambda_tau; do
+        if [[ "${selection_metric}" == "selection_metric" ]]; then
+            continue
+        fi
+        run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${RESULT_DIR}" false false "${j_percentage}" "" "" "" "${robust_csv}" "1.0"
+    done < "${config_csv}"
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"
@@ -689,6 +770,9 @@ if ! $ONLY_PLOT && $RUN_MAIN_EXPERIMENTS; then
     if $RUN_SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
     fi
+    if $RUN_OUTLIER_ROBUSTNESS_STUDY; then
+        run_outlier_robustness_study
+    fi
 fi
 
 if ! $ONLY_PLOT && ! $RUN_MAIN_EXPERIMENTS; then
@@ -701,6 +785,9 @@ if ! $ONLY_PLOT && ! $RUN_MAIN_EXPERIMENTS; then
     fi
     if $SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
+    fi
+    if $OUTLIER_ROBUSTNESS_STUDY; then
+        run_outlier_robustness_study
     fi
 fi
 

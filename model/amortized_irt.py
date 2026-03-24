@@ -884,6 +884,169 @@ def append_support_thinning_rows(path, rows):
         df.to_csv(path, index=False)
 
 
+def _masked_prob_arrays(pred_tensor, target_tensor, mask_tensor):
+    valid_mask = mask_tensor.detach()
+    if not valid_mask.any():
+        return np.array([]), np.array([])
+    y_true = target_tensor[valid_mask].detach().cpu().numpy().astype(float)
+    y_pred = pred_tensor[valid_mask].detach().cpu().numpy().astype(float)
+    return y_true, y_pred
+
+
+def compute_prob_metrics(pred_tensor, target_tensor, mask_tensor, n_bins=10):
+    y_true, y_pred = _masked_prob_arrays(pred_tensor, target_tensor, mask_tensor)
+    if y_true.size == 0:
+        return {
+            'brier': np.nan,
+            'log_loss': np.nan,
+            'ece': np.nan,
+            'mean_ae': np.nan,
+            'p90ae': np.nan,
+            'p95ae': np.nan,
+        }
+
+    y_true_bin = (y_true > 0.5).astype(float)
+    y_pred_clip = np.clip(y_pred, 1e-6, 1 - 1e-6)
+    abs_err = np.abs(y_pred - y_true)
+    brier = float(np.mean((y_pred - y_true) ** 2))
+    log_loss = float(-np.mean(y_true_bin * np.log(y_pred_clip) + (1 - y_true_bin) * np.log(1 - y_pred_clip)))
+
+    order = np.argsort(y_pred_clip)
+    y_pred_sorted = y_pred_clip[order]
+    y_true_sorted = y_true_bin[order]
+    bins = np.array_split(np.arange(y_pred_sorted.size), min(n_bins, y_pred_sorted.size))
+    ece = 0.0
+    total = float(y_pred_sorted.size)
+    for idx in bins:
+        if idx.size == 0:
+            continue
+        conf = float(np.mean(y_pred_sorted[idx]))
+        acc = float(np.mean(y_true_sorted[idx]))
+        ece += (idx.size / total) * abs(acc - conf)
+
+    return {
+        'brier': brier,
+        'log_loss': log_loss,
+        'ece': float(ece),
+        'mean_ae': float(np.mean(abs_err)),
+        'p90ae': float(np.quantile(abs_err, 0.90)),
+        'p95ae': float(np.quantile(abs_err, 0.95)),
+    }
+
+
+def build_outlier_robustness_rows(n_files, model_type, pre_revision, j_percentage, embedding_type,
+                                  baseline_embedding_type, x_j, test_mask_t, test_idx,
+                                  p_knn, p_amortized, y_oracle):
+    train_idx = sorted(set(range(x_j.shape[0])) - set(test_idx.tolist()))
+    if len(train_idx) == 0 or len(test_idx) == 0:
+        return []
+
+    x_norm = F.normalize(x_j, dim=1)
+    sims = x_norm[test_idx] @ x_norm[torch.as_tensor(train_idx, device=x_j.device)].T
+    d_min = 1.0 - sims.max(dim=1).values.detach().cpu().numpy()
+
+    q50 = float(np.quantile(d_min, 0.50))
+    q80 = float(np.quantile(d_min, 0.80))
+    item_bins = [
+        ('inlier', 0, lambda d: d <= q50),
+        ('moderate', 1, lambda d: (d > q50) & (d <= q80)),
+        ('outlier', 2, lambda d: d > q80),
+    ]
+
+    rows = []
+    for bin_name, bin_order, predicate in item_bins:
+        select = predicate(d_min)
+        selected_items = test_idx[select]
+        item_mask = torch.zeros((x_j.shape[0],), dtype=torch.bool, device=test_mask_t.device)
+        if selected_items.size > 0:
+            item_mask[selected_items] = True
+        bin_mask_t = test_mask_t.clone()
+        bin_mask_t[:, ~item_mask] = False
+
+        num_items = int(select.sum())
+        num_pairs = int(bin_mask_t.sum().item())
+        if num_pairs == 0 or num_items == 0:
+            auc_knn = np.nan
+            rmse_knn = np.nan
+            auc_araf = np.nan
+            rmse_araf = np.nan
+            knn_prob = compute_prob_metrics(p_knn, y_oracle, bin_mask_t)
+            araf_prob = compute_prob_metrics(p_amortized, y_oracle, bin_mask_t)
+            mean_d = np.nan
+        else:
+            bin_mask_np = bin_mask_t.detach().cpu().numpy().astype(bool)
+            auc_knn = evaluate_auc(p_knn, y_oracle, bin_mask_t)
+            rmse_knn = compute_rmse(p_knn.detach().cpu().numpy(), y_oracle.detach().cpu().numpy(), bin_mask_np)
+            auc_araf = evaluate_auc(p_amortized, y_oracle, bin_mask_t)
+            rmse_araf = compute_rmse(p_amortized.detach().cpu().numpy(), y_oracle.detach().cpu().numpy(), bin_mask_np)
+            knn_prob = compute_prob_metrics(p_knn, y_oracle, bin_mask_t)
+            araf_prob = compute_prob_metrics(p_amortized, y_oracle, bin_mask_t)
+            mean_d = float(np.mean(d_min[select]))
+
+        rows.append({
+            'seed': int(RANDOM_SEED),
+            'lambda_tau': float(LAMBDA_TAU),
+            'n_samples': int(n_files),
+            'model_type': str(model_type),
+            'pre_revision': normalize_pre_revision(pre_revision),
+            'j_percentage': normalize_j_percentage(j_percentage),
+            'embedding_type': str(embedding_type),
+            'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+            'novelty_bin': bin_name,
+            'novelty_bin_order': int(bin_order),
+            'num_items': num_items,
+            'num_pairs': num_pairs,
+            'mean_dmin': mean_d,
+            'q50_dmin': q50,
+            'q80_dmin': q80,
+            'auc_knn': auc_knn,
+            'rmse_knn': rmse_knn,
+            'brier_knn': knn_prob['brier'],
+            'logloss_knn': knn_prob['log_loss'],
+            'ece_knn': knn_prob['ece'],
+            'mean_ae_knn': knn_prob['mean_ae'],
+            'p90ae_knn': knn_prob['p90ae'],
+            'p95ae_knn': knn_prob['p95ae'],
+            'auc_araf': auc_araf,
+            'rmse_araf': rmse_araf,
+            'brier_araf': araf_prob['brier'],
+            'logloss_araf': araf_prob['log_loss'],
+            'ece_araf': araf_prob['ece'],
+            'mean_ae_araf': araf_prob['mean_ae'],
+            'p90ae_araf': araf_prob['p90ae'],
+            'p95ae_araf': araf_prob['p95ae'],
+        })
+
+    return rows
+
+
+def append_outlier_robustness_rows(path, rows):
+    if not path or not rows:
+        return
+
+    lock = FileLock(f"{path}.lock", timeout=600)
+    with lock:
+        if os.path.exists(path):
+            try:
+                df_old = pd.read_csv(path)
+            except Exception:
+                df_old = pd.DataFrame()
+        else:
+            df_old = pd.DataFrame()
+
+        df_new = pd.DataFrame(rows)
+        df = pd.concat([df_old, df_new], ignore_index=True)
+        dedupe_cols = [
+            'seed', 'lambda_tau', 'n_samples', 'model_type', 'pre_revision',
+            'j_percentage', 'embedding_type', 'baseline_embedding_type', 'novelty_bin'
+        ]
+        present_cols = [c for c in dedupe_cols if c in df.columns]
+        if present_cols:
+            df = df.drop_duplicates(subset=present_cols, keep='last')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_csv(path, index=False)
+
+
 def append_pair_efficiency_rows(path, rows):
     """Atomically append observed-pair efficiency rows."""
     if not path or not rows:
@@ -1390,6 +1553,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                    baseline_embedding_type=None, pair_efficiency_output=None,
                    neighbor_support_output=None, support_thinning_output=None,
+                   outlier_robustness_output=None,
                    train_retention=1.0,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
@@ -1409,6 +1573,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     test_mask = data['test_mask']
     test_mask_t = data['test_mask_t']
     x_j = data['x_j']
+    test_idx = data['test_idx']
     embedding_dim = data['embedding_dim']
 
     baselines, mirt_state = get_or_compute_baselines(
@@ -1497,6 +1662,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             active_dim_indices = [active_dim_indices]
 
     neighbor_support_rows = []
+    p_knn = None
     if neighbor_support_output:
         p_knn, support_diag = compute_knn_predictions(
             y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K
@@ -1517,6 +1683,25 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             baselines,
             best_rmse,
             auc_amortized,
+        )
+
+    outlier_robustness_rows = []
+    if outlier_robustness_output:
+        if p_knn is None:
+            p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K)
+        outlier_robustness_rows = build_outlier_robustness_rows(
+            n_files,
+            model_type,
+            pre_revision,
+            j_percentage,
+            embedding_type,
+            baseline_embedding_type,
+            x_j,
+            test_mask_t,
+            test_idx,
+            p_knn,
+            p_amortized,
+            y_oracle,
         )
 
     return {
@@ -1560,6 +1745,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 auc_amortized,
             )] if support_thinning_output else []
         ),
+        'outlier_robustness_rows': outlier_robustness_rows,
         'model_state': best_state,
         'final_state': final_state
     }
@@ -2343,6 +2529,7 @@ def run_single_config(config, args, n_values):
                                     pair_efficiency_output=args.pair_efficiency_output,
                                     neighbor_support_output=args.neighbor_support_output,
                                     support_thinning_output=args.support_thinning_output,
+                                    outlier_robustness_output=args.outlier_robustness_output,
                                     train_retention=args.train_retention,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
@@ -2352,12 +2539,15 @@ def run_single_config(config, args, n_values):
             pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
             neighbor_support_rows = result.pop('neighbor_support_rows', [])
             support_thinning_rows = result.pop('support_thinning_rows', [])
+            outlier_robustness_rows = result.pop('outlier_robustness_rows', [])
             if args.pair_efficiency_output:
                 append_pair_efficiency_rows(args.pair_efficiency_output, pair_efficiency_rows)
             if args.neighbor_support_output:
                 append_neighbor_support_rows(args.neighbor_support_output, neighbor_support_rows)
             if args.support_thinning_output:
                 append_support_thinning_rows(args.support_thinning_output, support_thinning_rows)
+            if args.outlier_robustness_output:
+                append_outlier_robustness_rows(args.outlier_robustness_output, outlier_robustness_rows)
 
             result['embedding_type'] = actual_emb_type
             if args.pre_revision != 'none':
@@ -2467,6 +2657,8 @@ def main():
                         help='Optional CSV path for local neighbor-support study rows.')
     parser.add_argument('--support-thinning-output', type=str, default=None,
                         help='Optional CSV path for support-thinning study rows.')
+    parser.add_argument('--outlier-robustness-output', type=str, default=None,
+                        help='Optional CSV path for outlier-item and robustness rows.')
     parser.add_argument('--train-retention', type=float, default=1.0,
                         help='Retention rate for observed training entries (0,1].')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
