@@ -837,7 +837,7 @@ def build_pair_efficiency_row(n_files, model_type, pre_revision, j_percentage, e
 
 
 def build_support_thinning_row(n_files, model_type, pre_revision, j_percentage, embedding_type,
-                               baseline_embedding_type, train_retention, observed_train_pairs,
+                               baseline_embedding_type, knn_k, train_retention, observed_train_pairs,
                                baselines, rmse_amortized, auc_amortized):
     return {
         'seed': int(RANDOM_SEED),
@@ -848,6 +848,7 @@ def build_support_thinning_row(n_files, model_type, pre_revision, j_percentage, 
         'j_percentage': normalize_j_percentage(j_percentage),
         'embedding_type': str(embedding_type),
         'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+        'knn_k': int(knn_k),
         'train_retention': float(train_retention),
         'observed_train_pairs': int(observed_train_pairs),
         'auc_knn': float(baselines['auc_knn']),
@@ -875,7 +876,7 @@ def append_support_thinning_rows(path, rows):
         df = pd.concat([df_old, df_new], ignore_index=True)
         dedupe_cols = [
             'seed', 'lambda_tau', 'n_samples', 'model_type', 'pre_revision',
-            'j_percentage', 'embedding_type', 'baseline_embedding_type', 'train_retention'
+            'j_percentage', 'embedding_type', 'baseline_embedding_type', 'knn_k', 'train_retention'
         ]
         present_cols = [c for c in dedupe_cols if c in df.columns]
         if present_cols:
@@ -1447,7 +1448,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                              baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                              allow_compute=True, quiet=False, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                              mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT, embedding_type=None,
-                             baseline_embedding_type=None, train_retention=1.0):
+                             baseline_embedding_type=None, train_retention=1.0, knn_k=KNN_K):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
     actual_embedding_type = normalize_baseline_embedding_type(embedding_type)
     baseline_embedding_type = normalize_baseline_embedding_type(
@@ -1499,7 +1500,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         non_mirt_metrics = compute_non_mirt_baseline_metrics(
             N, J, y_train, train_mask_current_t,
             data['y_oracle'], data['test_mask'], data['test_mask_t'],
-            model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j')
+            model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k
         )
 
     mirt_results = []
@@ -1554,7 +1555,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    baseline_embedding_type=None, pair_efficiency_output=None,
                    neighbor_support_output=None, support_thinning_output=None,
                    outlier_robustness_output=None,
-                   train_retention=1.0,
+                   train_retention=1.0, knn_k=KNN_K,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
     """Run experiment for a specific number of sample files.
@@ -1594,6 +1595,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         embedding_type=embedding_type,
         baseline_embedding_type=baseline_embedding_type,
         train_retention=train_retention,
+        knn_k=knn_k,
     )
 
     rmse_2pl = baselines['rmse_2pl']
@@ -1665,7 +1667,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     p_knn = None
     if neighbor_support_output:
         p_knn, support_diag = compute_knn_predictions(
-            y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K
+            y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k
         )
         neighbor_support_rows = build_neighbor_support_rows(
             n_files,
@@ -1688,7 +1690,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     outlier_robustness_rows = []
     if outlier_robustness_output:
         if p_knn is None:
-            p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K)
+            p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k)
         outlier_robustness_rows = build_outlier_robustness_rows(
             n_files,
             model_type,
@@ -1738,6 +1740,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 j_percentage,
                 embedding_type,
                 baseline_embedding_type,
+                knn_k,
                 train_retention,
                 observed_train_pairs,
                 baselines,
@@ -2516,6 +2519,7 @@ def run_single_config(config, args, n_values):
                     mirt_sweep_output=args.mirt_sweep_output,
                     embedding_type=actual_emb_type,
                     baseline_embedding_type=args.baseline_embedding_type,
+                    knn_k=args.knn_k,
                 )
                 continue
 
@@ -2531,6 +2535,7 @@ def run_single_config(config, args, n_values):
                                     support_thinning_output=args.support_thinning_output,
                                     outlier_robustness_output=args.outlier_robustness_output,
                                     train_retention=args.train_retention,
+                                    knn_k=args.knn_k,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
@@ -2661,6 +2666,8 @@ def main():
                         help='Optional CSV path for outlier-item and robustness rows.')
     parser.add_argument('--train-retention', type=float, default=1.0,
                         help='Retention rate for observed training entries (0,1].')
+    parser.add_argument('--knn-k', type=int, default=KNN_K,
+                        help='Number of nearest neighbors used by the kNN baseline.')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
                         help='Minimum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,

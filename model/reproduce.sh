@@ -44,6 +44,9 @@ MIRT_DIM_MAX=30
 PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
 PAIR_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "1.0")
 THIN_RETENTIONS=("1.0" "0.75" "0.5" "0.25" "0.1" "0.05")
+THIN_ARAF_EMBEDDINGS=("raw" "pca")
+THIN_KNN_EMBEDDINGS=("raw" "pca")
+THIN_K_VALUES=("5" "10" "20" "50")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -215,11 +218,11 @@ run_baseline() {
     local pre=${3:-false}
     local seeds=$4
     local j_pct=${5:-1.0}
+    local baseline_emb=${6:-raw}
+    local knn_k=${7:-10}
 
     local seeds_csv=${seeds// /,}
-    # Baseline cache now includes an embedding-kNN zero-shot baseline.
-    # We pin baseline embedding type to RAW for a stable, single reference baseline.
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type raw --baseline-embedding-type raw --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
@@ -234,7 +237,7 @@ run_baseline() {
         cmd="$cmd --quiet"
     fi
 
-    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct seeds=[$seeds_csv]"
+    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct base_emb=${baseline_emb} k=${knn_k} seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -254,16 +257,18 @@ run_exp() {
     local support_thinning_output=${13:-""}
     local outlier_robustness_output=${14:-""}
     local train_retention=${15:-1.0}
+    local baseline_emb=${16:-raw}
+    local knn_k=${17:-10}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" ]]; then
-        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct"
+        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k"
     fi
 
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type raw --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi
@@ -289,7 +294,11 @@ run_exp() {
         if [[ "$no_tau" == "true" ]]; then notau_suffix="_notau"; fi
         local j_suffix=""
         if [[ "$j_pct" != "1.0" ]]; then j_suffix="_j${j_pct}"; fi
-        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}${notau_suffix}${j_suffix}.csv"
+        local baseline_suffix=""
+        if [[ "${baseline_emb}" != "raw" || "${knn_k}" != "10" ]]; then
+            baseline_suffix="_b${baseline_emb}_k${knn_k}"
+        fi
+        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}${notau_suffix}${j_suffix}${baseline_suffix}.csv"
 
         cmd="$cmd --output $out_file"
     fi
@@ -316,7 +325,7 @@ run_exp() {
         cmd="$cmd --parallel $PARALLEL"
     fi
 
-    echo " -> Running: $emb (N=$n, $model) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+    echo " -> Running: $emb (N=$n, $model, base_emb=${baseline_emb}, k=${knn_k}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -508,67 +517,40 @@ run_support_thinning_study() {
     local saved_result_dir="${RESULT_DIR}"
     local saved_baseline_csv="${BASELINE_CSV}"
     local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
-    local pair_csv="${PAIR_RESULT_DIR}/pair_efficiency_beta_grid.csv"
     local thin_csv="${THIN_RESULT_DIR}/support_thinning_beta_grid.csv"
-    local config_csv="${THIN_RESULT_DIR}/support_thinning_beta_configs.csv"
 
     mkdir -p "${THIN_RESULT_DIR}"
-
-    if [[ ! -f "${pair_csv}" ]]; then
-        echo " -> Pair-efficiency beta CSV not found; running pair-efficiency study first..."
-        run_pair_efficiency_study
-    fi
-
-    if [[ ! -f "${pair_csv}" ]]; then
-        echo " -> Support-thinning study skipped: missing ${pair_csv}"
-        return
-    fi
-
-    echo " -> Preparing beta support-thinning study from pair-efficiency selections..."
-    python - <<PY
-import pandas as pd
-from pathlib import Path
-
-pair_csv = Path(${pair_csv@Q})
-config_csv = Path(${config_csv@Q})
-checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
-df = pd.read_csv(pair_csv, low_memory=False)
-df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
-rows = []
-for pre, j in checkpoints:
-    sub = df[(df['pre_key'] == str(pre).lower()) & (df['j_percentage'].round(3) == j)]
-    if sub.empty:
-        continue
-    grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
-        auc_araf=('auc_araf', 'mean'),
-        rmse_araf=('rmse_araf', 'mean')
-    )
-    auc_pick = grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
-    rmse_pick = grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
-    rows.append({'selection_metric': 'auc', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': auc_pick['embedding_type'], 'lambda_tau': auc_pick['lambda_tau']})
-    rows.append({'selection_metric': 'rmse', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': rmse_pick['embedding_type'], 'lambda_tau': rmse_pick['lambda_tau']})
-out = pd.DataFrame(rows).drop_duplicates()
-config_csv.parent.mkdir(parents=True, exist_ok=True)
-out.to_csv(config_csv, index=False)
-print(out.to_string(index=False))
-PY
 
     echo " -> Running beta support-thinning study across retention levels..."
     for retention in "${THIN_RETENTIONS[@]}"; do
         local ret_label
         ret_label=$(printf "retain_%0.3f" "$retention")
-        local ret_dir="${THIN_RESULT_DIR}/${ret_label}"
-        RESULT_DIR="${ret_dir}"
-        BASELINE_CSV="${ret_dir}/baselines/baseline_metrics.csv"
-        MIRT_SWEEP_CSV="${ret_dir}/baselines/mirt_sweep.csv"
-        mkdir -p "${ret_dir}"
+        for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
+            for knn_k in "${THIN_K_VALUES[@]}"; do
+                local combo_dir="${THIN_RESULT_DIR}/${ret_label}/knn_${knn_emb}_k${knn_k}"
+                RESULT_DIR="${combo_dir}"
+                BASELINE_CSV="${combo_dir}/baselines/baseline_metrics.csv"
+                MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
+                mkdir -p "${combo_dir}"
 
-        while IFS=, read -r selection_metric pre_revision j_percentage embedding_type lambda_tau; do
-            if [[ "${selection_metric}" == "selection_metric" ]]; then
-                continue
-            fi
-            run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${ret_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "" "${retention}"
-        done < "${config_csv}"
+                local pair_count=${#PAIR_PRE_LEVELS[@]}
+                for ((idx=0; idx<pair_count; idx++)); do
+                    local pre_revision="${PAIR_PRE_LEVELS[$idx]}"
+                    local j_percentage="${PAIR_J_LEVELS[$idx]}"
+                    for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
+                        local taus
+                        if $FULL_SWEEP; then
+                            taus="$SHARED_TAUS"
+                        elif [[ "${araf_emb}" == "raw" ]]; then
+                            taus="0.029"
+                        else
+                            taus="0.054"
+                        fi
+                        run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${combo_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "" "${retention}" "${knn_emb}" "${knn_k}"
+                    done
+                done
+            done
+        done
     done
 
     RESULT_DIR="${saved_result_dir}"

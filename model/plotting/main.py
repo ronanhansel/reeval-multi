@@ -16,7 +16,7 @@ REPO_ROOT = os.path.dirname(MODEL_DIR)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-from model.plotting import benchmarks, comparison, interpretability, pair_efficiency, rubrics, sample_size, support_study, support_thinning
+from model.plotting import benchmarks, comparison, interpretability, outlier_robustness, pair_efficiency, rubrics, sample_size, support_study, support_thinning
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Amortized IRT plots')
@@ -26,6 +26,7 @@ def main():
     parser.add_argument('--pair-efficiency-study', action='store_true', help='Generate observed-pair efficiency plots')
     parser.add_argument('--neighbor-support-study', action='store_true', help='Generate neighbor-support stratified plots')
     parser.add_argument('--support-thinning-study', action='store_true', help='Generate train-observation thinning plots')
+    parser.add_argument('--outlier-robustness-study', action='store_true', help='Generate outlier-item and robustness plots')
     parser.add_argument('--interpretability', action='store_true', help='Generate interpretability plots')
     parser.add_argument('--rubrics', action='store_true', help='Generate rubric statistics plots')
     parser.add_argument('--all', action='store_true', help='Generate all plots')
@@ -34,7 +35,7 @@ def main():
     args = parser.parse_args()
 
     # If no flags provided, show help
-    if not any([args.benchmarks, args.comparison, args.sample_size, args.pair_efficiency_study, args.neighbor_support_study, args.support_thinning_study, args.interpretability, args.rubrics, args.all]):
+    if not any([args.benchmarks, args.comparison, args.sample_size, args.pair_efficiency_study, args.neighbor_support_study, args.support_thinning_study, args.outlier_robustness_study, args.interpretability, args.rubrics, args.all]):
         parser.print_help()
         return
 
@@ -55,6 +56,9 @@ def main():
 
     if args.all or args.support_thinning_study:
         support_thinning.main()
+
+    if args.all or args.outlier_robustness_study:
+        outlier_robustness.main()
 
     if args.all or args.interpretability:
         interpretability.main()

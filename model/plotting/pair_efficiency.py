@@ -100,7 +100,7 @@ def load_baseline_cache():
     return df
 
 
-def baseline_mean(df, metric_col, model_type, pre_revision, j_percentage, n_samples=1):
+def baseline_mean_sem(df, metric_col, model_type, pre_revision, j_percentage, n_samples=1):
     if df.empty or metric_col not in df.columns:
         return None
 
@@ -119,8 +119,8 @@ def baseline_mean(df, metric_col, model_type, pre_revision, j_percentage, n_samp
 
     vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
     if vals.empty:
-        return None
-    return float(vals.mean())
+        return None, None
+    return float(vals.mean()), float(vals.sem()) if len(vals) > 1 else 0.0
 
 
 def _select_best_metric_rows(sub, metric):
@@ -175,8 +175,15 @@ def select_best_points(df, baseline_df):
         if auc_rows is None or rmse_rows is None:
             continue
 
-        auc_knn = baseline_mean(baseline_df, 'auc_knn', model_type, pre_revision, j_pct)
-        rmse_knn = baseline_mean(baseline_df, 'rmse_knn', model_type, pre_revision, j_pct)
+        auc_knn, auc_knn_sem = baseline_mean_sem(baseline_df, 'auc_knn', model_type, pre_revision, j_pct)
+        rmse_knn, rmse_knn_sem = baseline_mean_sem(baseline_df, 'rmse_knn', model_type, pre_revision, j_pct)
+        auc_rasch, auc_rasch_sem = baseline_mean_sem(baseline_df, 'auc_rasch', model_type, pre_revision, j_pct)
+        auc_mirt, auc_mirt_sem = baseline_mean_sem(baseline_df, 'auc_mirt', model_type, pre_revision, j_pct)
+        rmse_rasch, rmse_rasch_sem = baseline_mean_sem(baseline_df, 'rmse_rasch', model_type, pre_revision, j_pct)
+        rmse_mirt, rmse_mirt_sem = baseline_mean_sem(baseline_df, 'rmse_mirt', model_type, pre_revision, j_pct)
+
+        auc_seed = auc_rows.groupby('seed', as_index=False)['auc_araf'].mean()['auc_araf']
+        rmse_seed = rmse_rows.groupby('seed', as_index=False)['rmse_araf'].mean()['rmse_araf']
 
         rows.append({
             'stage_order': order_idx,
@@ -184,16 +191,24 @@ def select_best_points(df, baseline_df):
             'pre_revision': pre_revision,
             'j_percentage': float(j_pct),
             'observed_train_pairs': float(auc_rows['observed_train_pairs'].mean()),
-            'auc_rasch': baseline_mean(baseline_df, 'auc_rasch', model_type, pre_revision, j_pct),
-            'auc_mirt': baseline_mean(baseline_df, 'auc_mirt', model_type, pre_revision, j_pct),
+            'auc_rasch': auc_rasch,
+            'auc_rasch_sem': auc_rasch_sem if auc_rasch_sem is not None else 0.0,
+            'auc_mirt': auc_mirt,
+            'auc_mirt_sem': auc_mirt_sem if auc_mirt_sem is not None else 0.0,
             'auc_knn': float(auc_rows['auc_knn'].mean()) if auc_knn is None else auc_knn,
-            'auc_araf': float(auc_rows['auc_araf'].mean()),
+            'auc_knn_sem': float(auc_rows.groupby('seed', as_index=False)['auc_knn'].mean()['auc_knn'].sem()) if auc_knn is None else (auc_knn_sem if auc_knn_sem is not None else 0.0),
+            'auc_araf': float(auc_seed.mean()),
+            'auc_araf_sem': float(auc_seed.sem()) if len(auc_seed) > 1 else 0.0,
             'auc_best_variant': auc_variant,
             'auc_best_tau': auc_tau,
-            'rmse_rasch': baseline_mean(baseline_df, 'rmse_rasch', model_type, pre_revision, j_pct),
-            'rmse_mirt': baseline_mean(baseline_df, 'rmse_mirt', model_type, pre_revision, j_pct),
+            'rmse_rasch': rmse_rasch,
+            'rmse_rasch_sem': rmse_rasch_sem if rmse_rasch_sem is not None else 0.0,
+            'rmse_mirt': rmse_mirt,
+            'rmse_mirt_sem': rmse_mirt_sem if rmse_mirt_sem is not None else 0.0,
             'rmse_knn': float(rmse_rows['rmse_knn'].mean()) if rmse_knn is None else rmse_knn,
-            'rmse_araf': float(rmse_rows['rmse_araf'].mean()),
+            'rmse_knn_sem': float(rmse_rows.groupby('seed', as_index=False)['rmse_knn'].mean()['rmse_knn'].sem()) if rmse_knn is None else (rmse_knn_sem if rmse_knn_sem is not None else 0.0),
+            'rmse_araf': float(rmse_seed.mean()),
+            'rmse_araf_sem': float(rmse_seed.sem()) if len(rmse_seed) > 1 else 0.0,
             'rmse_best_variant': rmse_variant,
             'rmse_best_tau': rmse_tau,
         })
@@ -211,16 +226,19 @@ def plot(best_df, model_type):
 
     x = np.arange(len(best_df))
     labels = [
-        f"{stage}\n{int(pairs):,}"
-        for stage, pairs in zip(best_df['stage_label'], best_df['observed_train_pairs'])
+        f"{int(pairs):,}"
+        for pairs in best_df['observed_train_pairs']
     ]
 
     for baseline_key in BASELINE_KEYS:
         auc_col = f'auc_{baseline_key}'
         if auc_col in best_df.columns and best_df[auc_col].notna().any():
+            sem_col = f'{auc_col}_sem'
+            mean_vals = best_df[auc_col].to_numpy(dtype=float)
+            sem_vals = best_df[sem_col].to_numpy(dtype=float) if sem_col in best_df.columns else np.zeros_like(mean_vals)
             axes[0].plot(
                 x,
-                best_df[auc_col],
+                mean_vals,
                 color=BASELINE_COLORS[baseline_key],
                 marker='o',
                 linestyle='--',
@@ -228,16 +246,21 @@ def plot(best_df, model_type):
                 alpha=BASELINE_LINE_ALPHA[baseline_key],
                 label=BASELINE_LABELS[baseline_key],
             )
+            axes[0].fill_between(x, mean_vals - sem_vals, mean_vals + sem_vals, color=BASELINE_COLORS[baseline_key], alpha=0.10)
     axes[0].plot(x, best_df['auc_araf'], color='steelblue', marker='o', linewidth=1.3, label='ARAF')
+    axes[0].fill_between(x, best_df['auc_araf'] - best_df['auc_araf_sem'], best_df['auc_araf'] + best_df['auc_araf_sem'], color='steelblue', alpha=0.18)
     axes[0].set_title(f"AUC ({cfg['title_suffix']})", fontsize=10)
     axes[0].set_ylabel('AUC', fontsize=10)
 
     for baseline_key in BASELINE_KEYS:
         rmse_col = f'rmse_{baseline_key}'
         if rmse_col in best_df.columns and best_df[rmse_col].notna().any():
+            sem_col = f'{rmse_col}_sem'
+            mean_vals = best_df[rmse_col].to_numpy(dtype=float)
+            sem_vals = best_df[sem_col].to_numpy(dtype=float) if sem_col in best_df.columns else np.zeros_like(mean_vals)
             axes[1].plot(
                 x,
-                best_df[rmse_col],
+                mean_vals,
                 color=BASELINE_COLORS[baseline_key],
                 marker='o',
                 linestyle='--',
@@ -245,7 +268,9 @@ def plot(best_df, model_type):
                 alpha=BASELINE_LINE_ALPHA[baseline_key],
                 label=BASELINE_LABELS[baseline_key],
             )
+            axes[1].fill_between(x, mean_vals - sem_vals, mean_vals + sem_vals, color=BASELINE_COLORS[baseline_key], alpha=0.10)
     axes[1].plot(x, best_df['rmse_araf'], color='steelblue', marker='o', linewidth=1.3, label='ARAF')
+    axes[1].fill_between(x, best_df['rmse_araf'] - best_df['rmse_araf_sem'], best_df['rmse_araf'] + best_df['rmse_araf_sem'], color='steelblue', alpha=0.18)
     axes[1].set_title(f"RMSE ({cfg['title_suffix']})", fontsize=10)
     axes[1].set_ylabel('RMSE', fontsize=10)
 
