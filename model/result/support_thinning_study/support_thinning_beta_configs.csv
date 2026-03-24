@@ -1,0 +1,11 @@
+selection_metric,pre_revision,j_percentage,embedding_type,lambda_tau
+auc,4,0.1,pca,0.064
+rmse,4,0.1,sae,1000.0
+auc,8,0.3,sae,0.034
+rmse,8,0.3,pca,0.4
+auc,16,0.5,sae,0.044
+rmse,16,0.5,sae,5.0
+auc,32,0.7,sae,0.032
+rmse,32,0.7,sae,30.0
+auc,max,1.0,pca,0.0159
+rmse,max,1.0,sae,30.0
