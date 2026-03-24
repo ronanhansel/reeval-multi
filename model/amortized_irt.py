@@ -115,6 +115,9 @@ BETA_PHI = 10.0
 # Embedding kNN baseline settings
 KNN_K = 10
 
+# CSV append operations for study sweeps can queue behind many workers.
+CSV_LOCK_TIMEOUT = 7200
+
 warnings.filterwarnings('ignore')
 
 # Device selection
@@ -862,7 +865,7 @@ def append_support_thinning_rows(path, rows):
     if not path or not rows:
         return
 
-    lock = FileLock(f"{path}.lock", timeout=600)
+    lock = FileLock(f"{path}.lock", timeout=CSV_LOCK_TIMEOUT)
     with lock:
         if os.path.exists(path):
             try:
@@ -1025,7 +1028,7 @@ def append_outlier_robustness_rows(path, rows):
     if not path or not rows:
         return
 
-    lock = FileLock(f"{path}.lock", timeout=600)
+    lock = FileLock(f"{path}.lock", timeout=CSV_LOCK_TIMEOUT)
     with lock:
         if os.path.exists(path):
             try:
@@ -1053,7 +1056,7 @@ def append_pair_efficiency_rows(path, rows):
     if not path or not rows:
         return
 
-    lock = FileLock(f"{path}.lock", timeout=600)
+    lock = FileLock(f"{path}.lock", timeout=CSV_LOCK_TIMEOUT)
     with lock:
         if os.path.exists(path):
             try:
@@ -1164,7 +1167,7 @@ def append_neighbor_support_rows(path, rows):
     if not path or not rows:
         return
 
-    lock = FileLock(f"{path}.lock", timeout=600)
+    lock = FileLock(f"{path}.lock", timeout=CSV_LOCK_TIMEOUT)
     with lock:
         if os.path.exists(path):
             try:
