@@ -1418,7 +1418,8 @@ def required_non_mirt_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
 
 def required_baseline_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
     cols = list(required_non_mirt_metric_cols(baseline_profile))
-    cols.extend(['rmse_mirt', 'auc_mirt'])
+    if baseline_profile != BASELINE_PROFILE_KNN_ONLY:
+        cols.extend(['rmse_mirt', 'auc_mirt'])
     return cols
 
 
