@@ -575,11 +575,25 @@ run_support_thinning_study() {
 
         local araf_dir="${THIN_RESULT_DIR}/${ret_label}/araf_sweeps"
         local shared_baseline_dir="${THIN_RESULT_DIR}/${ret_label}/shared_baselines"
+        local legacy_araf_baseline_dir="${araf_dir}/baselines"
         RESULT_DIR="${araf_dir}"
         BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
         MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
         mkdir -p "${araf_dir}"
         mkdir -p "${shared_baseline_dir}"
+
+        # One-time compatibility migration: if a server still has the old
+        # per-ARAF baseline cache layout, copy it into shared baselines so
+        # --continue can reuse rows instead of recomputing from retention 0.05.
+        if [[ -d "${legacy_araf_baseline_dir}" ]]; then
+            for f in "${legacy_araf_baseline_dir}"/*; do
+                [[ -e "$f" ]] || continue
+                local dst="${shared_baseline_dir}/$(basename "$f")"
+                if [[ ! -f "${dst}" ]]; then
+                    cp "$f" "$dst"
+                fi
+            done
+        fi
 
         local pre_revision="max"
         local j_percentage="1.0"
