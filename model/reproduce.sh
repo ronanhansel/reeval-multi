@@ -329,6 +329,40 @@ run_exp() {
     eval "$cmd"
 }
 
+seed_support_thinning_araf_file() {
+    local retention_dir=$1
+    local araf_dir=$2
+    local araf_emb=$3
+    local target_file="${araf_dir}/amortized_irt_${araf_emb}_beta_pre_max_n_max.csv"
+
+    mkdir -p "${araf_dir}"
+
+    local best_source=""
+    local best_rows=-1
+    while IFS= read -r candidate; do
+        [[ -z "${candidate}" ]] && continue
+        local rows
+        rows=$(wc -l < "${candidate}" 2>/dev/null || echo 0)
+        if [[ "${rows}" -gt "${best_rows}" ]]; then
+            best_rows="${rows}"
+            best_source="${candidate}"
+        fi
+    done < <(find "${retention_dir}" -type f -name "amortized_irt_${araf_emb}_beta_pre_max_n_max*.csv" ! -path "${araf_dir}/*" 2>/dev/null)
+
+    if [[ -f "${target_file}" ]]; then
+        local target_rows
+        target_rows=$(wc -l < "${target_file}" 2>/dev/null || echo 0)
+        if [[ "${target_rows}" -ge "${best_rows}" ]]; then
+            return
+        fi
+    fi
+
+    if [[ -n "${best_source}" && "${best_rows}" -gt 0 ]]; then
+        cp "${best_source}" "${target_file}"
+        echo " -> Seeded ${target_file##*/} from ${best_source#${retention_dir}/} (${best_rows} lines)"
+    fi
+}
+
 run_tau_sweep() {
     local emb=$1
     local n=$2
@@ -534,6 +568,7 @@ run_support_thinning_study() {
         local pre_revision="max"
         local j_percentage="1.0"
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
+            seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
             local taus
             if $FULL_SWEEP; then
                 taus="$SHARED_TAUS"
