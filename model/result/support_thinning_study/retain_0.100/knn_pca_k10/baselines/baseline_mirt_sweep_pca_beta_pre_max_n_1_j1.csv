@@ -1,0 +1,2 @@
+seed,model_type,n_samples,pre_revision,j_percentage,baseline_embedding_type,mirt_dim,rmse_mirt,auc_mirt,val_rmse_mirt,val_auc_mirt
+0,beta,1,max,1.0,pca,2,0.4402633149756275,0.6493303120646515,0.34739985280187535,0.8740383426097711
