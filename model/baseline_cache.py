@@ -32,6 +32,13 @@ GROUPED_BASELINE_RE = re.compile(
 )
 
 
+def _last_non_null(series):
+    non_null = series.dropna()
+    if non_null.empty:
+        return np.nan
+    return non_null.iloc[-1]
+
+
 def normalize_pre_revision(value):
     if value is None:
         return 'none'
@@ -184,7 +191,7 @@ def _load_grouped_baseline_files(path):
     combined = pd.concat(frames, ignore_index=True)
     agg_map = {}
     for col in BASELINE_METRIC_COLS + BASELINE_AUX_COLS:
-        agg_map[col] = 'last'
+        agg_map[col] = _last_non_null
     combined = combined.groupby(BASELINE_KEY_COLS, dropna=False, as_index=False).agg(agg_map)
     combined['baseline_embedding_type'] = combined['baseline_embedding_type'].map(normalize_baseline_embedding_type)
     combined['agent_batch_size'] = [
