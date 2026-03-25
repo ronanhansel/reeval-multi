@@ -72,6 +72,7 @@ MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_m
 
 BASELINE_PROFILE_FULL = 'full'
 BASELINE_PROFILE_KNN_MIRT = 'knn_mirt'
+BASELINE_PROFILE_KNN_ONLY = 'knn_only'
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
@@ -1410,7 +1411,7 @@ def _row_has_complete_metrics(row, metric_cols):
 
 
 def required_non_mirt_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
-    if baseline_profile == BASELINE_PROFILE_KNN_MIRT:
+    if baseline_profile in {BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY}:
         return ['rmse_knn', 'auc_knn']
     return NON_MIRT_METRIC_COLS
 
@@ -1424,6 +1425,8 @@ def required_baseline_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
 def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max, baseline_profile=BASELINE_PROFILE_FULL):
     if not _row_has_complete_metrics(row, required_baseline_metric_cols(baseline_profile)):
         return False
+    if baseline_profile == BASELINE_PROFILE_KNN_ONLY:
+        return True
     if _optional_int(row.get('mirt_selection_version')) != MIRT_SELECTION_VERSION:
         return False
 
@@ -1442,7 +1445,10 @@ def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max, baseline
 
 
 def _baseline_payload_from_row(row):
-    payload = {k: float(row[k]) for k in BASELINE_METRIC_COLS}
+    payload = {}
+    for k in BASELINE_METRIC_COLS:
+        v = row.get(k, np.nan)
+        payload[k] = float(v) if not pd.isna(v) else np.nan
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     if selected_dim is not None:
         payload['selected_mirt_dim'] = selected_dim
@@ -1518,7 +1524,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 f"Prime the cache first with --baseline-only --embedding-type {baseline_embedding_type} "
                 f"--baseline-embedding-type {baseline_embedding_type}."
             )
-        if baseline_profile == BASELINE_PROFILE_KNN_MIRT:
+        if baseline_profile in {BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY}:
             p_knn, _ = compute_knn_predictions(
                 y_train, train_mask_current_t, data.get('x_j'), data['test_mask'], knn_k=knn_k
             )
@@ -1539,33 +1545,35 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k
             )
 
-    mirt_results = []
-    for mirt_dim in range(int(mirt_dim_min), int(mirt_dim_max) + 1):
-        sweep_key = baseline_key.copy()
-        sweep_key['mirt_dim'] = int(mirt_dim)
-        cached_mirt = try_get_cached_mirt_sweep_row(mirt_sweep_output, sweep_key)
-        if cached_mirt is not None:
-            mirt_results.append(cached_mirt)
-            continue
+    best_mirt = None
+    if baseline_profile != BASELINE_PROFILE_KNN_ONLY:
+        mirt_results = []
+        for mirt_dim in range(int(mirt_dim_min), int(mirt_dim_max) + 1):
+            sweep_key = baseline_key.copy()
+            sweep_key['mirt_dim'] = int(mirt_dim)
+            cached_mirt = try_get_cached_mirt_sweep_row(mirt_sweep_output, sweep_key)
+            if cached_mirt is not None:
+                mirt_results.append(cached_mirt)
+                continue
 
-        computed_mirt = compute_single_mirt_metrics(
-            N, J, y_train, train_mask_current_t,
-            data['y_oracle'], data['test_mask'], data['test_mask_t'],
-            model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim
-        )
-        append_mirt_sweep_row(
-            mirt_sweep_output,
-            {
-                **sweep_key,
-                'rmse_mirt': float(computed_mirt['rmse_mirt']),
-                'auc_mirt': float(computed_mirt['auc_mirt']),
-                'val_rmse_mirt': float(computed_mirt['val_rmse_mirt']),
-                'val_auc_mirt': float(computed_mirt['val_auc_mirt']),
-            }
-        )
-        mirt_results.append(computed_mirt)
+            computed_mirt = compute_single_mirt_metrics(
+                N, J, y_train, train_mask_current_t,
+                data['y_oracle'], data['test_mask'], data['test_mask_t'],
+                model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim
+            )
+            append_mirt_sweep_row(
+                mirt_sweep_output,
+                {
+                    **sweep_key,
+                    'rmse_mirt': float(computed_mirt['rmse_mirt']),
+                    'auc_mirt': float(computed_mirt['auc_mirt']),
+                    'val_rmse_mirt': float(computed_mirt['val_rmse_mirt']),
+                    'val_auc_mirt': float(computed_mirt['val_auc_mirt']),
+                }
+            )
+            mirt_results.append(computed_mirt)
 
-    best_mirt = select_best_mirt_result(mirt_results)
+        best_mirt = select_best_mirt_result(mirt_results)
 
     baseline_row = baseline_key.copy()
     baseline_row['agent_batch_size'] = compute_agent_batch_size(
@@ -1573,16 +1581,24 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     )
     for col, value in non_mirt_metrics.items():
         baseline_row[col] = float(value)
-    baseline_row['rmse_mirt'] = float(best_mirt['rmse_mirt'])
-    baseline_row['auc_mirt'] = float(best_mirt['auc_mirt'])
-    baseline_row['selected_mirt_dim'] = int(best_mirt['mirt_dim'])
-    baseline_row['mirt_sweep_min'] = int(mirt_dim_min)
-    baseline_row['mirt_sweep_max'] = int(mirt_dim_max)
-    baseline_row['mirt_selection_version'] = int(MIRT_SELECTION_VERSION)
+    if best_mirt is not None:
+        baseline_row['rmse_mirt'] = float(best_mirt['rmse_mirt'])
+        baseline_row['auc_mirt'] = float(best_mirt['auc_mirt'])
+        baseline_row['selected_mirt_dim'] = int(best_mirt['mirt_dim'])
+        baseline_row['mirt_sweep_min'] = int(mirt_dim_min)
+        baseline_row['mirt_sweep_max'] = int(mirt_dim_max)
+        baseline_row['mirt_selection_version'] = int(MIRT_SELECTION_VERSION)
+    else:
+        baseline_row['rmse_mirt'] = np.nan
+        baseline_row['auc_mirt'] = np.nan
+        baseline_row['selected_mirt_dim'] = np.nan
+        baseline_row['mirt_sweep_min'] = np.nan
+        baseline_row['mirt_sweep_max'] = np.nan
+        baseline_row['mirt_selection_version'] = np.nan
     append_baseline_row(baseline_output, baseline_row)
 
     cached_now = _baseline_payload_from_row(baseline_row)
-    return cached_now, best_mirt.get('mirt_state')
+    return cached_now, (best_mirt.get('mirt_state') if best_mirt is not None else None)
 
 
 def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='beta',
@@ -1636,11 +1652,11 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         baseline_profile=baseline_profile,
     )
 
-    rmse_2pl = baselines['rmse_2pl']
-    best_mirt_rmse = baselines['rmse_mirt']
-    auc_2pl = baselines['auc_2pl']
-    auc_mirt = baselines['auc_mirt']
-    selected_mirt_dim = int(baselines.get('selected_mirt_dim', K_MODEL))
+    rmse_2pl = float(baselines.get('rmse_2pl', np.nan))
+    best_mirt_rmse = float(baselines.get('rmse_mirt', np.nan))
+    auc_2pl = float(baselines.get('auc_2pl', np.nan))
+    auc_mirt = float(baselines.get('auc_mirt', np.nan))
+    selected_mirt_dim = int(baselines.get('selected_mirt_dim', K_MODEL)) if not pd.isna(baselines.get('selected_mirt_dim', K_MODEL)) else K_MODEL
 
     if embedding_type == 'rasch_2pl':
         return {
@@ -2710,8 +2726,8 @@ def main():
     parser.add_argument('--knn-k', type=int, default=KNN_K,
                         help='Number of nearest neighbors used by the kNN baseline.')
     parser.add_argument('--baseline-profile', type=str, default=BASELINE_PROFILE_FULL,
-                        choices=[BASELINE_PROFILE_FULL, BASELINE_PROFILE_KNN_MIRT],
-                        help='Baseline computation profile: full computes all classic baselines; knn_mirt computes only kNN + MIRT.')
+                        choices=[BASELINE_PROFILE_FULL, BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY],
+                        help='Baseline computation profile: full computes all classic baselines; knn_mirt computes only kNN + MIRT; knn_only computes only kNN.')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
                         help='Minimum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,

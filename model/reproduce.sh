@@ -584,7 +584,7 @@ run_support_thinning_study() {
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
             seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
             local taus="$SHARED_TAUS"
-            run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_mirt" "false"
+            run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false"
         done
 
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
@@ -594,7 +594,7 @@ run_support_thinning_study() {
                 BASELINE_CSV="${combo_dir}/baselines/baseline_metrics.csv"
                 MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
                 mkdir -p "${combo_dir}"
-                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_mirt"
+                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only"
             done
         done
     done
