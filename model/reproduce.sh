@@ -517,7 +517,6 @@ run_support_thinning_study() {
     local saved_result_dir="${RESULT_DIR}"
     local saved_baseline_csv="${BASELINE_CSV}"
     local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
-    local thin_csv="${THIN_RESULT_DIR}/support_thinning_beta_grid.csv"
 
     mkdir -p "${THIN_RESULT_DIR}"
 
@@ -525,6 +524,27 @@ run_support_thinning_study() {
     for retention in "${THIN_RETENTIONS[@]}"; do
         local ret_label
         ret_label=$(printf "retain_%0.3f" "$retention")
+
+        local araf_dir="${THIN_RESULT_DIR}/${ret_label}/araf_sweeps"
+        RESULT_DIR="${araf_dir}"
+        BASELINE_CSV="${araf_dir}/baselines/baseline_metrics.csv"
+        MIRT_SWEEP_CSV="${araf_dir}/baselines/mirt_sweep.csv"
+        mkdir -p "${araf_dir}"
+
+        local pre_revision="max"
+        local j_percentage="1.0"
+        for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
+            local taus
+            if $FULL_SWEEP; then
+                taus="$SHARED_TAUS"
+            elif [[ "${araf_emb}" == "raw" ]]; then
+                taus="0.029"
+            else
+                taus="0.054"
+            fi
+            run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10"
+        done
+
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
             for knn_k in "${THIN_K_VALUES[@]}"; do
                 local combo_dir="${THIN_RESULT_DIR}/${ret_label}/knn_${knn_emb}_k${knn_k}"
@@ -532,23 +552,17 @@ run_support_thinning_study() {
                 BASELINE_CSV="${combo_dir}/baselines/baseline_metrics.csv"
                 MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
                 mkdir -p "${combo_dir}"
-
-                local pre_revision="max"
-                local j_percentage="1.0"
-                for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
-                    local taus
-                    if $FULL_SWEEP; then
-                        taus="$SHARED_TAUS"
-                    elif [[ "${araf_emb}" == "raw" ]]; then
-                        taus="0.029"
-                    else
-                        taus="0.054"
-                    fi
-                    run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${combo_dir}" false false "${j_percentage}" "" "" "${thin_csv}" "" "${retention}" "${knn_emb}" "${knn_k}"
-                done
+                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}"
             done
         done
     done
+
+    echo " -> Rebuilding support-thinning summary from completed sweep files..."
+    local rebuild_cmd="python ${SCRIPT_DIR}/rebuild_support_thinning_summary.py"
+    if $QUIET; then
+        rebuild_cmd="$rebuild_cmd"
+    fi
+    eval "$rebuild_cmd"
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"
