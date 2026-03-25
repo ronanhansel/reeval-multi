@@ -119,6 +119,11 @@ if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY 
     RUN_MAIN_EXPERIMENTS=false
 fi
 
+THIN_ONLY_MODE=false
+if $SUPPORT_THINNING_STUDY && ! $PAIR_EFFICIENCY_STUDY && ! $NEIGHBOR_SUPPORT_STUDY && ! $OUTLIER_ROBUSTNESS_STUDY && ! $FULL_SWEEP; then
+    THIN_ONLY_MODE=true
+fi
+
 if $FULL_SWEEP; then
     echo "[MODE] Configured for FULL sweep ($NUM_SEEDS seeds)..."
 else
@@ -204,12 +209,16 @@ for f in os.listdir('${RESULT_DIR}'):
 fi
 echo ""
 
-echo "[BASELINE] Migrating existing CSVs to separated baseline schema..."
-baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
-if $QUIET; then
-    baseline_migrate_cmd="$baseline_migrate_cmd --quiet"
+if $THIN_ONLY_MODE; then
+    echo "[BASELINE] Thinning-only mode: skipping global baseline migration."
+else
+    echo "[BASELINE] Migrating existing CSVs to separated baseline schema..."
+    baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
+    if $QUIET; then
+        baseline_migrate_cmd="$baseline_migrate_cmd --quiet"
+    fi
+    eval "$baseline_migrate_cmd"
 fi
-eval "$baseline_migrate_cmd"
 
 # ── Run Functions ────────────────────────────────────────────────────────────
 run_baseline() {
@@ -220,9 +229,10 @@ run_baseline() {
     local j_pct=${5:-1.0}
     local baseline_emb=${6:-raw}
     local knn_k=${7:-10}
+    local baseline_profile=${8:-full}
 
     local seeds_csv=${seeds// /,}
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
@@ -237,7 +247,7 @@ run_baseline() {
         cmd="$cmd --quiet"
     fi
 
-    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct base_emb=${baseline_emb} k=${knn_k} seeds=[$seeds_csv]"
+    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -259,16 +269,18 @@ run_exp() {
     local train_retention=${15:-1.0}
     local baseline_emb=${16:-raw}
     local knn_k=${17:-10}
+    local baseline_profile=${18:-full}
+    local precompute_baseline=${19:-true}
 
     # Precompute/reuse baselines for all amortized-style runs.
-    if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" ]]; then
-        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k"
+    if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" && "$precompute_baseline" == "true" ]]; then
+        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile"
     fi
 
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi
@@ -325,7 +337,7 @@ run_exp() {
         cmd="$cmd --parallel $PARALLEL"
     fi
 
-    echo " -> Running: $emb (N=$n, $model, base_emb=${baseline_emb}, k=${knn_k}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+    echo " -> Running: $emb (N=$n, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -555,6 +567,8 @@ run_support_thinning_study() {
     mkdir -p "${THIN_RESULT_DIR}"
 
     echo " -> Running beta support-thinning ladder on Pre-max, J=1.0..."
+    echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
+    echo " -> Reusing cached outputs when seed/tau rows already exist."
     for retention in "${THIN_RETENTIONS[@]}"; do
         local ret_label
         ret_label=$(printf "retain_%0.3f" "$retention")
@@ -569,15 +583,8 @@ run_support_thinning_study() {
         local j_percentage="1.0"
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
             seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
-            local taus
-            if $FULL_SWEEP; then
-                taus="$SHARED_TAUS"
-            elif [[ "${araf_emb}" == "raw" ]]; then
-                taus="0.029"
-            else
-                taus="0.054"
-            fi
-            run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10"
+            local taus="$SHARED_TAUS"
+            run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_mirt" "false"
         done
 
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
@@ -587,7 +594,7 @@ run_support_thinning_study() {
                 BASELINE_CSV="${combo_dir}/baselines/baseline_metrics.csv"
                 MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
                 mkdir -p "${combo_dir}"
-                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}"
+                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_mirt"
             done
         done
     done

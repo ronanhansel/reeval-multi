@@ -70,6 +70,9 @@ BASELINE_METRIC_COLS = [
 NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
 MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 
+BASELINE_PROFILE_FULL = 'full'
+BASELINE_PROFILE_KNN_MIRT = 'knn_mirt'
+
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
 BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
@@ -1406,8 +1409,20 @@ def _row_has_complete_metrics(row, metric_cols):
     return all(not pd.isna(row.get(col)) for col in metric_cols)
 
 
-def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max):
-    if not _row_has_complete_metrics(row, BASELINE_METRIC_COLS):
+def required_non_mirt_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
+    if baseline_profile == BASELINE_PROFILE_KNN_MIRT:
+        return ['rmse_knn', 'auc_knn']
+    return NON_MIRT_METRIC_COLS
+
+
+def required_baseline_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
+    cols = list(required_non_mirt_metric_cols(baseline_profile))
+    cols.extend(['rmse_mirt', 'auc_mirt'])
+    return cols
+
+
+def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max, baseline_profile=BASELINE_PROFILE_FULL):
+    if not _row_has_complete_metrics(row, required_baseline_metric_cols(baseline_profile)):
         return False
     if _optional_int(row.get('mirt_selection_version')) != MIRT_SELECTION_VERSION:
         return False
@@ -1451,7 +1466,8 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                              baseline_output=DEFAULT_BASELINE_OUTPUT, pre_revision='none', j_percentage=1.0,
                              allow_compute=True, quiet=False, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                              mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT, embedding_type=None,
-                             baseline_embedding_type=None, train_retention=1.0, knn_k=KNN_K):
+                             baseline_embedding_type=None, train_retention=1.0, knn_k=KNN_K,
+                             baseline_profile=BASELINE_PROFILE_FULL):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
     actual_embedding_type = normalize_baseline_embedding_type(embedding_type)
     baseline_embedding_type = normalize_baseline_embedding_type(
@@ -1471,6 +1487,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         baseline_key,
         mirt_dim_min=mirt_dim_min,
         mirt_dim_max=mirt_dim_max,
+        baseline_profile=baseline_profile,
     )
     if cached is not None:
         return cached, None
@@ -1483,8 +1500,9 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
 
     existing_row = load_existing_baseline_row(baseline_output, baseline_key)
     non_mirt_metrics = None
-    if existing_row is not None and _row_has_complete_metrics(existing_row, NON_MIRT_METRIC_COLS):
-        non_mirt_metrics = {k: float(existing_row[k]) for k in NON_MIRT_METRIC_COLS}
+    expected_non_mirt_cols = required_non_mirt_metric_cols(baseline_profile)
+    if existing_row is not None and _row_has_complete_metrics(existing_row, expected_non_mirt_cols):
+        non_mirt_metrics = {k: float(existing_row[k]) for k in expected_non_mirt_cols}
 
     N, J, y_train, train_mask_current_t = build_training_targets(
         n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
@@ -1500,11 +1518,26 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 f"Prime the cache first with --baseline-only --embedding-type {baseline_embedding_type} "
                 f"--baseline-embedding-type {baseline_embedding_type}."
             )
-        non_mirt_metrics = compute_non_mirt_baseline_metrics(
-            N, J, y_train, train_mask_current_t,
-            data['y_oracle'], data['test_mask'], data['test_mask_t'],
-            model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k
-        )
+        if baseline_profile == BASELINE_PROFILE_KNN_MIRT:
+            p_knn, _ = compute_knn_predictions(
+                y_train, train_mask_current_t, data.get('x_j'), data['test_mask'], knn_k=knn_k
+            )
+            non_mirt_metrics = {
+                'rmse_naive': np.nan,
+                'rmse_rasch': np.nan,
+                'rmse_2pl': np.nan,
+                'auc_naive': np.nan,
+                'auc_rasch': np.nan,
+                'auc_2pl': np.nan,
+                'rmse_knn': compute_rmse(p_knn.cpu().numpy(), data['y_oracle'].cpu().numpy(), data['test_mask']),
+                'auc_knn': evaluate_auc(p_knn, data['y_oracle'], data['test_mask_t']),
+            }
+        else:
+            non_mirt_metrics = compute_non_mirt_baseline_metrics(
+                N, J, y_train, train_mask_current_t,
+                data['y_oracle'], data['test_mask'], data['test_mask_t'],
+                model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k
+            )
 
     mirt_results = []
     for mirt_dim in range(int(mirt_dim_min), int(mirt_dim_max) + 1):
@@ -1560,7 +1593,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    outlier_robustness_output=None,
                    train_retention=1.0, knn_k=KNN_K,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
-                   mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT):
+                   mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT,
+                   baseline_profile=BASELINE_PROFILE_FULL):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -1599,6 +1633,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         baseline_embedding_type=baseline_embedding_type,
         train_retention=train_retention,
         knn_k=knn_k,
+        baseline_profile=baseline_profile,
     )
 
     rmse_2pl = baselines['rmse_2pl']
@@ -2042,10 +2077,11 @@ def load_existing_baseline_row(path, key):
     return match.iloc[-1].to_dict()
 
 
-def try_get_cached_baseline(path, key, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL):
+def try_get_cached_baseline(path, key, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
+                            baseline_profile=BASELINE_PROFILE_FULL):
     """Lookup cached baseline row by key and requested MIRT sweep range."""
     row = load_existing_baseline_row(path, key)
-    if row is None or not _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max):
+    if row is None or not _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max, baseline_profile=baseline_profile):
         return None
     return _baseline_payload_from_row(row)
 
@@ -2523,6 +2559,7 @@ def run_single_config(config, args, n_values):
                     embedding_type=actual_emb_type,
                     baseline_embedding_type=args.baseline_embedding_type,
                     knn_k=args.knn_k,
+                    baseline_profile=args.baseline_profile,
                 )
                 continue
 
@@ -2542,7 +2579,8 @@ def run_single_config(config, args, n_values):
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
-                                    mirt_sweep_output=args.mirt_sweep_output)
+                                    mirt_sweep_output=args.mirt_sweep_output,
+                                    baseline_profile=args.baseline_profile)
 
             pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
             neighbor_support_rows = result.pop('neighbor_support_rows', [])
@@ -2671,6 +2709,9 @@ def main():
                         help='Retention rate for observed training entries (0,1].')
     parser.add_argument('--knn-k', type=int, default=KNN_K,
                         help='Number of nearest neighbors used by the kNN baseline.')
+    parser.add_argument('--baseline-profile', type=str, default=BASELINE_PROFILE_FULL,
+                        choices=[BASELINE_PROFILE_FULL, BASELINE_PROFILE_KNN_MIRT],
+                        help='Baseline computation profile: full computes all classic baselines; knn_mirt computes only kNN + MIRT.')
     parser.add_argument('--mirt-dim-min', type=int, default=K_MODEL,
                         help='Minimum MIRT dimension to evaluate for the baseline sweep.')
     parser.add_argument('--mirt-dim-max', type=int, default=K_MODEL,
@@ -2827,6 +2868,7 @@ def main():
                     baseline_key,
                     mirt_dim_min=args.mirt_dim_min,
                     mirt_dim_max=args.mirt_dim_max,
+                    baseline_profile=args.baseline_profile,
                 )
                 if cached is not None:
                     completed_configs.add((int(seed), float(taus[0])))
