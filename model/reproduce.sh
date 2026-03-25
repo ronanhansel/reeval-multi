@@ -574,10 +574,12 @@ run_support_thinning_study() {
         ret_label=$(printf "retain_%0.3f" "$retention")
 
         local araf_dir="${THIN_RESULT_DIR}/${ret_label}/araf_sweeps"
+        local shared_baseline_dir="${THIN_RESULT_DIR}/${ret_label}/shared_baselines"
         RESULT_DIR="${araf_dir}"
-        BASELINE_CSV="${araf_dir}/baselines/baseline_metrics.csv"
-        MIRT_SWEEP_CSV="${araf_dir}/baselines/mirt_sweep.csv"
+        BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
+        MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
         mkdir -p "${araf_dir}"
+        mkdir -p "${shared_baseline_dir}"
 
         local pre_revision="max"
         local j_percentage="1.0"
