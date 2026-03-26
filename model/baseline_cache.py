@@ -28,7 +28,7 @@ BASELINE_METHOD_SPECS = {
     'knn': ('auc_knn', 'rmse_knn'),
 }
 GROUPED_BASELINE_RE = re.compile(
-    r"^baseline_(naive|rasch|irt_2pl|mirt|knn)_([^_]+)_(beta|bernoulli)_pre_([^_]+)_n_([^_]+)_j(.+)\.csv$"
+    r"^baseline_(naive|rasch|irt_2pl|mirt|knn)_([^_]+)_(beta|bernoulli)_pre_([^_]+)_n_([^_]+)_j(.+?)(?:_ret_[^_]+)?\.csv$"
 )
 
 
@@ -85,15 +85,20 @@ def _normalize_key_payload(payload):
     return out
 
 
+def _format_numeric_token(value):
+    return f"{float(value):.6f}".rstrip('0').rstrip('.')
+
+
 def grouped_baseline_file(path, method_key, key):
     key = _normalize_key_payload(key)
     directory = os.path.dirname(path)
-    j_token = f"{key['j_percentage']:.6f}".rstrip('0').rstrip('.')
+    j_token = _format_numeric_token(key['j_percentage'])
+    retention_token = _format_numeric_token(key['train_retention'])
     return os.path.join(
         directory,
         (
             f"baseline_{method_key}_{key['baseline_embedding_type']}_{key['model_type']}"
-            f"_pre_{key['pre_revision']}_n_{key['n_samples']}_j{j_token}.csv"
+            f"_pre_{key['pre_revision']}_n_{key['n_samples']}_j{j_token}_ret_{retention_token}.csv"
         ),
     )
 
@@ -101,12 +106,13 @@ def grouped_baseline_file(path, method_key, key):
 def grouped_mirt_sweep_file(path, key):
     key = _normalize_key_payload(key)
     directory = os.path.dirname(path)
-    j_token = f"{key['j_percentage']:.6f}".rstrip('0').rstrip('.')
+    j_token = _format_numeric_token(key['j_percentage'])
+    retention_token = _format_numeric_token(key['train_retention'])
     return os.path.join(
         directory,
         (
             f"baseline_mirt_sweep_{key['baseline_embedding_type']}_{key['model_type']}"
-            f"_pre_{key['pre_revision']}_n_{key['n_samples']}_j{j_token}.csv"
+            f"_pre_{key['pre_revision']}_n_{key['n_samples']}_j{j_token}_ret_{retention_token}.csv"
         ),
     )
 

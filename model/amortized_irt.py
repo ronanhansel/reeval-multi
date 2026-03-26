@@ -1977,6 +1977,7 @@ def _normalize_key_payload(payload):
     out['n_samples'] = int(out['n_samples'])
     out['pre_revision'] = normalize_pre_revision(out['pre_revision'])
     out['j_percentage'] = normalize_j_percentage(out['j_percentage'])
+    out['train_retention'] = normalize_train_retention(out.get('train_retention', 1.0))
     out['baseline_embedding_type'] = normalize_baseline_embedding_type(out['baseline_embedding_type'])
     return out
 

@@ -72,6 +72,10 @@ def parse_result_path(path: Path):
 
 def scan_result_file(path: Path, meta: dict):
     rows = []
+    try:
+        source_path = str(path.relative_to(SCRIPT_DIR.parent))
+    except Exception:
+        source_path = str(path)
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle)
         if not reader.fieldnames:
@@ -95,9 +99,12 @@ def scan_result_file(path: Path, meta: dict):
                     "observed_train_pairs": float(record.get("observed_train_pairs", "")) if record.get("observed_train_pairs") not in ("", None) else "",
                     "auc_araf": float(record["auc_amortized"]),
                     "rmse_araf": float(record["rmse_amortized"]),
-                    "auc_knn": record.get("auc_knn", ""),
-                    "rmse_knn": record.get("rmse_knn", ""),
-                    "source_path": str(path.relative_to(SCRIPT_DIR.parent)),
+                    # Keep kNN metrics decoupled from ARAF files. They are backfilled
+                    # from kNN baseline artifacts so expensive ARAF sweeps do not need
+                    # reruns when only kNN baselines are refreshed.
+                    "auc_knn": "",
+                    "rmse_knn": "",
+                    "source_path": source_path,
                 }
                 if meta.get("generic_araf", False):
                     for baseline_embedding_type in KNN_EMBEDDINGS:
@@ -118,10 +125,10 @@ def scan_result_file(path: Path, meta: dict):
     return rows
 
 
-def build_knn_lookup():
+def build_knn_lookup(result_dir: Path):
     """Recover kNN metrics from matching baseline cache files inside each thinning combo folder."""
     lookup = {}
-    for baseline_path in RESULT_DIR.rglob("baseline_metrics.csv"):
+    for baseline_path in result_dir.rglob("baseline_metrics.csv"):
         try:
             with baseline_path.open(newline="") as handle:
                 reader = csv.DictReader(handle)
@@ -149,7 +156,7 @@ def build_knn_lookup():
                         continue
         except Exception:
             continue
-    for baseline_path in RESULT_DIR.rglob("baseline_knn_*.csv"):
+    for baseline_path in result_dir.rglob("baseline_knn_*.csv"):
         try:
             with baseline_path.open(newline="") as handle:
                 reader = csv.DictReader(handle)
@@ -233,21 +240,20 @@ def main():
         combo_counts[combo_key] += len(scanned)
         file_counts[str(path.relative_to(result_dir))] = len(scanned)
 
-    knn_lookup = build_knn_lookup()
+    knn_lookup = build_knn_lookup(result_dir)
     for row in rows:
-        if row["auc_knn"] == "" or row["rmse_knn"] == "":
-            key = (
-                row["seed"],
-                row["pre_revision"],
-                round(float(row["j_percentage"]), 3),
-                round(float(row["train_retention"]), 3),
-                row["baseline_embedding_type"],
-                int(row["knn_k"]),
-            )
-            found = knn_lookup.get(key)
-            if found is not None:
-                row["auc_knn"] = found["auc_knn"]
-                row["rmse_knn"] = found["rmse_knn"]
+        key = (
+            row["seed"],
+            row["pre_revision"],
+            round(float(row["j_percentage"]), 3),
+            round(float(row["train_retention"]), 3),
+            row["baseline_embedding_type"],
+            int(row["knn_k"]),
+        )
+        found = knn_lookup.get(key)
+        if found is not None:
+            row["auc_knn"] = found["auc_knn"]
+            row["rmse_knn"] = found["rmse_knn"]
 
     deduped = {}
     for row in rows:
