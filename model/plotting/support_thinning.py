@@ -178,6 +178,48 @@ def plot(auc_df, rmse_df):
     print(f"Support-thinning ladder figure saved to {out_path}")
 
 
+def plot_auc_degradation(auc_df):
+    """Plot AUC drop relative to the full-retention (1.0) checkpoint."""
+    full_mask = np.isclose(auc_df['retention'].to_numpy(dtype=float), 1.0, atol=1e-9)
+    if not np.any(full_mask):
+        print("Support-thinning degradation plot skipped: no retention=1.0 row found.")
+        return
+
+    full_row = auc_df[full_mask].iloc[0]
+    araf_ref = float(full_row['araf_mean'])
+    knn_ref = float(full_row['knn_mean'])
+
+    x = auc_df['retention'].to_numpy(dtype=float)
+    araf_drop = araf_ref - auc_df['araf_mean'].to_numpy(dtype=float)
+    knn_drop = knn_ref - auc_df['knn_mean'].to_numpy(dtype=float)
+    araf_sem = auc_df['araf_sem'].to_numpy(dtype=float)
+    knn_sem = auc_df['knn_sem'].to_numpy(dtype=float)
+
+    plt.rcParams.update(get_bundle())
+    fig, ax = plt.subplots(1, 1, figsize=(4.2, 2.9), constrained_layout=True)
+
+    ax.plot(x, knn_drop, color='orange', linestyle='--', marker='o', linewidth=1.6, label='kNN')
+    ax.fill_between(x, knn_drop - knn_sem, knn_drop + knn_sem, color='orange', alpha=0.18)
+    ax.plot(x, araf_drop, color='steelblue', marker='o', linewidth=1.6, label='ARAF')
+    ax.fill_between(x, araf_drop - araf_sem, araf_drop + araf_sem, color='steelblue', alpha=0.18)
+
+    ax.set_title('AUC Degradation vs Retention', fontsize=10)
+    ax.set_xlabel('Train Retention Ratio', fontsize=9)
+    ax.set_ylabel('AUC Drop From Retention 1.0', fontsize=9)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{v:.2f}" for v in x], fontsize=8)
+    ax.grid(linestyle=':', alpha=0.8)
+    ax.tick_params(labelsize=8)
+
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', ncol=2, frameon=True, fontsize=8)
+
+    out_path = os.path.join(FIGURE_DIR, 'support_thinning_beta_auc_degradation.pdf')
+    plt.savefig(out_path, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Support-thinning AUC degradation figure saved to {out_path}")
+
+
 def main():
     df = load_data()
     if df is None or df.empty:
@@ -188,6 +230,7 @@ def main():
         print("Support-thinning selection produced no rows; skipping thinning-study plot.")
         return
     plot(auc_df, rmse_df)
+    plot_auc_degradation(auc_df)
 
 
 if __name__ == '__main__':

@@ -230,6 +230,7 @@ run_baseline() {
     local baseline_emb=${6:-raw}
     local knn_k=${7:-10}
     local baseline_profile=${8:-full}
+    local train_retention=${9:-1.0}
 
     local seeds_csv=${seeds// /,}
     local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
@@ -240,6 +241,9 @@ run_baseline() {
     if [[ "$j_pct" != "1.0" ]]; then
         cmd="$cmd --j-percentage $j_pct"
     fi
+    if [[ "$train_retention" != "1.0" ]]; then
+        cmd="$cmd --train-retention $train_retention"
+    fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
     fi
@@ -247,7 +251,7 @@ run_baseline() {
         cmd="$cmd --quiet"
     fi
 
-    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
+    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct retention=${train_retention} base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -274,7 +278,7 @@ run_exp() {
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" && "$precompute_baseline" == "true" ]]; then
-        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile"
+        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile" "$train_retention"
     fi
 
     local taus_csv=${taus// /,}
@@ -610,7 +614,7 @@ run_support_thinning_study() {
                 BASELINE_CSV="${combo_dir}/baselines/baseline_metrics.csv"
                 MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
                 mkdir -p "${combo_dir}"
-                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only"
+                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}"
             done
         done
     done

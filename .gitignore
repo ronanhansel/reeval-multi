@@ -61,3 +61,5 @@ colm-26/
 
 !config/
 !config/**
+
+support_thinning_beta_grid.csv
