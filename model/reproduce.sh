@@ -610,10 +610,38 @@ run_support_thinning_study() {
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
             for knn_k in "${THIN_K_VALUES[@]}"; do
                 local combo_dir="${THIN_RESULT_DIR}/${ret_label}/knn_${knn_emb}_k${knn_k}"
+                local baselines_dir="${combo_dir}/baselines"
                 RESULT_DIR="${combo_dir}"
-                BASELINE_CSV="${combo_dir}/baselines/baseline_metrics.csv"
-                MIRT_SWEEP_CSV="${combo_dir}/baselines/mirt_sweep.csv"
+                BASELINE_CSV="${baselines_dir}/baseline_metrics.csv"
+                MIRT_SWEEP_CSV="${baselines_dir}/mirt_sweep.csv"
                 mkdir -p "${combo_dir}"
+
+                # Guard against stale retention-mismatched grouped caches lingering
+                # from older runs. Keep only files matching this retention token.
+                local retention_token
+                retention_token=$(python - <<PY
+v = float(${retention})
+print(f"{v:.6f}".rstrip("0").rstrip("."))
+PY
+)
+                python - <<PY
+from pathlib import Path
+
+ret = ${retention_token@Q}
+keep_suffix = f"_ret_{ret}.csv"
+base = Path(${baselines_dir@Q})
+if base.is_dir():
+    for p in base.glob("baseline_knn_*.csv"):
+        if p.name.endswith(keep_suffix):
+            continue
+        # Remove mismatched grouped files and legacy non-retention files.
+        p.unlink(missing_ok=True)
+    for p in base.glob("baseline_mirt_sweep_*.csv"):
+        if p.name.endswith(keep_suffix):
+            continue
+        p.unlink(missing_ok=True)
+PY
+
                 run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}"
             done
         done

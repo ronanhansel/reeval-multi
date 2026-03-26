@@ -2596,6 +2596,7 @@ def run_single_config(config, args, n_values):
                     mirt_sweep_output=args.mirt_sweep_output,
                     embedding_type=actual_emb_type,
                     baseline_embedding_type=args.baseline_embedding_type,
+                    train_retention=args.train_retention,
                     knn_k=args.knn_k,
                     baseline_profile=args.baseline_profile,
                 )
