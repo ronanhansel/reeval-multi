@@ -24,6 +24,7 @@ PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
 SUPPORT_RESULT_DIR="${RESULT_DIR}/neighbor_support_study"
 THIN_RESULT_DIR="${RESULT_DIR}/support_thinning_study"
 OUTLIER_RESULT_DIR="${RESULT_DIR}/outlier_robustness_study"
+SAMPLE_SIZE_RESULT_DIR="${RESULT_DIR}/sample_size_study"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -39,6 +40,7 @@ PAIR_EFFICIENCY_STUDY=false
 NEIGHBOR_SUPPORT_STUDY=false
 SUPPORT_THINNING_STUDY=false
 OUTLIER_ROBUSTNESS_STUDY=false
+SAMPLE_SIZE_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
 PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
@@ -47,6 +49,8 @@ THIN_RETENTIONS=("0.05" "0.1" "0.25" "0.5" "1.0")
 THIN_ARAF_EMBEDDINGS=("raw" "pca")
 THIN_KNN_EMBEDDINGS=("raw" "pca")
 THIN_K_VALUES=("5" "10" "20" "50")
+SAMPLE_PRE_LEVELS=("4" "8" "16" "32" "64" "max")
+SAMPLE_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "0.9")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -88,6 +92,10 @@ while [[ $# -gt 0 ]]; do
             SUPPORT_THINNING_STUDY=true
             shift
             ;;
+        --sample-size|--sample_size)
+            SAMPLE_SIZE_STUDY=true
+            shift
+            ;;
         --outlier-robustness-study)
             OUTLIER_ROBUSTNESS_STUDY=true
             shift
@@ -113,9 +121,13 @@ RUN_OUTLIER_ROBUSTNESS_STUDY=false
 if $OUTLIER_ROBUSTNESS_STUDY; then
     RUN_OUTLIER_ROBUSTNESS_STUDY=true
 fi
+RUN_SAMPLE_SIZE_STUDY=false
+if $FULL_SWEEP || $SAMPLE_SIZE_STUDY; then
+    RUN_SAMPLE_SIZE_STUDY=true
+fi
 
 RUN_MAIN_EXPERIMENTS=true
-if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY || $OUTLIER_ROBUSTNESS_STUDY; then
+if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY || $OUTLIER_ROBUSTNESS_STUDY || $SAMPLE_SIZE_STUDY; then
     RUN_MAIN_EXPERIMENTS=false
 fi
 
@@ -659,6 +671,55 @@ PY
     MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
 }
 
+run_sample_size_study() {
+    local saved_result_dir="${RESULT_DIR}"
+    local saved_baseline_csv="${BASELINE_CSV}"
+    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
+
+    mkdir -p "${SAMPLE_SIZE_RESULT_DIR}"
+
+    # Remove legacy scaling-law outputs from the root result dir so stale files
+    # do not contaminate analyses now that sample-size lives in its own folder.
+    python - <<PY
+import re
+from pathlib import Path
+
+root = Path(${saved_result_dir@Q})
+if root.is_dir():
+    pat = re.compile(r"^amortized_irt_(sae|pca|raw)_beta_pre_(4|8|16|32|64|max)_n_max(?:_j(?:0\.1|0\.3|0\.5|0\.7|0\.9))?(?:_braw_k10)?\.csv$")
+    removed = 0
+    for p in root.iterdir():
+        if p.is_file() and pat.match(p.name):
+            p.unlink(missing_ok=True)
+            removed += 1
+    if removed:
+        print(f" -> Removed {removed} deprecated root sample-size CSV(s).")
+PY
+
+    RESULT_DIR="${SAMPLE_SIZE_RESULT_DIR}"
+    BASELINE_CSV="${SAMPLE_SIZE_RESULT_DIR}/baselines/baseline_metrics.csv"
+    MIRT_SWEEP_CSV="${SAMPLE_SIZE_RESULT_DIR}/baselines/mirt_sweep.csv"
+    mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
+
+    echo " -> Running dedicated sample-size study into ${RESULT_DIR} ..."
+
+    for pre in "${SAMPLE_PRE_LEVELS[@]}"; do
+        run_tau_sweep sae max beta 0.16 "$pre" "1.0"
+        run_tau_sweep pca max beta 0.054 "$pre" "1.0"
+        run_tau_sweep raw max beta 0.029 "$pre" "1.0"
+    done
+
+    for j in "${SAMPLE_J_LEVELS[@]}"; do
+        run_tau_sweep sae max beta 0.16 "32" "$j"
+        run_tau_sweep pca max beta 0.054 "32" "$j"
+        run_tau_sweep raw max beta 0.029 "32" "$j"
+    done
+
+    RESULT_DIR="${saved_result_dir}"
+    BASELINE_CSV="${saved_baseline_csv}"
+    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
+}
+
 run_outlier_robustness_study() {
     local saved_result_dir="${RESULT_DIR}"
     local saved_baseline_csv="${BASELINE_CSV}"
@@ -853,6 +914,9 @@ if ! $ONLY_PLOT && $RUN_MAIN_EXPERIMENTS; then
     if $RUN_SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
     fi
+    if $RUN_SAMPLE_SIZE_STUDY; then
+        run_sample_size_study
+    fi
     if $RUN_OUTLIER_ROBUSTNESS_STUDY; then
         run_outlier_robustness_study
     fi
@@ -869,6 +933,9 @@ if ! $ONLY_PLOT && ! $RUN_MAIN_EXPERIMENTS; then
     if $SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
     fi
+    if $SAMPLE_SIZE_STUDY; then
+        run_sample_size_study
+    fi
     if $OUTLIER_ROBUSTNESS_STUDY; then
         run_outlier_robustness_study
     fi
@@ -880,16 +947,22 @@ echo "=========================================================="
 echo "  GENERATING PLOTS"
 echo "=========================================================="
 cd "${REPO_ROOT}"
-if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY; then
-    PYTHONPATH=. python3 -m model.plotting.main --pair-efficiency-study
+if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY || $SAMPLE_SIZE_STUDY || $OUTLIER_ROBUSTNESS_STUDY; then
+    if $PAIR_EFFICIENCY_STUDY; then
+        PYTHONPATH=. python3 -m model.plotting.main --pair-efficiency-study
+    fi
     if $NEIGHBOR_SUPPORT_STUDY; then
         PYTHONPATH=. python3 -m model.plotting.main --neighbor-support-study
     fi
     if $SUPPORT_THINNING_STUDY; then
         PYTHONPATH=. python3 -m model.plotting.main --support-thinning-study
     fi
-elif $SUPPORT_THINNING_STUDY; then
-    PYTHONPATH=. python3 -m model.plotting.main --support-thinning-study
+    if $SAMPLE_SIZE_STUDY; then
+        PYTHONPATH=. python3 -m model.plotting.main --sample-size
+    fi
+    if $OUTLIER_ROBUSTNESS_STUDY; then
+        PYTHONPATH=. python3 -m model.plotting.main --outlier-robustness-study
+    fi
 else
     PYTHONPATH=. python3 -m model.plotting.main --all
 fi

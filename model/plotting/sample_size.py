@@ -23,7 +23,7 @@ from model.baseline_cache import load_baseline_store
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
-RESULT_DIR = os.path.join(MODEL_DIR, 'result')
+RESULT_DIR = os.path.join(MODEL_DIR, 'result', 'sample_size_study')
 BASELINE_PATH = os.path.join(RESULT_DIR, 'baselines', 'baseline_metrics.csv')
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)

@@ -283,13 +283,9 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     ])
     optimizer_tau = optim.SGD([model.tau_raw], lr=0.05)
 
-    best_state = None
-    best_loss = float('inf')
-    best_rmse = float('inf')
-
     eps = 1e-6
 
-    for epoch in range(epochs + 1):
+    for epoch in range(epochs):
         model.train()
         optimizer.zero_grad()
         optimizer_tau.zero_grad()
@@ -321,11 +317,6 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
         loss_sparsity = current_lambda * torch.sum(tau)
         total_loss = loss_fit + loss_sparsity
 
-        if total_loss.item() < best_loss:
-            best_loss = total_loss.item()
-            best_rmse = curr_rmse if 'curr_rmse' in locals() else best_rmse
-            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-
         (loss_fit + loss_sparsity).backward()
         optimizer.step()
         optimizer_tau.step()
@@ -346,23 +337,24 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
                 
                 # Train metrics
                 train_rmse = compute_rmse(p_eval.cpu().numpy(), y_train.cpu().numpy(), train_mask_t.cpu().numpy())
-                train_auc = evaluate_auc(p_eval, y_train, train_mask_t)
                 
                 # Test metrics
                 curr_rmse = compute_rmse(p_eval.cpu().numpy(), y_oracle.cpu().numpy(), test_mask_oracle)
-                curr_auc = evaluate_auc(p_eval, y_oracle, torch.from_numpy(test_mask_oracle).to(device))
-                best_rmse = min(best_rmse, curr_rmse)
                 
                 tau_vals = model.get_tau()
                 if not quiet:
-                    print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} AUC: {train_auc:.4f} | Test RMSE: {curr_rmse:.4f} AUC: {curr_auc:.4f}")
+                    print(f"Epoch {epoch:4d} | Loss: {loss_fit.item():.4f} | Train RMSE: {train_rmse:.4f} | Test RMSE: {curr_rmse:.4f}")
                     
                     active_indices = torch.where(tau_vals > SNAPPING_THRESHOLD)[0].cpu().numpy()
                     print(f"  Active Dims ({len(active_indices)}): Tau Mean={tau_vals.mean().item():.4f}, Max={tau_vals.max().item():.4f}")
                     print("-" * 40)
 
     final_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-    return best_rmse, best_state, final_state
+    model.eval()
+    with torch.no_grad():
+        p_final = model()
+        final_rmse = compute_rmse(p_final.cpu().numpy(), y_oracle.cpu().numpy(), test_mask_oracle)
+    return final_rmse, final_state
 
 
     # Combined parser moved to main()
@@ -558,7 +550,8 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     return all_dfs, global_shared_indices, raw_embs_map, embedding_type
 
 
-def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', j_percentage=1.0):
+def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', j_percentage=1.0,
+                            pre_revision='none'):
     """Prepare oracle ground truth, train/test splits, and embedding tensors."""
     print("=" * 60)
     print("PREPARING EXPERIMENT DATA")
@@ -608,7 +601,12 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 
     n_test = int(TEST_SIZE * J)
     test_idx = J_indices[:n_test]
-    train_idx = J_indices[n_test:]
+    # For pre-revision experiments, train on the full pre-revision support and
+    # keep the post-style held-out columns only for evaluation reporting.
+    if str(pre_revision).strip().lower() != 'none':
+        train_idx = J_indices
+    else:
+        train_idx = J_indices[n_test:]
 
     print(f"Train items: {len(train_idx)}, Test items: {len(test_idx)}")
 
@@ -655,8 +653,10 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     return {
         'all_dfs': all_dfs_filtered, # Pass filtered dataframes
         'y_oracle': y_oracle,
+        'y_auc_oracle': y_oracle,
         'train_mask_t': train_mask_t,
         'test_mask_t': test_mask_t,
+        'auc_test_mask_t': test_mask_t,
         'test_mask': test_mask,
         'x_j': x_j,
         'test_idx': test_idx,
@@ -1195,7 +1195,8 @@ def append_neighbor_support_rows(path, rows):
 
 
 def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-                                      model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K):
+                                      model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
+                                      y_auc_oracle=None, auc_mask_t=None):
     """Compute non-MIRT baselines for one configuration."""
     # 1. Naive item-mean baseline
     valid_counts = train_mask_current_t.sum(dim=0)
@@ -1205,24 +1206,27 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
     p_naive = item_means.unsqueeze(0).expand(N, J)
 
     rmse_naive = compute_rmse(p_naive.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_naive = evaluate_auc(p_naive, y_oracle, test_mask_t)
+    y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
+    auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
+
+    auc_naive = evaluate_auc(p_naive, y_auc_oracle, auc_mask_t)
 
     # 2. Rasch (1PL)
     p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
     rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_rasch = evaluate_auc(p_rasch, y_oracle, test_mask_t)
+    auc_rasch = evaluate_auc(p_rasch, y_auc_oracle, auc_mask_t)
 
     # 3. Rasch (2PL)
     p_2pl = train_2pl(N, J, y_train, train_mask_current_t)
     rmse_2pl = compute_rmse(p_2pl.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_2pl = evaluate_auc(p_2pl, y_oracle, test_mask_t)
+    auc_2pl = evaluate_auc(p_2pl, y_auc_oracle, auc_mask_t)
 
     # 4. Embedding kNN cold-start baseline (predict held-out items from nearest train items)
     # Uses item embeddings only and observed user responses on train items.
     p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k)
 
     rmse_knn = compute_rmse(p_knn.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_knn = evaluate_auc(p_knn, y_oracle, test_mask_t)
+    auc_knn = evaluate_auc(p_knn, y_auc_oracle, auc_mask_t)
 
     return {
         'rmse_naive': rmse_naive,
@@ -1299,7 +1303,8 @@ def build_mirt_validation_masks(y_train, train_mask_current_t, validation_fracti
 
 
 def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-                                model_type='beta', beta_phi=BETA_PHI, mirt_dim=K_MODEL):
+                                model_type='beta', beta_phi=BETA_PHI, mirt_dim=K_MODEL,
+                                y_auc_oracle=None, auc_mask_t=None):
     """Train one standalone MIRT baseline at a specific latent dimension."""
     fit_mask_t, val_mask_t = build_mirt_validation_masks(y_train, train_mask_current_t)
     mirt_model = MIRTModel(N, J, mirt_dim).to(device)
@@ -1365,7 +1370,9 @@ def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, t
                 best_val_auc = evaluate_auc(best_p_mirt, y_train, fit_mask_t)
             best_state = {k: v.detach().cpu().clone() for k, v in mirt_model.state_dict().items()}
 
-    auc_mirt = evaluate_auc(best_p_mirt, y_oracle, test_mask_t)
+    y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
+    auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
+    auc_mirt = evaluate_auc(best_p_mirt, y_auc_oracle, auc_mask_t)
 
     return {
         'rmse_mirt': float(best_test_rmse),
@@ -1538,13 +1545,14 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 'auc_rasch': np.nan,
                 'auc_2pl': np.nan,
                 'rmse_knn': compute_rmse(p_knn.cpu().numpy(), data['y_oracle'].cpu().numpy(), data['test_mask']),
-                'auc_knn': evaluate_auc(p_knn, data['y_oracle'], data['test_mask_t']),
+                'auc_knn': evaluate_auc(p_knn, data['y_auc_oracle'], data['auc_test_mask_t']),
             }
         else:
             non_mirt_metrics = compute_non_mirt_baseline_metrics(
                 N, J, y_train, train_mask_current_t,
                 data['y_oracle'], data['test_mask'], data['test_mask_t'],
-                model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k
+                model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k,
+                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t']
             )
 
     best_mirt = None
@@ -1561,7 +1569,8 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
             computed_mirt = compute_single_mirt_metrics(
                 N, J, y_train, train_mask_current_t,
                 data['y_oracle'], data['test_mask'], data['test_mask_t'],
-                model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim
+                model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim,
+                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t']
             )
             append_mirt_sweep_row(
                 mirt_sweep_output,
@@ -1700,16 +1709,15 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
 
     # 5. Amortized IRT (our method)
     model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
-    best_rmse, best_state, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
+    final_rmse, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                      model_type=model_type, beta_phi=beta_phi,
                                      epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet)
 
     model.eval()
     with torch.no_grad():
-        if best_state is not None:
-            model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
+        model.load_state_dict({k: v.to(device) for k, v in final_state.items()})
         p_amortized = model()
-        auc_amortized = evaluate_auc(p_amortized, y_oracle, test_mask_t)
+        auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
         
         tau_val = model.get_tau()
         active_mask = tau_val > TAU_THRESHOLD
@@ -1737,9 +1745,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             p_amortized,
             y_oracle,
             test_mask,
-            test_mask_t,
+            data['auc_test_mask_t'],
             baselines,
-            best_rmse,
+            final_rmse,
             auc_amortized,
         )
 
@@ -1755,11 +1763,11 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             embedding_type,
             baseline_embedding_type,
             x_j,
-            test_mask_t,
+            data['auc_test_mask_t'],
             test_idx,
             p_knn,
             p_amortized,
-            y_oracle,
+            data['y_auc_oracle'],
         )
 
     return {
@@ -1768,7 +1776,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
         'observed_train_pairs': observed_train_pairs,
-        'rmse_amortized': best_rmse,
+        'rmse_amortized': final_rmse,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
         'active_indices': str(active_dim_indices),
@@ -1783,7 +1791,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 baseline_embedding_type,
                 observed_train_pairs,
                 baselines,
-                best_rmse,
+                final_rmse,
                 auc_amortized,
             )] if pair_efficiency_output else []
         ),
@@ -1800,12 +1808,12 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 train_retention,
                 observed_train_pairs,
                 baselines,
-                best_rmse,
+                final_rmse,
                 auc_amortized,
             )] if support_thinning_output else []
         ),
         'outlier_robustness_rows': outlier_robustness_rows,
-        'model_state': best_state,
+        'model_state': final_state,
         'final_state': final_state
     }
 
@@ -2559,8 +2567,9 @@ def run_single_config(config, args, n_values):
             pass # File lock contention, just run it
 
     # Prepare data on the local device
-    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, 
-                                 embedding_type=actual_emb_type, j_percentage=args.j_percentage)
+    data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map,
+                                 embedding_type=actual_emb_type, j_percentage=args.j_percentage,
+                                 pre_revision=args.pre_revision)
     # Move tensors to the correct device
     data['x_j'] = data['x_j'].to(local_device)
     data['y_oracle'] = data['y_oracle'].to(local_device)
