@@ -15,7 +15,7 @@ BASELINE_METRIC_COLS = [
     'rmse_knn', 'auc_knn',
 ]
 NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
-BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'baseline_embedding_type']
+BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'train_retention', 'baseline_embedding_type']
 BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
@@ -50,6 +50,10 @@ def normalize_j_percentage(value):
     return float(f"{float(value):.6f}")
 
 
+def normalize_train_retention(value):
+    return float(f"{float(value):.6f}")
+
+
 def normalize_baseline_embedding_type(value):
     if value is None or pd.isna(value):
         return 'pca'
@@ -76,6 +80,7 @@ def _normalize_key_payload(payload):
     out['n_samples'] = int(out['n_samples'])
     out['pre_revision'] = normalize_pre_revision(out['pre_revision'])
     out['j_percentage'] = normalize_j_percentage(out['j_percentage'])
+    out['train_retention'] = normalize_train_retention(out.get('train_retention', 1.0))
     out['baseline_embedding_type'] = normalize_baseline_embedding_type(out['baseline_embedding_type'])
     return out
 

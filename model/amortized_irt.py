@@ -74,7 +74,7 @@ BASELINE_PROFILE_FULL = 'full'
 BASELINE_PROFILE_KNN_MIRT = 'knn_mirt'
 BASELINE_PROFILE_KNN_ONLY = 'knn_only'
 
-BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'baseline_embedding_type']
+BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'train_retention', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
 BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 
@@ -1486,6 +1486,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         'n_samples': int(n_files),
         'pre_revision': normalize_pre_revision(pre_revision),
         'j_percentage': normalize_j_percentage(j_percentage),
+        'train_retention': normalize_train_retention(train_retention),
         'baseline_embedding_type': baseline_embedding_type,
     }
 
@@ -1873,6 +1874,11 @@ def normalize_j_percentage(value):
     return float(f"{float(value):.6f}")
 
 
+def normalize_train_retention(value):
+    """Normalize train_retention for reliable float comparisons in CSV cache."""
+    return float(f"{float(value):.6f}")
+
+
 def normalize_baseline_embedding_type(value):
     """Normalize baseline embedding type and preserve PCA for legacy rows."""
     if value is None or pd.isna(value):
@@ -2028,8 +2034,13 @@ def baseline_row_matches(df, key):
     seed_col = pd.to_numeric(df['seed'], errors='coerce')
     n_samples_col = pd.to_numeric(df['n_samples'], errors='coerce')
     j_percentage_col = pd.to_numeric(df['j_percentage'], errors='coerce')
+    train_retention_col = pd.to_numeric(df['train_retention'], errors='coerce')
     j_match = pd.Series(
         np.isclose(j_percentage_col.to_numpy(dtype=float), float(key['j_percentage']), atol=1e-6, equal_nan=False),
+        index=df.index,
+    )
+    retention_match = pd.Series(
+        np.isclose(train_retention_col.to_numpy(dtype=float), float(key['train_retention']), atol=1e-6, equal_nan=False),
         index=df.index,
     )
     mask = (
@@ -2038,6 +2049,7 @@ def baseline_row_matches(df, key):
         (n_samples_col == int(key['n_samples'])) &
         (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
         j_match &
+        retention_match &
         (
             df['baseline_embedding_type'].astype(str).map(normalize_baseline_embedding_type) ==
             str(key['baseline_embedding_type'])
@@ -2141,7 +2153,8 @@ def infer_completed_max_n_from_output(path):
     return int(n_col.max())
 
 
-def infer_completed_max_n_from_baseline_cache(path, seed, model_type, pre_revision, j_percentage, baseline_embedding_type):
+def infer_completed_max_n_from_baseline_cache(path, seed, model_type, pre_revision, j_percentage, baseline_embedding_type,
+                                             train_retention=1.0):
     """Infer cached max n_samples from baseline cache for resume-only checks."""
     df = load_baseline_store(path)
     if df.empty:
@@ -2153,14 +2166,20 @@ def infer_completed_max_n_from_baseline_cache(path, seed, model_type, pre_revisi
         'n_samples': 0,  # ignored below
         'pre_revision': normalize_pre_revision(pre_revision),
         'j_percentage': normalize_j_percentage(j_percentage),
+        'train_retention': normalize_train_retention(train_retention),
         'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
     }
 
     seed_col = pd.to_numeric(df['seed'], errors='coerce')
     j_percentage_col = pd.to_numeric(df['j_percentage'], errors='coerce')
+    train_retention_col = pd.to_numeric(df['train_retention'], errors='coerce')
     n_samples_col = pd.to_numeric(df['n_samples'], errors='coerce')
     j_match = pd.Series(
         np.isclose(j_percentage_col.to_numpy(dtype=float), float(key['j_percentage']), atol=1e-6, equal_nan=False),
+        index=df.index,
+    )
+    retention_match = pd.Series(
+        np.isclose(train_retention_col.to_numpy(dtype=float), float(key['train_retention']), atol=1e-6, equal_nan=False),
         index=df.index,
     )
     mask = (
@@ -2168,6 +2187,7 @@ def infer_completed_max_n_from_baseline_cache(path, seed, model_type, pre_revisi
         (df['model_type'].astype(str) == str(key['model_type'])) &
         (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
         j_match &
+        retention_match &
         (
             df['baseline_embedding_type'].astype(str).map(normalize_baseline_embedding_type) ==
             str(key['baseline_embedding_type'])
@@ -2848,6 +2868,7 @@ def main():
                     pre_revision=args.pre_revision,
                     j_percentage=args.j_percentage,
                     baseline_embedding_type=baseline_emb_type,
+                    train_retention=args.train_retention,
                 )
             else:
                 n_inferred = infer_completed_max_n_from_output(output_path)
@@ -2876,6 +2897,7 @@ def main():
                     'n_samples': int(max_n),
                     'pre_revision': normalize_pre_revision(args.pre_revision),
                     'j_percentage': normalize_j_percentage(args.j_percentage),
+                    'train_retention': normalize_train_retention(args.train_retention),
                     'baseline_embedding_type': normalize_baseline_embedding_type(
                         args.baseline_embedding_type if args.baseline_embedding_type is not None else args.embedding_type
                     ),
