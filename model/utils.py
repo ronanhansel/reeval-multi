@@ -45,10 +45,25 @@ def compute_rmse(predictions, targets, mask, item_mask=None):
 
 def evaluate_auc(y_pred_tensor, y_true_tensor, mask_tensor, item_mask=None):
     """Compute AUC over masked entries. Optionally filter by valid items."""
+    if not isinstance(y_pred_tensor, torch.Tensor):
+        y_pred_tensor = torch.as_tensor(y_pred_tensor)
+    pred_device = y_pred_tensor.device
+
+    if not isinstance(y_true_tensor, torch.Tensor):
+        y_true_tensor = torch.as_tensor(y_true_tensor)
+    y_true_tensor = y_true_tensor.to(pred_device)
+
+    if not isinstance(mask_tensor, torch.Tensor):
+        mask_tensor = torch.as_tensor(mask_tensor)
+    mask_tensor = mask_tensor.to(pred_device).bool()
+
     if item_mask is not None:
         mask_tensor = mask_tensor.clone()
         if not isinstance(item_mask, torch.Tensor):
-            item_mask = torch.tensor(item_mask, device=mask_tensor.device)
+            item_mask = torch.as_tensor(item_mask, device=mask_tensor.device)
+        else:
+            item_mask = item_mask.to(mask_tensor.device)
+        item_mask = item_mask.bool()
         mask_tensor[:, ~item_mask] = False
 
     valid_mask = mask_tensor.detach()
