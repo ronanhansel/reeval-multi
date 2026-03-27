@@ -590,7 +590,8 @@ run_support_thinning_study() {
 
     mkdir -p "${THIN_RESULT_DIR}"
 
-    echo " -> Running Bernoulli cross-revision support-thinning ladder on Pre-max, J=1.0..."
+    echo " -> Running Bernoulli support-thinning ladder on Pre-max, J=1.0..."
+    echo " -> Using standard pre-revision 90/10 item holdout so kNN remains the normal same-matrix baseline."
     echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
     echo " -> Reusing cached outputs when seed/tau rows already exist."
     for retention in "${THIN_RETENTIONS[@]}"; do
@@ -624,7 +625,7 @@ run_support_thinning_study() {
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
             seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
             local taus="$SHARED_TAUS"
-            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false" "true"
+            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false" "false"
         done
 
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
@@ -662,7 +663,7 @@ if base.is_dir():
         p.unlink(missing_ok=True)
 PY
 
-                run_baseline max bernoulli "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "true"
+                run_baseline max bernoulli "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "false"
             done
         done
     done
