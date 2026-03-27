@@ -583,7 +583,8 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
 
 
 def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', j_percentage=1.0,
-                            pre_revision='none', cross_revision_post_binary=False):
+                            pre_revision='none', cross_revision_post_binary=False, user_count=None,
+                            binarize_oracle=False):
     """Prepare oracle ground truth, train/test splits, and embedding tensors."""
     print("=" * 60)
     print("PREPARING EXPERIMENT DATA")
@@ -620,6 +621,20 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 
     N, J_full = oracle_df.shape
 
+    if user_count is not None:
+        user_count = int(user_count)
+        if 0 < user_count < N:
+            all_user_indices = np.arange(N)
+            np.random.seed(RANDOM_SEED + 4242)
+            sampled_user_indices = np.random.choice(all_user_indices, size=user_count, replace=False)
+            sampled_user_indices.sort()
+            sampled_users = oracle_df.index[sampled_user_indices].tolist()
+            oracle_df = oracle_df.iloc[sampled_user_indices]
+            train_global_shared_indices = sampled_users
+            train_all_dfs = [df.reindex(index=sampled_users) for df in train_all_dfs]
+            N, J_full = oracle_df.shape
+            print(f"Sub-sampling Users: {len(global_shared_indices)} -> {user_count}")
+
     if j_percentage < 1.0:
         n_j_keep = max(10, int(j_percentage * J_full))
         all_j_indices = np.arange(J_full)
@@ -633,7 +648,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     N, J = oracle_df.shape
     sampled_columns = oracle_df.columns.tolist()
 
-    train_all_dfs_filtered = [df.reindex(columns=sampled_columns) for df in train_all_dfs]
+    train_all_dfs_filtered = [df.reindex(index=train_global_shared_indices, columns=sampled_columns) for df in train_all_dfs]
 
     J_indices = np.arange(J)
     np.random.seed(RANDOM_SEED)
@@ -647,7 +662,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 
     oracle_values = oracle_df.values.copy()
     oracle_mask = ~np.isnan(oracle_values)
-    if cross_revision_post_binary and str(pre_revision).strip().lower() != 'none':
+    if (cross_revision_post_binary and str(pre_revision).strip().lower() != 'none') or binarize_oracle:
         oracle_values = (oracle_values > 0.5).astype(np.float32)
     oracle_values_clean = np.nan_to_num(oracle_values, nan=0.5)
     y_oracle = torch.from_numpy(oracle_values_clean.astype(np.float32)).to(device)
@@ -711,6 +726,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         'train_global_shared_indices': train_global_shared_indices,
         'support_values': y_oracle.detach().cpu().numpy(),
         'support_mask': train_mask,
+        'user_count': N,
     }
 
 
@@ -1597,8 +1613,9 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         y_train = y_support
         train_mask_current_t = support_mask_current_t
     else:
+        train_indices = data.get('train_global_shared_indices', global_shared_indices)
         N, J, y_train, train_mask_current_t = build_training_targets(
-            n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
+            n_files, all_dfs, train_indices, data, model_type=model_type, quiet=quiet,
             train_retention=train_retention
         )
 
@@ -1880,8 +1897,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             if isinstance(active_dim_indices, int):
                 active_dim_indices = [active_dim_indices]
     else:
+        train_indices = data.get('train_global_shared_indices', global_shared_indices)
         _, _, y_train, train_mask_current_t = build_training_targets(
-            n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
+            n_files, all_dfs, train_indices, data, model_type=model_type, quiet=quiet,
             train_retention=train_retention
         )
         observed_train_pairs = int(train_mask_current_t.sum().item())
@@ -2729,6 +2747,7 @@ def run_single_config(config, args, n_values):
     all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = ensure_worker_data(args)
 
     j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
+    u_suffix = f"_u{int(args.user_count)}" if args.user_count is not None else ""
     output_path = None
     if not args.baseline_only:
         if args.output:
@@ -2736,7 +2755,7 @@ def run_single_config(config, args, n_values):
         else:
             suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
             n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
-            output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
+            output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{u_suffix}{n_suffix}{j_suffix}.csv')
 
     if output_path is not None and os.path.exists(output_path):
         try:
@@ -2756,7 +2775,9 @@ def run_single_config(config, args, n_values):
     data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map,
                                  embedding_type=actual_emb_type, j_percentage=args.j_percentage,
                                  pre_revision=args.pre_revision,
-                                 cross_revision_post_binary=args.cross_revision_post_binary)
+                                 cross_revision_post_binary=args.cross_revision_post_binary,
+                                 user_count=args.user_count,
+                                 binarize_oracle=(args.model_type == 'bernoulli' and args.pre_revision == 'none'))
     # Move tensors to the correct device
     data['x_j'] = data['x_j'].to(local_device)
     data['y_oracle'] = data['y_oracle'].to(local_device)
@@ -2832,6 +2853,7 @@ def run_single_config(config, args, n_values):
                 append_outlier_robustness_rows(args.outlier_robustness_output, outlier_robustness_rows)
 
             result['embedding_type'] = actual_emb_type
+            result['user_count'] = int(data.get('user_count', data['N']))
             if args.pre_revision != 'none':
                 result['scenario'] = f"Pre-{args.pre_revision}"
             results.append(result)
@@ -2924,6 +2946,7 @@ def main():
     parser.add_argument('--save-weights', action='store_true', help='Save model weights to pkl.')
     parser.add_argument('--parallel', type=int, default=1, help='Number of multiprocessing workers.')
     parser.add_argument('--j-percentage', type=float, default=1.0, help='Percentage of items (columns) to sample (0.0 to 1.0).')
+    parser.add_argument('--user-count', type=int, default=None, help='Optional number of users (rows) to sample from the oracle matrix.')
     parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
     parser.add_argument('--baseline-only', action='store_true', help='Only compute/cache baselines and skip amortized outputs.')
     parser.add_argument('--baseline-embedding-type', type=str, default=None,
@@ -3041,7 +3064,8 @@ def main():
             suffix = f"_pre_{args.pre_revision}" if args.pre_revision != 'none' else ""
             n_suffix = f"_n_{args.n_samples}" if args.n_samples != 'all' else "_n_max"
             j_suffix = f"_j{args.j_percentage}" if args.j_percentage < 1.0 else ""
-            output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{n_suffix}{j_suffix}.csv')
+            u_suffix = f"_u{int(args.user_count)}" if args.user_count is not None else ""
+            output_path = os.path.join(RESULT_DIR, f'amortized_irt_{actual_emb_type}_{args.model_type}{suffix}{u_suffix}{n_suffix}{j_suffix}.csv')
 
     completed_configs = set()
     if output_path is not None and os.path.exists(output_path):

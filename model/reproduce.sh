@@ -49,7 +49,7 @@ THIN_RETENTIONS=("0.05" "0.1" "0.25" "0.5" "1.0")
 THIN_ARAF_EMBEDDINGS=("raw" "pca")
 THIN_KNN_EMBEDDINGS=("raw" "pca")
 THIN_K_VALUES=("5" "10" "20" "50")
-SAMPLE_PRE_LEVELS=("4" "8" "16" "32" "64" "max")
+SAMPLE_USER_LEVELS=("4" "8" "16" "32")
 SAMPLE_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "0.9")
 
 while [[ $# -gt 0 ]]; do
@@ -244,6 +244,7 @@ run_baseline() {
     local baseline_profile=${8:-full}
     local train_retention=${9:-1.0}
     local cross_revision_post_binary=${10:-false}
+    local user_count=${11:-""}
 
     local seeds_csv=${seeds// /,}
     local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
@@ -260,6 +261,9 @@ run_baseline() {
     if [[ "$cross_revision_post_binary" == "true" ]]; then
         cmd="$cmd --cross-revision-post-binary"
     fi
+    if [[ -n "$user_count" ]]; then
+        cmd="$cmd --user-count ${user_count}"
+    fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
     fi
@@ -267,7 +271,7 @@ run_baseline() {
         cmd="$cmd --quiet"
     fi
 
-    echo " -> Baseline cache: n=$n model=$model pre=$pre j=$j_pct retention=${train_retention} base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
+    echo " -> Baseline cache: n=$n model=$model pre=$pre users=${user_count:-all} j=$j_pct retention=${train_retention} base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -293,10 +297,11 @@ run_exp() {
     local precompute_baseline=${19:-true}
     local cross_revision_post_binary=${20:-false}
     local cross_revision_araf_mode=${21:-transfer}
+    local user_count=${22:-""}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" && "$precompute_baseline" == "true" ]]; then
-        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile" "$train_retention" "$cross_revision_post_binary"
+        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile" "$train_retention" "$cross_revision_post_binary" "$user_count"
     fi
 
     local taus_csv=${taus// /,}
@@ -332,7 +337,9 @@ run_exp() {
         if [[ "${baseline_emb}" != "raw" || "${knn_k}" != "10" ]]; then
             baseline_suffix="_b${baseline_emb}_k${knn_k}"
         fi
-        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${n_suffix}${notau_suffix}${j_suffix}${baseline_suffix}.csv"
+        local user_suffix=""
+        if [[ -n "${user_count}" ]]; then user_suffix="_u${user_count}"; fi
+        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${user_suffix}${n_suffix}${notau_suffix}${j_suffix}${baseline_suffix}.csv"
 
         cmd="$cmd --output $out_file"
     fi
@@ -359,11 +366,14 @@ run_exp() {
         cmd="$cmd --cross-revision-post-binary"
         cmd="$cmd --cross-revision-araf-mode ${cross_revision_araf_mode}"
     fi
+    if [[ -n "$user_count" ]]; then
+        cmd="$cmd --user-count ${user_count}"
+    fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
     fi
 
-    echo " -> Running: $emb (N=$n, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}, cross_mode=${cross_revision_araf_mode}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+    echo " -> Running: $emb (N=$n, users=${user_count:-all}, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}, cross_mode=${cross_revision_araf_mode}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -592,9 +602,9 @@ run_support_thinning_study() {
 
     mkdir -p "${THIN_RESULT_DIR}"
 
-    echo " -> Running Bernoulli support-thinning comparison on the restored post-oracle ladder..."
-    echo " -> Reusing existing ARAF-transfer + kNN post-support results when present."
-    echo " -> Adding a post-trained ARAF sweep so the ladder shows: ARAF-transfer, ARAF, and kNN."
+    echo " -> Running post-matrix support-thinning study on the revised oracle..."
+    echo " -> Thinning only the observed train support after the standard 90/10 post item split."
+    echo " -> Sweeping both Bernoulli and Beta variants for ARAF and kNN."
     echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
     echo " -> Reusing cached outputs when seed/tau rows already exist."
     for retention in "${THIN_RETENTIONS[@]}"; do
@@ -602,74 +612,29 @@ run_support_thinning_study() {
         ret_label=$(printf "retain_%0.3f" "$retention")
 
         local araf_dir="${THIN_RESULT_DIR}/${ret_label}/araf_sweeps"
-        local post_araf_dir="${THIN_RESULT_DIR}/${ret_label}/post_araf_sweeps"
         local shared_baseline_dir="${THIN_RESULT_DIR}/${ret_label}/shared_baselines"
-        local legacy_araf_baseline_dir="${araf_dir}/baselines"
         RESULT_DIR="${araf_dir}"
         BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
         MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
-        mkdir -p "${araf_dir}"
-        mkdir -p "${post_araf_dir}"
-        mkdir -p "${shared_baseline_dir}"
+        mkdir -p "${araf_dir}" "${shared_baseline_dir}"
 
-        # One-time compatibility migration: if a server still has the old
-        # per-ARAF baseline cache layout, copy it into shared baselines so
-        # --continue can reuse rows instead of recomputing from retention 0.05.
-        if [[ -d "${legacy_araf_baseline_dir}" ]]; then
-            for f in "${legacy_araf_baseline_dir}"/*; do
-                [[ -e "$f" ]] || continue
-                local dst="${shared_baseline_dir}/$(basename "$f")"
-                if [[ ! -f "${dst}" ]]; then
-                    cp "$f" "$dst"
-                fi
-            done
-        fi
-
-        local pre_revision="max"
+        local pre_revision="false"
         local j_percentage="1.0"
-        for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
-            seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
-            local taus="$SHARED_TAUS"
-            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "${araf_emb}" "10" "knn_only" "false" "true" "post_support_transfer"
-            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${post_araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "${araf_emb}" "10" "knn_only" "false" "true" "post"
-        done
-
-        for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
-            for knn_k in "${THIN_K_VALUES[@]}"; do
-                local combo_dir="${THIN_RESULT_DIR}/${ret_label}/knn_${knn_emb}_k${knn_k}"
-                local baselines_dir="${combo_dir}/baselines"
-                RESULT_DIR="${combo_dir}"
-                BASELINE_CSV="${baselines_dir}/baseline_metrics.csv"
-                MIRT_SWEEP_CSV="${baselines_dir}/mirt_sweep.csv"
-                mkdir -p "${combo_dir}"
-
-                # Guard against stale retention-mismatched grouped caches lingering
-                # from older runs. Keep only files matching this retention token.
-                local retention_token
-                retention_token=$(python - <<PY
-v = float(${retention})
-print(f"{v:.6f}".rstrip("0").rstrip("."))
-PY
-)
-                python - <<PY
-from pathlib import Path
-
-ret = r"""${retention_token}"""
-keep_suffix = f"_ret_{ret}.csv"
-base = Path(r"""${baselines_dir}""")
-if base.is_dir():
-    for p in base.glob("baseline_knn_*.csv"):
-        if p.name.endswith(keep_suffix):
-            continue
-        # Remove mismatched grouped files and legacy non-retention files.
-        p.unlink(missing_ok=True)
-    for p in base.glob("baseline_mirt_sweep_*.csv"):
-        if p.name.endswith(keep_suffix):
-            continue
-        p.unlink(missing_ok=True)
-PY
-
-                run_baseline max bernoulli "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "true"
+        for model_type in bernoulli beta; do
+            for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
+                local taus="$SHARED_TAUS"
+                run_exp "${araf_emb}" max "${model_type}" "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "${araf_emb}" "10" "knn_only" "false" "false" "transfer" "32"
+            done
+            for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
+                for knn_k in "${THIN_K_VALUES[@]}"; do
+                    local combo_dir="${THIN_RESULT_DIR}/${ret_label}/knn_${model_type}_${knn_emb}_k${knn_k}"
+                    local baselines_dir="${combo_dir}/baselines"
+                    RESULT_DIR="${combo_dir}"
+                    BASELINE_CSV="${baselines_dir}/baseline_metrics.csv"
+                    MIRT_SWEEP_CSV="${baselines_dir}/mirt_sweep.csv"
+                    mkdir -p "${combo_dir}"
+                    run_baseline max "${model_type}" "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "false" "32"
+                done
             done
         done
     done
@@ -711,24 +676,49 @@ if root.is_dir():
         print(f" -> Removed {removed} deprecated root sample-size CSV(s).")
 PY
 
-    RESULT_DIR="${SAMPLE_SIZE_RESULT_DIR}"
-    BASELINE_CSV="${SAMPLE_SIZE_RESULT_DIR}/baselines/baseline_metrics.csv"
-    MIRT_SWEEP_CSV="${SAMPLE_SIZE_RESULT_DIR}/baselines/mirt_sweep.csv"
-    mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
+    echo " -> Running dedicated post-revision sample-size study into ${SAMPLE_SIZE_RESULT_DIR} ..."
+    echo " -> Varying post user count N on the fixed revised oracle, then varying J at fixed N=32."
 
-    echo " -> Running dedicated pre-revision sample-size study into ${RESULT_DIR} ..."
-    echo " -> Using standard same-matrix pre holdout for both the N sweep and J sweep."
-
-    for pre in "${SAMPLE_PRE_LEVELS[@]}"; do
-        run_exp sae max bernoulli 0.0159 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
-        run_exp pca max bernoulli 0.0155 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
-        run_exp raw max bernoulli 0.0151 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
+    local model_type
+    local emb
+    for user_count in "${SAMPLE_USER_LEVELS[@]}"; do
+        RESULT_DIR="${SAMPLE_SIZE_RESULT_DIR}/users_${user_count}"
+        BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
+        MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
+        mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
+        for model_type in bernoulli beta; do
+            for emb in sae pca raw; do
+                local tau="0.0159"
+                if [[ "${emb}" == "pca" ]]; then tau="0.0155"; fi
+                if [[ "${emb}" == "raw" ]]; then tau="0.0151"; fi
+                if [[ "${model_type}" == "beta" ]]; then
+                    tau="0.0535"
+                    if [[ "${emb}" == "pca" ]]; then tau="0.054"; fi
+                    if [[ "${emb}" == "raw" ]]; then tau="0.029"; fi
+                fi
+                run_exp "${emb}" max "${model_type}" "${tau}" false "${SEEDS}" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "${emb}" "10" "full" "true" "false" "transfer" "${user_count}"
+            done
+        done
     done
 
-    for j in "${SAMPLE_J_LEVELS[@]}"; do
-        run_exp sae max bernoulli 0.0159 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
-        run_exp pca max bernoulli 0.0155 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
-        run_exp raw max bernoulli 0.0151 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
+    RESULT_DIR="${SAMPLE_SIZE_RESULT_DIR}/items"
+    BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
+    MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
+    mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
+    for j in "${SAMPLE_J_LEVELS[@]}" "1.0"; do
+        for model_type in bernoulli beta; do
+            for emb in sae pca raw; do
+                local tau="0.0159"
+                if [[ "${emb}" == "pca" ]]; then tau="0.0155"; fi
+                if [[ "${emb}" == "raw" ]]; then tau="0.0151"; fi
+                if [[ "${model_type}" == "beta" ]]; then
+                    tau="0.0535"
+                    if [[ "${emb}" == "pca" ]]; then tau="0.054"; fi
+                    if [[ "${emb}" == "raw" ]]; then tau="0.029"; fi
+                fi
+                run_exp "${emb}" max "${model_type}" "${tau}" false "${SEEDS}" "${RESULT_DIR}" false false "${j}" "" "" "" "" "1.0" "${emb}" "10" "full" "true" "false" "transfer" "32"
+            done
+        done
     done
 
     RESULT_DIR="${saved_result_dir}"
