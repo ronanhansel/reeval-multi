@@ -67,6 +67,7 @@ def parse_result_path(path: Path):
         "knn_k": int(meta["knn_k"] or "10"),
         "train_retention": retention,
         "generic_araf": "araf_sweeps" in path.parts and meta["baseline_embedding_type"] is None,
+        "araf_variant": "post" if "post_araf_sweeps" in path.parts else "transfer",
     }
 
 
@@ -104,6 +105,8 @@ def scan_result_file(path: Path, meta: dict):
                     # reruns when only kNN baselines are refreshed.
                     "auc_knn": "",
                     "rmse_knn": "",
+                    "auc_araf_post": "",
+                    "rmse_araf_post": "",
                     "source_path": source_path,
                 }
                 if meta.get("generic_araf", False):
@@ -188,6 +191,57 @@ def build_knn_lookup(result_dir: Path):
     return lookup
 
 
+def build_post_araf_lookup(result_dir: Path):
+    """Recover post-trained ARAF metrics from sidecar post_araf_sweeps outputs."""
+    lookup = {}
+    for path in sorted(result_dir.rglob("amortized_irt_*.csv")):
+        if "post_araf_sweeps" not in path.parts:
+            continue
+        meta = parse_result_path(path)
+        if meta is None:
+            continue
+        if meta["model_type"] != MODEL_TYPE:
+            continue
+        if meta["pre_revision"] != PRE_REVISION:
+            continue
+        if round(meta["j_percentage"], 3) != J_PERCENTAGE:
+            continue
+        if round(meta["train_retention"], 3) not in {round(x, 3) for x in RETENTIONS}:
+            continue
+        if meta["embedding_type"] not in ARAF_EMBEDDINGS:
+            continue
+
+        try:
+            with path.open(newline="") as handle:
+                reader = csv.DictReader(handle)
+                if not reader.fieldnames:
+                    continue
+                required = {"seed", "lambda_tau", "n_samples", "auc_amortized", "rmse_amortized"}
+                if not required.issubset(set(reader.fieldnames)):
+                    continue
+                for record in reader:
+                    try:
+                        key = (
+                            int(float(record["seed"])),
+                            round(float(record["lambda_tau"]), 10),
+                            int(float(record["n_samples"])),
+                            meta["model_type"],
+                            meta["pre_revision"],
+                            round(meta["j_percentage"], 3),
+                            meta["embedding_type"],
+                            round(meta["train_retention"], 3),
+                        )
+                        lookup[key] = {
+                            "auc_araf_post": float(record["auc_amortized"]),
+                            "rmse_araf_post": float(record["rmse_amortized"]),
+                        }
+                    except (TypeError, ValueError):
+                        continue
+        except Exception:
+            continue
+    return lookup
+
+
 def expected_combos():
     for retention in RETENTIONS:
         for emb in ARAF_EMBEDDINGS:
@@ -213,6 +267,8 @@ def main():
     for path in sorted(result_dir.rglob("amortized_irt_*.csv")):
         meta = parse_result_path(path)
         if meta is None:
+            continue
+        if meta.get("araf_variant") == "post":
             continue
         if meta["model_type"] != MODEL_TYPE:
             continue
@@ -241,6 +297,7 @@ def main():
         file_counts[str(path.relative_to(result_dir))] = len(scanned)
 
     knn_lookup = build_knn_lookup(result_dir)
+    post_araf_lookup = build_post_araf_lookup(result_dir)
     for row in rows:
         key = (
             row["seed"],
@@ -254,6 +311,20 @@ def main():
         if found is not None:
             row["auc_knn"] = found["auc_knn"]
             row["rmse_knn"] = found["rmse_knn"]
+        post_key = (
+            row["seed"],
+            round(float(row["lambda_tau"]), 10),
+            row["n_samples"],
+            row["model_type"],
+            row["pre_revision"],
+            round(float(row["j_percentage"]), 3),
+            row["embedding_type"],
+            round(float(row["train_retention"]), 3),
+        )
+        post_found = post_araf_lookup.get(post_key)
+        if post_found is not None:
+            row["auc_araf_post"] = post_found["auc_araf_post"]
+            row["rmse_araf_post"] = post_found["rmse_araf_post"]
 
     deduped = {}
     for row in rows:
@@ -314,7 +385,7 @@ def main():
         "seed", "lambda_tau", "n_samples", "model_type", "pre_revision",
         "j_percentage", "embedding_type", "baseline_embedding_type", "knn_k",
         "train_retention", "observed_train_pairs", "auc_knn", "rmse_knn",
-        "auc_araf", "rmse_araf", "source_path",
+        "auc_araf", "rmse_araf", "auc_araf_post", "rmse_araf_post", "source_path",
     ]
     with output_csv.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)

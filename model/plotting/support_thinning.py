@@ -37,9 +37,14 @@ def load_data():
         df['baseline_embedding_type'] = 'raw'
     if 'knn_k' not in df.columns:
         df['knn_k'] = 10
+    if 'auc_araf_post' not in df.columns:
+        df['auc_araf_post'] = np.nan
+    if 'rmse_araf_post' not in df.columns:
+        df['rmse_araf_post'] = np.nan
     for col in [
         'lambda_tau', 'n_samples', 'j_percentage', 'train_retention', 'knn_k',
-        'observed_train_pairs', 'auc_knn', 'rmse_knn', 'auc_araf', 'rmse_araf'
+        'observed_train_pairs', 'auc_knn', 'rmse_knn', 'auc_araf', 'rmse_araf',
+        'auc_araf_post', 'rmse_araf_post',
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -58,9 +63,14 @@ def load_data():
 
 
 def _select_best_rows(sub, metric):
-    araf_grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
+    transfer_grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
         auc_araf=('auc_araf', 'mean'),
         rmse_araf=('rmse_araf', 'mean'),
+    )
+    post_source = sub.dropna(subset=['auc_araf_post', 'rmse_araf_post'], how='all')
+    post_grouped = post_source.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
+        auc_araf_post=('auc_araf_post', 'mean'),
+        rmse_araf_post=('rmse_araf_post', 'mean'),
     )
     knn_grouped = sub.groupby(['baseline_embedding_type', 'knn_k'], as_index=False).agg(
         auc_knn=('auc_knn', 'mean'),
@@ -68,21 +78,31 @@ def _select_best_rows(sub, metric):
     )
 
     if metric == 'auc':
-        araf_pick = araf_grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
+        transfer_pick = transfer_grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
+        post_pick = None if post_grouped.empty else post_grouped.sort_values(
+            ['auc_araf_post', 'rmse_araf_post'], ascending=[False, True]
+        ).iloc[0]
         knn_pick = knn_grouped.sort_values(['auc_knn', 'rmse_knn'], ascending=[False, True]).iloc[0]
     else:
-        araf_pick = araf_grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
+        transfer_pick = transfer_grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
+        post_pick = None if post_grouped.empty else post_grouped.sort_values(
+            ['rmse_araf_post', 'auc_araf_post'], ascending=[True, False]
+        ).iloc[0]
         knn_pick = knn_grouped.sort_values(['rmse_knn', 'auc_knn'], ascending=[True, False]).iloc[0]
 
-    araf_rows = sub[
-        (sub['embedding_type'] == araf_pick['embedding_type']) &
-        (np.isclose(sub['lambda_tau'], float(araf_pick['lambda_tau']), atol=1e-8))
+    transfer_rows = sub[
+        (sub['embedding_type'] == transfer_pick['embedding_type']) &
+        (np.isclose(sub['lambda_tau'], float(transfer_pick['lambda_tau']), atol=1e-8))
     ]
+    post_rows = post_source[
+        (post_source['embedding_type'] == post_pick['embedding_type']) &
+        (np.isclose(post_source['lambda_tau'], float(post_pick['lambda_tau']), atol=1e-8))
+    ] if post_pick is not None else post_source.iloc[0:0]
     knn_rows = sub[
         (sub['baseline_embedding_type'] == knn_pick['baseline_embedding_type']) &
         (np.isclose(sub['knn_k'], float(knn_pick['knn_k']), atol=1e-8))
     ]
-    return araf_rows, knn_rows, araf_pick, knn_pick
+    return transfer_rows, post_rows, knn_rows, transfer_pick, post_pick, knn_pick
 
 
 def build_curves(df):
@@ -94,12 +114,14 @@ def build_curves(df):
         if sub.empty:
             continue
 
-        auc_araf_rows, auc_knn_rows, auc_araf_pick, auc_knn_pick = _select_best_rows(sub, 'auc')
-        rmse_araf_rows, rmse_knn_rows, rmse_araf_pick, rmse_knn_pick = _select_best_rows(sub, 'rmse')
+        auc_transfer_rows, auc_post_rows, auc_knn_rows, auc_transfer_pick, auc_post_pick, auc_knn_pick = _select_best_rows(sub, 'auc')
+        rmse_transfer_rows, rmse_post_rows, rmse_knn_rows, rmse_transfer_pick, rmse_post_pick, rmse_knn_pick = _select_best_rows(sub, 'rmse')
 
-        seed_auc_araf = auc_araf_rows.groupby('seed', as_index=False)['auc_araf'].mean()['auc_araf']
+        seed_auc_transfer = auc_transfer_rows.groupby('seed', as_index=False)['auc_araf'].mean()['auc_araf']
+        seed_auc_post = auc_post_rows.groupby('seed', as_index=False)['auc_araf_post'].mean()['auc_araf_post']
         seed_auc_knn = auc_knn_rows.groupby('seed', as_index=False)['auc_knn'].mean()['auc_knn']
-        seed_rmse_araf = rmse_araf_rows.groupby('seed', as_index=False)['rmse_araf'].mean()['rmse_araf']
+        seed_rmse_transfer = rmse_transfer_rows.groupby('seed', as_index=False)['rmse_araf'].mean()['rmse_araf']
+        seed_rmse_post = rmse_post_rows.groupby('seed', as_index=False)['rmse_araf_post'].mean()['rmse_araf_post']
         seed_rmse_knn = rmse_knn_rows.groupby('seed', as_index=False)['rmse_knn'].mean()['rmse_knn']
 
         observed_train_pairs = float(sub['observed_train_pairs'].mean())
@@ -107,24 +129,32 @@ def build_curves(df):
         auc_rows.append({
             'retention': float(retention),
             'observed_train_pairs': observed_train_pairs,
-            'araf_mean': float(seed_auc_araf.mean()),
-            'araf_sem': float(seed_auc_araf.sem()) if len(seed_auc_araf) > 1 else 0.0,
+            'transfer_mean': float(seed_auc_transfer.mean()),
+            'transfer_sem': float(seed_auc_transfer.sem()) if len(seed_auc_transfer) > 1 else 0.0,
+            'post_mean': float(seed_auc_post.mean()) if len(seed_auc_post) else np.nan,
+            'post_sem': float(seed_auc_post.sem()) if len(seed_auc_post) > 1 else 0.0,
             'knn_mean': float(seed_auc_knn.mean()),
             'knn_sem': float(seed_auc_knn.sem()) if len(seed_auc_knn) > 1 else 0.0,
-            'araf_embedding_type': str(auc_araf_pick['embedding_type']),
-            'araf_lambda_tau': float(auc_araf_pick['lambda_tau']),
+            'transfer_embedding_type': str(auc_transfer_pick['embedding_type']),
+            'transfer_lambda_tau': float(auc_transfer_pick['lambda_tau']),
+            'post_embedding_type': str(auc_post_pick['embedding_type']) if auc_post_pick is not None else '',
+            'post_lambda_tau': float(auc_post_pick['lambda_tau']) if auc_post_pick is not None else np.nan,
             'knn_embedding_type': str(auc_knn_pick['baseline_embedding_type']),
             'knn_k': int(auc_knn_pick['knn_k']),
         })
         rmse_rows.append({
             'retention': float(retention),
             'observed_train_pairs': observed_train_pairs,
-            'araf_mean': float(seed_rmse_araf.mean()),
-            'araf_sem': float(seed_rmse_araf.sem()) if len(seed_rmse_araf) > 1 else 0.0,
+            'transfer_mean': float(seed_rmse_transfer.mean()),
+            'transfer_sem': float(seed_rmse_transfer.sem()) if len(seed_rmse_transfer) > 1 else 0.0,
+            'post_mean': float(seed_rmse_post.mean()) if len(seed_rmse_post) else np.nan,
+            'post_sem': float(seed_rmse_post.sem()) if len(seed_rmse_post) > 1 else 0.0,
             'knn_mean': float(seed_rmse_knn.mean()),
             'knn_sem': float(seed_rmse_knn.sem()) if len(seed_rmse_knn) > 1 else 0.0,
-            'araf_embedding_type': str(rmse_araf_pick['embedding_type']),
-            'araf_lambda_tau': float(rmse_araf_pick['lambda_tau']),
+            'transfer_embedding_type': str(rmse_transfer_pick['embedding_type']),
+            'transfer_lambda_tau': float(rmse_transfer_pick['lambda_tau']),
+            'post_embedding_type': str(rmse_post_pick['embedding_type']) if rmse_post_pick is not None else '',
+            'post_lambda_tau': float(rmse_post_pick['lambda_tau']) if rmse_post_pick is not None else np.nan,
             'knn_embedding_type': str(rmse_knn_pick['baseline_embedding_type']),
             'knn_k': int(rmse_knn_pick['knn_k']),
         })
@@ -139,25 +169,43 @@ def build_curves(df):
 
 def _plot_metric(ax, df, y_label, title, lower_better=False):
     x = df['observed_train_pairs'].to_numpy(dtype=float)
-    araf_mean = df['araf_mean'].to_numpy(dtype=float)
-    araf_sem = df['araf_sem'].to_numpy(dtype=float)
+    transfer_mean = df['transfer_mean'].to_numpy(dtype=float)
+    transfer_sem = df['transfer_sem'].to_numpy(dtype=float)
+    post_mean = df['post_mean'].to_numpy(dtype=float)
+    post_sem = df['post_sem'].to_numpy(dtype=float)
     knn_mean = df['knn_mean'].to_numpy(dtype=float)
     knn_sem = df['knn_sem'].to_numpy(dtype=float)
 
-    ax.plot(x, knn_mean, color='orange', linestyle='--', marker='o', linewidth=1.6, label='kNN')
-    ax.fill_between(x, knn_mean - knn_sem, knn_mean + knn_sem, color='orange', alpha=0.18)
-    ax.plot(x, araf_mean, color='steelblue', marker='o', linewidth=1.6, label='ARAF')
-    ax.fill_between(x, araf_mean - araf_sem, araf_mean + araf_sem, color='steelblue', alpha=0.18)
+    def _plot_series(y, sem, color, label, linestyle='-'):
+        valid = np.isfinite(y)
+        if not np.any(valid):
+            return
+        xv = x[valid]
+        yv = y[valid]
+        sv = sem[valid]
+        ax.plot(xv, yv, color=color, linestyle=linestyle, marker='o', linewidth=1.6, label=label)
+        ax.fill_between(xv, yv - sv, yv + sv, color=color, alpha=0.18)
+
+    _plot_series(knn_mean, knn_sem, 'orange', 'kNN', '--')
+    _plot_series(post_mean, post_sem, 'forestgreen', 'ARAF')
+    _plot_series(transfer_mean, transfer_sem, 'steelblue', 'ARAF-transfer')
     ax.set_title(title, fontsize=10)
-    ax.set_xlabel('Mean Observed Pre-Train Pairs', fontsize=9)
+    ax.set_xlabel('Mean Observed Post Support Pairs', fontsize=9)
     ax.set_ylabel(y_label, fontsize=9)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{int(round(v)):,}" for v in x], rotation=35, ha='right', fontsize=8)
     ax.grid(linestyle=':', alpha=0.8)
     ax.tick_params(labelsize=8)
     if lower_better:
-        ymin = min(np.nanmin(araf_mean - araf_sem), np.nanmin(knn_mean - knn_sem))
-        ymax = max(np.nanmax(araf_mean + araf_sem), np.nanmax(knn_mean + knn_sem))
+        lower_candidates = []
+        upper_candidates = []
+        for mean_vals, sem_vals in [(transfer_mean, transfer_sem), (post_mean, post_sem), (knn_mean, knn_sem)]:
+            valid = np.isfinite(mean_vals) & np.isfinite(sem_vals)
+            if np.any(valid):
+                lower_candidates.append(np.min(mean_vals[valid] - sem_vals[valid]))
+                upper_candidates.append(np.max(mean_vals[valid] + sem_vals[valid]))
+        ymin = min(lower_candidates)
+        ymax = max(upper_candidates)
         pad = max((ymax - ymin) * 0.08, 1e-3)
         ax.set_ylim(ymin - pad, ymax + pad)
 
@@ -186,13 +234,16 @@ def plot_auc_degradation(auc_df):
         return
 
     full_row = auc_df[full_mask].iloc[0]
-    araf_ref = float(full_row['araf_mean'])
+    transfer_ref = float(full_row['transfer_mean'])
+    post_ref = float(full_row['post_mean']) if np.isfinite(float(full_row['post_mean'])) else np.nan
     knn_ref = float(full_row['knn_mean'])
 
     x = auc_df['retention'].to_numpy(dtype=float)
-    araf_drop = araf_ref - auc_df['araf_mean'].to_numpy(dtype=float)
+    transfer_drop = transfer_ref - auc_df['transfer_mean'].to_numpy(dtype=float)
+    post_drop = post_ref - auc_df['post_mean'].to_numpy(dtype=float)
     knn_drop = knn_ref - auc_df['knn_mean'].to_numpy(dtype=float)
-    araf_sem = auc_df['araf_sem'].to_numpy(dtype=float)
+    transfer_sem = auc_df['transfer_sem'].to_numpy(dtype=float)
+    post_sem = auc_df['post_sem'].to_numpy(dtype=float)
     knn_sem = auc_df['knn_sem'].to_numpy(dtype=float)
 
     plt.rcParams.update(get_bundle())
@@ -200,8 +251,11 @@ def plot_auc_degradation(auc_df):
 
     ax.plot(x, knn_drop, color='orange', linestyle='--', marker='o', linewidth=1.6, label='kNN')
     ax.fill_between(x, knn_drop - knn_sem, knn_drop + knn_sem, color='orange', alpha=0.18)
-    ax.plot(x, araf_drop, color='steelblue', marker='o', linewidth=1.6, label='ARAF')
-    ax.fill_between(x, araf_drop - araf_sem, araf_drop + araf_sem, color='steelblue', alpha=0.18)
+    if np.isfinite(post_drop).any():
+        ax.plot(x, post_drop, color='forestgreen', marker='o', linewidth=1.6, label='ARAF')
+        ax.fill_between(x, post_drop - post_sem, post_drop + post_sem, color='forestgreen', alpha=0.18)
+    ax.plot(x, transfer_drop, color='steelblue', marker='o', linewidth=1.6, label='ARAF-transfer')
+    ax.fill_between(x, transfer_drop - transfer_sem, transfer_drop + transfer_sem, color='steelblue', alpha=0.18)
 
     ax.set_title('AUC Degradation vs Retention', fontsize=10)
     ax.set_xlabel('Train Retention Ratio', fontsize=9)

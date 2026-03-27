@@ -1699,6 +1699,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    train_retention=1.0, knn_k=KNN_K,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT,
+                   cross_revision_araf_mode='transfer',
                    baseline_profile=BASELINE_PROFILE_FULL):
     """Run experiment for a specific number of sample files.
 
@@ -1779,64 +1780,105 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         }
 
     if data.get('cross_revision_post_binary', False):
-        train_indices = data.get('train_global_shared_indices', global_shared_indices)
-        N_pre, _, y_train_pre, train_mask_pre_t = build_training_targets(
-            n_files,
-            all_dfs,
-            train_indices,
-            data,
-            model_type=model_type,
-            quiet=quiet,
-            train_retention=train_retention,
-        )
-        y_support, support_mask_current_t = build_cross_revision_support_targets(
-            data,
-            train_retention=1.0,
-        )
-        observed_train_pairs = int(train_mask_pre_t.sum().item())
+        mode = str(cross_revision_araf_mode).strip().lower()
+        if mode == 'post':
+            y_support, support_mask_current_t = build_cross_revision_support_targets(
+                data,
+                train_retention=train_retention,
+            )
+            observed_train_pairs = int(support_mask_current_t.sum().item())
 
-        pre_model = AmortizedIRTModel(N_pre, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
-        _, pre_state = train_amortized_irt(
-            pre_model,
-            y_train_pre,
-            train_mask_pre_t,
-            y_train_pre,
-            train_mask_pre_t.detach().cpu().numpy().astype(bool),
-            model_type=model_type,
-            beta_phi=beta_phi,
-            epochs=EPOCHS,
-            lambda_tau=LAMBDA_TAU,
-            quiet=quiet,
-        )
+            model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+            final_rmse, final_state = train_amortized_irt(
+                model,
+                y_support,
+                support_mask_current_t,
+                y_oracle,
+                test_mask,
+                model_type=model_type,
+                beta_phi=beta_phi,
+                epochs=EPOCHS,
+                lambda_tau=LAMBDA_TAU,
+                quiet=quiet,
+            )
 
-        model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.0, no_tau=no_tau).to(device)
-        state_dict = model.state_dict()
-        for key, value in pre_state.items():
-            if key in {'theta', 'theta_bias'}:
-                continue
-            if key in state_dict and tuple(state_dict[key].shape) == tuple(value.shape):
-                state_dict[key] = value.to(device)
-        model.load_state_dict(state_dict)
-        p_amortized, final_state = adapt_amortized_irt_users(
-            model,
-            y_support,
-            support_mask_current_t,
-            model_type=model_type,
-            beta_phi=beta_phi,
-            quiet=quiet,
-        )
-        final_rmse = compute_rmse(
-            p_amortized.detach().cpu().numpy(),
-            y_oracle.detach().cpu().numpy(),
-            test_mask,
-        )
-        auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
-        tau_val = model.get_tau()
-        active_mask = tau_val > TAU_THRESHOLD
-        active_dims = active_mask.sum().item()
-        active_dim_indices = torch.nonzero(active_mask).squeeze().cpu().tolist()
-        if isinstance(active_dim_indices, int):
-            active_dim_indices = [active_dim_indices]
+            model.eval()
+            with torch.no_grad():
+                model.load_state_dict({k: v.to(device) for k, v in final_state.items()})
+                p_amortized = model()
+                auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
+
+                tau_val = model.get_tau()
+                active_mask = tau_val > TAU_THRESHOLD
+                active_dims = active_mask.sum().item()
+                active_dim_indices = torch.nonzero(active_mask).squeeze().cpu().tolist()
+                if isinstance(active_dim_indices, int):
+                    active_dim_indices = [active_dim_indices]
+        else:
+            train_indices = data.get('train_global_shared_indices', global_shared_indices)
+            support_retention = train_retention if mode == 'post_support_transfer' else 1.0
+            pre_retention = 1.0 if mode == 'post_support_transfer' else train_retention
+            N_pre, _, y_train_pre, train_mask_pre_t = build_training_targets(
+                n_files,
+                all_dfs,
+                train_indices,
+                data,
+                model_type=model_type,
+                quiet=quiet,
+                train_retention=pre_retention,
+            )
+            y_support, support_mask_current_t = build_cross_revision_support_targets(
+                data,
+                train_retention=support_retention,
+            )
+            observed_train_pairs = int(
+                support_mask_current_t.sum().item()
+                if mode == 'post_support_transfer'
+                else train_mask_pre_t.sum().item()
+            )
+
+            pre_model = AmortizedIRTModel(N_pre, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+            _, pre_state = train_amortized_irt(
+                pre_model,
+                y_train_pre,
+                train_mask_pre_t,
+                y_train_pre,
+                train_mask_pre_t.detach().cpu().numpy().astype(bool),
+                model_type=model_type,
+                beta_phi=beta_phi,
+                epochs=EPOCHS,
+                lambda_tau=LAMBDA_TAU,
+                quiet=quiet,
+            )
+
+            model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.0, no_tau=no_tau).to(device)
+            state_dict = model.state_dict()
+            for key, value in pre_state.items():
+                if key in {'theta', 'theta_bias'}:
+                    continue
+                if key in state_dict and tuple(state_dict[key].shape) == tuple(value.shape):
+                    state_dict[key] = value.to(device)
+            model.load_state_dict(state_dict)
+            p_amortized, final_state = adapt_amortized_irt_users(
+                model,
+                y_support,
+                support_mask_current_t,
+                model_type=model_type,
+                beta_phi=beta_phi,
+                quiet=quiet,
+            )
+            final_rmse = compute_rmse(
+                p_amortized.detach().cpu().numpy(),
+                y_oracle.detach().cpu().numpy(),
+                test_mask,
+            )
+            auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
+            tau_val = model.get_tau()
+            active_mask = tau_val > TAU_THRESHOLD
+            active_dims = active_mask.sum().item()
+            active_dim_indices = torch.nonzero(active_mask).squeeze().cpu().tolist()
+            if isinstance(active_dim_indices, int):
+                active_dim_indices = [active_dim_indices]
     else:
         _, _, y_train, train_mask_current_t = build_training_targets(
             n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
@@ -2773,6 +2815,7 @@ def run_single_config(config, args, n_values):
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
                                     mirt_sweep_output=args.mirt_sweep_output,
+                                    cross_revision_araf_mode=args.cross_revision_araf_mode,
                                     baseline_profile=args.baseline_profile)
 
             pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
@@ -2922,6 +2965,9 @@ def main():
                         help='Optional model type filter for pair-efficiency migration.')
     parser.add_argument('--cross-revision-post-binary', action='store_true',
                         help='For pre-revision runs, train on pre data but evaluate on a binary post-revision oracle with a held-out 10%% item split.')
+    parser.add_argument('--cross-revision-araf-mode', type=str, default='transfer',
+                        choices=['transfer', 'post', 'post_support_transfer'],
+                        help='Cross-revision ARAF mode: transfer uses the current pre-train/post-eval path; post trains directly on post support; post_support_transfer matches the original post-support-thinning transfer setup.')
     args = parser.parse_args()
 
     import sys, os

@@ -292,6 +292,7 @@ run_exp() {
     local baseline_profile=${18:-full}
     local precompute_baseline=${19:-true}
     local cross_revision_post_binary=${20:-false}
+    local cross_revision_araf_mode=${21:-transfer}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" && "$precompute_baseline" == "true" ]]; then
@@ -356,12 +357,13 @@ run_exp() {
     fi
     if [[ "$cross_revision_post_binary" == "true" ]]; then
         cmd="$cmd --cross-revision-post-binary"
+        cmd="$cmd --cross-revision-araf-mode ${cross_revision_araf_mode}"
     fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
     fi
 
-    echo " -> Running: $emb (N=$n, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+    echo " -> Running: $emb (N=$n, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}, cross_mode=${cross_revision_araf_mode}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -590,8 +592,9 @@ run_support_thinning_study() {
 
     mkdir -p "${THIN_RESULT_DIR}"
 
-    echo " -> Running Bernoulli support-thinning ladder on Pre-max, J=1.0..."
-    echo " -> Using standard pre-revision 90/10 item holdout so kNN remains the normal same-matrix baseline."
+    echo " -> Running Bernoulli support-thinning comparison on the restored post-oracle ladder..."
+    echo " -> Reusing existing ARAF-transfer + kNN post-support results when present."
+    echo " -> Adding a post-trained ARAF sweep so the ladder shows: ARAF-transfer, ARAF, and kNN."
     echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
     echo " -> Reusing cached outputs when seed/tau rows already exist."
     for retention in "${THIN_RETENTIONS[@]}"; do
@@ -599,12 +602,14 @@ run_support_thinning_study() {
         ret_label=$(printf "retain_%0.3f" "$retention")
 
         local araf_dir="${THIN_RESULT_DIR}/${ret_label}/araf_sweeps"
+        local post_araf_dir="${THIN_RESULT_DIR}/${ret_label}/post_araf_sweeps"
         local shared_baseline_dir="${THIN_RESULT_DIR}/${ret_label}/shared_baselines"
         local legacy_araf_baseline_dir="${araf_dir}/baselines"
         RESULT_DIR="${araf_dir}"
         BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
         MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
         mkdir -p "${araf_dir}"
+        mkdir -p "${post_araf_dir}"
         mkdir -p "${shared_baseline_dir}"
 
         # One-time compatibility migration: if a server still has the old
@@ -625,7 +630,8 @@ run_support_thinning_study() {
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
             seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
             local taus="$SHARED_TAUS"
-            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false" "false"
+            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "${araf_emb}" "10" "knn_only" "false" "true" "post_support_transfer"
+            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${post_araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "${araf_emb}" "10" "knn_only" "false" "true" "post"
         done
 
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
@@ -663,7 +669,7 @@ if base.is_dir():
         p.unlink(missing_ok=True)
 PY
 
-                run_baseline max bernoulli "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "false"
+                run_baseline max bernoulli "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "true"
             done
         done
     done
@@ -710,18 +716,19 @@ PY
     MIRT_SWEEP_CSV="${SAMPLE_SIZE_RESULT_DIR}/baselines/mirt_sweep.csv"
     mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
 
-    echo " -> Running dedicated cross-revision sample-size study into ${RESULT_DIR} ..."
+    echo " -> Running dedicated pre-revision sample-size study into ${RESULT_DIR} ..."
+    echo " -> Using standard same-matrix pre holdout for both the N sweep and J sweep."
 
     for pre in "${SAMPLE_PRE_LEVELS[@]}"; do
-        run_exp sae max bernoulli 0.0159 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
-        run_exp pca max bernoulli 0.0155 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
-        run_exp raw max bernoulli 0.0151 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
+        run_exp sae max bernoulli 0.0159 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
+        run_exp pca max bernoulli 0.0155 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
+        run_exp raw max bernoulli 0.0151 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
     done
 
     for j in "${SAMPLE_J_LEVELS[@]}"; do
-        run_exp sae max bernoulli 0.0159 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
-        run_exp pca max bernoulli 0.0155 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
-        run_exp raw max bernoulli 0.0151 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
+        run_exp sae max bernoulli 0.0159 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
+        run_exp pca max bernoulli 0.0155 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
+        run_exp raw max bernoulli 0.0151 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "false"
     done
 
     RESULT_DIR="${saved_result_dir}"
