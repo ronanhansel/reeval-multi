@@ -1,0 +1,2 @@
+seed,model_type,n_samples,pre_revision,j_percentage,train_retention,baseline_embedding_type,agent_batch_size,auc_mirt,rmse_mirt,selected_mirt_dim,mirt_sweep_min,mirt_sweep_max,mirt_selection_version
+42,bernoulli,32,none,1.0,1.0,raw,32,0.5878599678655295,0.27789309991995115,29,2,30,2

@@ -15,7 +15,7 @@ REPO_ROOT = os.path.dirname(MODEL_DIR)
 
 RESULT_DIR = os.path.join(MODEL_DIR, "result", "support_thinning_study")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
-THIN_CSV = os.path.join(RESULT_DIR, "support_thinning_beta_grid.csv")
+THIN_CSV = os.path.join(RESULT_DIR, "support_thinning_bernoulli_grid.csv")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 THIN_PRE_REVISION = "max"
@@ -48,7 +48,7 @@ def load_data():
             df[col] = df[col].astype(str).str.strip().str.lower()
 
     df = df[
-        (df['model_type'] == 'beta') &
+        (df['model_type'] == 'bernoulli') &
         (df['pre_revision'] == THIN_PRE_REVISION) &
         (np.isclose(df['j_percentage'], THIN_J_PERCENTAGE, atol=1e-9))
     ].copy()
@@ -166,13 +166,13 @@ def plot(auc_df, rmse_df):
     plt.rcParams.update(get_bundle())
     fig, axes = plt.subplots(1, 2, figsize=(8.2, 2.9), constrained_layout=True)
 
-    _plot_metric(axes[0], auc_df, 'AUC', 'AUC (Beta)', lower_better=False)
-    _plot_metric(axes[1], rmse_df, 'RMSE', 'RMSE (Beta)', lower_better=True)
+    _plot_metric(axes[0], auc_df, 'AUC', 'AUC (Bernoulli)', lower_better=False)
+    _plot_metric(axes[1], rmse_df, 'RMSE', 'RMSE (Bernoulli)', lower_better=True)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', ncol=2, frameon=True, fontsize=8)
 
-    out_path = os.path.join(FIGURE_DIR, 'support_thinning_beta_auc.pdf')
+    out_path = os.path.join(FIGURE_DIR, 'support_thinning_bernoulli_auc.pdf')
     plt.savefig(out_path, bbox_inches='tight')
     plt.close(fig)
     print(f"Support-thinning ladder figure saved to {out_path}")
@@ -214,7 +214,7 @@ def plot_auc_degradation(auc_df):
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', ncol=2, frameon=True, fontsize=8)
 
-    out_path = os.path.join(FIGURE_DIR, 'support_thinning_beta_auc_degradation.pdf')
+    out_path = os.path.join(FIGURE_DIR, 'support_thinning_bernoulli_auc_degradation.pdf')
     plt.savefig(out_path, bbox_inches='tight')
     plt.close(fig)
     print(f"Support-thinning AUC degradation figure saved to {out_path}")

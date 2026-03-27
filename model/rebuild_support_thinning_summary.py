@@ -21,7 +21,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RESULT_DIR = SCRIPT_DIR / "result" / "support_thinning_study"
-OUTPUT_CSV = RESULT_DIR / "support_thinning_beta_grid.csv"
+OUTPUT_CSV = RESULT_DIR / "support_thinning_bernoulli_grid.csv"
 
 RETENTIONS = [0.05, 0.10, 0.25, 0.50, 1.0]
 ARAF_EMBEDDINGS = ["raw", "pca"]
@@ -29,11 +29,11 @@ KNN_EMBEDDINGS = ["raw", "pca"]
 K_VALUES = [5, 10, 20, 50]
 PRE_REVISION = "max"
 J_PERCENTAGE = 1.0
-MODEL_TYPE = "beta"
+MODEL_TYPE = "bernoulli"
 EXPECTED_ROWS_PER_COMBO = 107 * 50
 
 RESULT_RE = re.compile(
-    r"amortized_irt_(?P<embedding_type>raw|pca)_(?P<model_type>beta)"
+    r"amortized_irt_(?P<embedding_type>raw|pca)_(?P<model_type>beta|bernoulli)"
     r"(?:_pre_(?P<pre_revision>[^_]+))?"
     r"_n_(?P<n_token>max|\d+)"
     r"(?:_j(?P<j_percentage>[0-9.]+))?"

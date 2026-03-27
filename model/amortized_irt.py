@@ -133,6 +133,113 @@ else:
     device = torch.device('cpu')
 
 
+def _load_pre_revision_response_matrix(pre_revision):
+    """Load the aggregated pre-revision matrix, optionally subsampling rows."""
+    pre_rev_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'item-editor',
+        'eval_response_matrix',
+        'pre-revision',
+    )
+    b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
+    combined_dfs = []
+    for b in b_names:
+        possible_files = ['raw_score.csv', 'benchmark.csv', 'success_rate.csv', 'written_score.csv']
+        df = None
+        for f in possible_files:
+            p = os.path.join(pre_rev_dir, b, f)
+            if os.path.exists(p):
+                df = pd.read_csv(p, index_col=0)
+                break
+
+        if df is None:
+            continue
+
+        if b == 'scicode':
+            scicode_post_ids = ['12', '14', '15', '16', '2', '23', '28', '32', '35', '41', '43', '46', '48', '52', '56', '58', '59', '61', '62', '63', '64', '66', '67', '71', '72', '77', '79', '80', '9']
+            post_cols = [f"scicode.{it}" for it in scicode_post_ids]
+            valid_df_cols = [c for c in df.columns if c in post_cols]
+            df = df[valid_df_cols]
+
+        df.index = [f"{b}.{a}" for a in df.index]
+        df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard', '')) else c for c in df.columns]
+        combined_dfs.append(df)
+
+    if not combined_dfs:
+        raise FileNotFoundError(f"No pre-revision data found in {pre_rev_dir}")
+
+    final_df = pd.concat(combined_dfs, axis=1, join='outer')
+
+    if pre_revision != 'max':
+        try:
+            n_total = int(pre_revision)
+        except ValueError:
+            n_total = None
+        if n_total is not None:
+            sampled_agents = []
+            n_per_benchmark = n_total // 4
+            remainder = n_total % 4
+            np.random.seed(RANDOM_SEED)
+            for i, b_name in enumerate(b_names):
+                current_n = n_per_benchmark + (1 if i < remainder else 0)
+                if current_n == 0:
+                    continue
+                b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
+                if not b_df_matches:
+                    continue
+                b_df = b_df_matches[0]
+                b_agents = b_df.dropna(how='all').index.tolist()
+                if len(b_agents) > current_n:
+                    sampled = np.random.choice(b_agents, size=current_n, replace=False)
+                else:
+                    sampled = b_agents
+                sampled_agents.extend(sampled)
+            final_df = final_df.loc[sampled_agents]
+
+    final_df = final_df.dropna(axis=1, how='all')
+    return [final_df], sorted(list(final_df.index))
+
+
+def _load_post_revision_response_matrices():
+    """Load the post-revision response-matrix ensemble."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    post_rev_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix', 'post-revision')
+
+    colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
+    colbench_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
+
+    colbench_dfs = []
+    for f in colbench_files:
+        df = pd.read_csv(os.path.join(colbench_dir, f), index_col=0)
+        valid_cols = [c for c in df.columns if str(c).startswith("colbench")]
+        if valid_cols:
+            df = df[valid_cols]
+            df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
+            colbench_dfs.append(df)
+
+    other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
+
+    from utils import get_benchmark_iterations
+    bench_iterations = {}
+    for benchmark in other_benchmarks:
+        b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
+        if os.path.exists(b_resmat_dir):
+            iters = get_benchmark_iterations(b_resmat_dir, benchmark)
+            if iters:
+                bench_iterations[benchmark] = iters
+
+    all_dfs = []
+    for col_df in colbench_dfs:
+        current_bench_parts = [col_df]
+        for benchmark, iters in bench_iterations.items():
+            idx = np.random.randint(0, len(iters))
+            current_bench_parts.append(iters[idx])
+        all_dfs.append(pd.concat(current_bench_parts, axis=1, join='outer'))
+
+    global_shared_indices = sorted(list(set(all_dfs[0].index)))
+    return all_dfs, global_shared_indices
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Model Definition
 # ══════════════════════════════════════════════════════════════════════════════
@@ -357,6 +464,54 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
     return final_rmse, final_state
 
 
+def adapt_amortized_irt_users(model, y_support, support_mask_t, model_type='beta',
+                              beta_phi=BETA_PHI, epochs=None, quiet=False):
+    """Infer user latents for a new response matrix while keeping item parameters fixed."""
+    for name, param in model.named_parameters():
+        param.requires_grad = name in {'theta', 'theta_bias'}
+
+    optimizer = optim.AdamW([
+        {'params': [model.theta, model.theta_bias], 'lr': LR_THETA, 'weight_decay': WD_THETA},
+    ])
+
+    fit_epochs = max(200, EPOCHS // 2) if epochs is None else int(epochs)
+    eps = 1e-6
+    best_state = None
+    best_loss = float('inf')
+
+    for epoch in range(fit_epochs):
+        model.train()
+        optimizer.zero_grad()
+        probs = model()
+        p = probs[support_mask_t].clamp(eps, 1 - eps)
+        if model_type == 'beta':
+            y = y_support[support_mask_t].clamp(eps, 1 - eps)
+            dist = torch.distributions.Beta(p * beta_phi, (1 - p) * beta_phi)
+            loss = -dist.log_prob(y).mean()
+        else:
+            y = y_support[support_mask_t]
+            dist = torch.distributions.Bernoulli(probs=p)
+            loss = -dist.log_prob(y).mean()
+        loss.backward()
+        optimizer.step()
+
+        loss_val = float(loss.detach().item())
+        if loss_val < best_loss:
+            best_loss = loss_val
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        if not quiet and (epoch % EVAL_EVERY == 0 or epoch == fit_epochs - 1):
+            print(f"Adapt Epoch {epoch:4d} | Support Loss: {loss_val:.4f}")
+
+    if best_state is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
+
+    model.eval()
+    with torch.no_grad():
+        probs = model().detach().clone()
+        final_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    return probs, final_state
+
+
     # Combined parser moved to main()
 
 
@@ -379,134 +534,11 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     processed_emb_dir = os.path.join(repo_root, 'model', 'processed_embeddings')
     raw_emb_file = os.path.join(resmat_dir, 'all_benchmarks_embeddings_4096_8B.pkl')
 
-    post_rev_dir = os.path.join(resmat_dir, 'post-revision')
-    pre_rev_dir = os.path.join(resmat_dir, 'pre-revision')
-
     if pre_revision != 'none':
-        import random
         print(f"Bypassing Post-Revision. Loading Pre-Revision Data ({pre_revision} agents)...")
-        b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
-        combined_dfs = []
-        for b in b_names:
-            possible_files = ['raw_score.csv', 'benchmark.csv', 'success_rate.csv', 'written_score.csv']
-            df = None
-            for f in possible_files:
-                p = os.path.join(pre_rev_dir, b, f)
-                if os.path.exists(p):
-                    df = pd.read_csv(p, index_col=0)
-                    break
-            
-            if df is not None:
-                # [ALIGNMENT FIX]: Filter SciCode to match the 29 refined items used in post-revision
-                if b == 'scicode':
-                    # Exact list of 29 task IDs (stripped) from post-revision
-                    SCICODE_POST_IDS = ['12', '14', '15', '16', '2', '23', '28', '32', '35', '41', '43', '46', '48', '52', '56', '58', '59', '61', '62', '63', '64', '66', '67', '71', '72', '77', '79', '80', '9']
-                    post_cols = [f"scicode.{it}" for it in SCICODE_POST_IDS]
-                    # Only keep columns that are in the post-revision set
-                    valid_df_cols = [c for c in df.columns if c in post_cols]
-                    df = df[valid_df_cols]
-
-                # Prefix agents to ensure uniqueness across benchmarks (matching post-revision style)
-                # and ensuring exactly 32 unique rows when sampling 8 per benchmark.
-                df.index = [f"{b}.{a}" for a in df.index]
-                # Ensure columns are prefixed with benchmark name
-                df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
-                combined_dfs.append(df)
-        
-        if not combined_dfs:
-            raise FileNotFoundError(f"No pre-revision data found in {pre_rev_dir}")
-            
-        final_df = pd.concat(combined_dfs, axis=1, join='outer')
-        
-        if pre_revision != 'max':
-            try:
-                n_total = int(pre_revision)
-            except ValueError:
-                n_total = None
-
-            if n_total is not None:
-                sampled_agents = []
-                n_per_benchmark = n_total // 4
-                remainder = n_total % 4
-                np.random.seed(RANDOM_SEED)
-                for i, b_name in enumerate(b_names):
-                    # Distribute remainder across first few benchmarks
-                    current_n = n_per_benchmark + (1 if i < remainder else 0)
-                    if current_n == 0: continue
-
-                    # Find the benchmark-specific DataFrame from the list we just populated
-                    # (Logic matches how we concatenated them into combined_dfs)
-                    b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
-                    if b_df_matches:
-                        b_df = b_df_matches[0]
-                        # Find agents that have data for this benchmark
-                        b_agents = b_df.dropna(how='all').index.tolist()
-                        if len(b_agents) > current_n:
-                            sampled = np.random.choice(b_agents, size=current_n, replace=False)
-                        else:
-                            sampled = b_agents
-                        sampled_agents.extend(sampled)
-            
-            # Print sampling breakdown if not quiet
-            if not locals().get('quiet', False):
-                print(f"Equating Dimensions: Sampled {len(sampled_agents)} agents for Pre-Revision ({pre_revision}).")
-            
-            final_df = final_df.loc[sampled_agents]
-            
-        final_df = final_df.dropna(axis=1, how='all')
-        all_dfs = [final_df]
-        global_shared_indices = sorted(list(final_df.index))
-        
-        colbench_dfs = []
-        other_dfs = []
+        all_dfs, global_shared_indices = _load_pre_revision_response_matrix(pre_revision)
     else:
-        # Load from local directory instead of huggingface cache
-        colbench_dir = os.path.join(post_rev_dir, 'colbench_backend_programming', 'resmat')
-        # 1. Load ColBench response matrices
-        colbench_files = sorted([f for f in os.listdir(colbench_dir) if f.startswith('resmat')])
-            
-        colbench_dfs = []
-        for f in colbench_files:
-            df = pd.read_csv(os.path.join(colbench_dir, f), index_col=0)
-            
-            # [CRITICAL DATA FIX]: The base CSV files dynamically generated from trace logs
-            # inadvertently aggregate columns across multiple benchmarks (e.g. resmat_sky0.csv contains SAB + SciCode).
-            # This strict filter prevents cross-contamination to ensure pure N-dim modeling arrays.
-            valid_cols = [c for c in df.columns if str(c).startswith("colbench")]
-            if valid_cols:
-                df = df[valid_cols]
-                df.columns = [f"colbench_backend_programming.{c}" if not str(c).startswith("colbench") else c for c in df.columns]
-                colbench_dfs.append(df)
-    
-        # 2. Load other benchmarks response matrices
-        other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
-
-        from utils import get_benchmark_iterations
-        bench_iterations = {} # benchmark -> [df0, df1, ..., df10]
-        for benchmark in other_benchmarks:
-            b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
-            if os.path.exists(b_resmat_dir):
-                iters = get_benchmark_iterations(b_resmat_dir, benchmark)
-                if iters:
-                    bench_iterations[benchmark] = iters
-                    
-        all_dfs = []
-        for col_df in colbench_dfs:
-            current_bench_parts = [col_df]
-            for benchmark, iters in bench_iterations.items():
-                # Randomly pick an iteration (0 = base, 1-10 = remediation)
-                # This ensures N=1 uses one noisy run across all benchmarks.
-                idx = np.random.randint(0, len(iters))
-                current_bench_parts.append(iters[idx])
-            
-            all_dfs.append(pd.concat(current_bench_parts, axis=1, join='outer'))
-    
-        # Find shared indices for the model target matrices.
-        # The user specifically requested 32 unique agents for the post-revision sweep.
-        # We use all_dfs[0].index as the canonical baseline because intersecting all 54 runs 
-        # inadvertently drops ColBench entirely due to runs like resmat_moon21 being empty.
-        # The IRT model correctly handles missing runs by padding their absence with NaNs.
-        global_shared_indices = sorted(list(set(all_dfs[0].index)))
+        all_dfs, global_shared_indices = _load_post_revision_response_matrices()
 
     # Load embeddings based on type
     emb_file = None
@@ -551,74 +583,80 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
 
 
 def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', j_percentage=1.0,
-                            pre_revision='none'):
+                            pre_revision='none', cross_revision_post_binary=False):
     """Prepare oracle ground truth, train/test splits, and embedding tensors."""
     print("=" * 60)
     print("PREPARING EXPERIMENT DATA")
     print("=" * 60)
 
-    # Find the union of all columns across all dfs to handle potential missing items in some runs
-    all_columns = sorted(list(set().union(*[df.columns for df in all_dfs])))
-    
-    # Create oracle matrix (average across all response matrices)
-    oracle_dfs_filtered = [df.reindex(index=global_shared_indices, columns=all_columns) for df in all_dfs]
-    oracle_stacked = np.array([df.values for df in oracle_dfs_filtered], dtype=float)
-    oracle_matrix = np.nanmean(oracle_stacked, axis=0)
-    oracle_df = pd.DataFrame(oracle_matrix, index=global_shared_indices, columns=all_columns)
+    if cross_revision_post_binary and str(pre_revision).strip().lower() != 'none':
+        post_dfs, post_shared_indices = _load_post_revision_response_matrices()
+        all_columns = sorted(list(set().union(*[df.columns for df in post_dfs])))
+        oracle_dfs_filtered = [df.reindex(index=post_shared_indices, columns=all_columns) for df in post_dfs]
+        oracle_stacked = np.array([df.values for df in oracle_dfs_filtered], dtype=float)
+        oracle_matrix = np.nanmean(oracle_stacked, axis=0)
+        oracle_df = pd.DataFrame(oracle_matrix, index=post_shared_indices, columns=all_columns)
 
-    print(f"Total matrices: {len(all_dfs)}")
-    print(f"Global user intersection: {len(global_shared_indices)} users")
-    print(f"Oracle matrix shape: {oracle_df.shape}")
+        print(f"Pre-train matrices: {len(all_dfs)}")
+        print(f"Post-eval matrices: {len(post_dfs)}")
+        print(f"Post oracle shape: {oracle_df.shape}")
+        train_all_dfs = all_dfs
+        train_global_shared_indices = global_shared_indices
+    else:
+        all_columns = sorted(list(set().union(*[df.columns for df in all_dfs])))
+        oracle_dfs_filtered = [df.reindex(index=global_shared_indices, columns=all_columns) for df in all_dfs]
+        oracle_stacked = np.array([df.values for df in oracle_dfs_filtered], dtype=float)
+        oracle_matrix = np.nanmean(oracle_stacked, axis=0)
+        oracle_df = pd.DataFrame(oracle_matrix, index=global_shared_indices, columns=all_columns)
 
-    # Train/test split (by items/columns)
+        print(f"Total matrices: {len(all_dfs)}")
+        print(f"Global user intersection: {len(global_shared_indices)} users")
+        print(f"Oracle matrix shape: {oracle_df.shape}")
+        train_all_dfs = all_dfs
+        train_global_shared_indices = global_shared_indices
+
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
     N, J_full = oracle_df.shape
-    
-    # 2D Scaling Study: Randomly sub-sample the available items (columns) before holdout
+
     if j_percentage < 1.0:
-        n_j_keep = max(10, int(j_percentage * J_full)) # Keep at least 10 items for meaningful calc
+        n_j_keep = max(10, int(j_percentage * J_full))
         all_j_indices = np.arange(J_full)
-        # Fix seed for item sampling so it's consistent for a given RANDOM_SEED
-        np.random.seed(RANDOM_SEED + 999) 
+        np.random.seed(RANDOM_SEED + 999)
         sampled_j_indices = np.random.choice(all_j_indices, size=n_j_keep, replace=False)
         sampled_j_indices.sort()
-        
+
         oracle_df = oracle_df.iloc[:, sampled_j_indices]
         print(f"Sub-sampling Items: {J_full} -> {n_j_keep} ({j_percentage*100:.1f}%)")
-        
+
     N, J = oracle_df.shape
     sampled_columns = oracle_df.columns.tolist()
-    
-    # Filter all_dfs to match the sampled columns
-    all_dfs_filtered = [df.reindex(columns=sampled_columns) for df in all_dfs]
-    
+
+    train_all_dfs_filtered = [df.reindex(columns=sampled_columns) for df in train_all_dfs]
+
     J_indices = np.arange(J)
-    # Reset seed for train/test split consistency
     np.random.seed(RANDOM_SEED)
     np.random.shuffle(J_indices)
 
     n_test = int(TEST_SIZE * J)
     test_idx = J_indices[:n_test]
-    # For pre-revision experiments, train on the full pre-revision support and
-    # keep the post-style held-out columns only for evaluation reporting.
-    if str(pre_revision).strip().lower() != 'none':
-        train_idx = J_indices
-    else:
-        train_idx = J_indices[n_test:]
+    train_idx = J_indices[n_test:]
 
     print(f"Train items: {len(train_idx)}, Test items: {len(test_idx)}")
 
-    # Prepare tensors
-    oracle_values_clean = np.nan_to_num(oracle_df.values, nan=0.5)
+    oracle_values = oracle_df.values.copy()
+    oracle_mask = ~np.isnan(oracle_values)
+    if cross_revision_post_binary and str(pre_revision).strip().lower() != 'none':
+        oracle_values = (oracle_values > 0.5).astype(np.float32)
+    oracle_values_clean = np.nan_to_num(oracle_values, nan=0.5)
     y_oracle = torch.from_numpy(oracle_values_clean.astype(np.float32)).to(device)
 
     train_mask = np.zeros_like(oracle_df.values, dtype=bool)
-    train_mask[:, train_idx] = ~np.isnan(oracle_df.values)[:, train_idx]
+    train_mask[:, train_idx] = oracle_mask[:, train_idx]
 
     test_mask = np.zeros_like(oracle_df.values, dtype=bool)
-    test_mask[:, test_idx] = ~np.isnan(oracle_df.values)[:, test_idx]
+    test_mask[:, test_idx] = oracle_mask[:, test_idx]
 
     train_mask_t = torch.from_numpy(train_mask).to(device)
     test_mask_t = torch.from_numpy(test_mask).to(device)
@@ -651,7 +689,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     print(f"Embeddings shape: {x_j.shape}")
 
     return {
-        'all_dfs': all_dfs_filtered, # Pass filtered dataframes
+        'all_dfs': train_all_dfs_filtered,
         'y_oracle': y_oracle,
         'y_auc_oracle': y_oracle,
         'train_mask_t': train_mask_t,
@@ -664,6 +702,10 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         'N': N,
         'J': J,
         'embedding_dim': x_j.shape[1],
+        'cross_revision_post_binary': bool(cross_revision_post_binary and str(pre_revision).strip().lower() != 'none'),
+        'train_global_shared_indices': train_global_shared_indices,
+        'support_values': y_oracle.detach().cpu().numpy(),
+        'support_mask': train_mask,
     }
 
 
@@ -674,8 +716,6 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_type='beta',
                            quiet=False, train_retention=1.0):
     """Build training matrix/mask for a specific n_files configuration."""
-    N = data['N']
-    J = data['J']
     train_idx = data['train_idx']
 
     dfs_to_use = data.get('all_dfs', all_dfs)
@@ -692,6 +732,7 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
     current_stacked = np.array([df.values for df in current_dfs], dtype=float)
     train_target_matrix = np.nanmean(current_stacked, axis=0)
     train_target_df = pd.DataFrame(train_target_matrix, index=global_shared_indices, columns=all_columns)
+    N, J = train_target_df.shape
 
     train_values = train_target_df.values.copy()
     if model_type == 'bernoulli':
@@ -718,6 +759,28 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
     train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
 
     return N, J, y_train, train_mask_current_t
+
+
+def build_cross_revision_support_targets(data, train_retention=1.0):
+    """Build the observed post-revision support matrix used for adaptation/evaluation."""
+    support_values = np.asarray(data['support_values'], dtype=np.float32)
+    support_mask_current = np.asarray(data['support_mask'], dtype=bool).copy()
+
+    train_retention = float(train_retention)
+    if train_retention < 1.0:
+        observed_coords = np.argwhere(support_mask_current)
+        if observed_coords.size > 0:
+            rng = np.random.default_rng(RANDOM_SEED + 1701)
+            keep_mask = rng.random(observed_coords.shape[0]) < train_retention
+            support_mask_current[:, :] = False
+            kept_coords = observed_coords[keep_mask]
+            if kept_coords.size == 0:
+                kept_coords = observed_coords[rng.choice(observed_coords.shape[0], size=1, replace=False)]
+            support_mask_current[kept_coords[:, 0], kept_coords[:, 1]] = True
+
+    y_support = torch.from_numpy(support_values.astype(np.float32)).to(device)
+    support_mask_current_t = torch.from_numpy(support_mask_current).to(device)
+    return y_support, support_mask_current_t
 
 
 def compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K):
@@ -1519,10 +1582,20 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     if existing_row is not None and _row_has_complete_metrics(existing_row, expected_non_mirt_cols):
         non_mirt_metrics = {k: float(existing_row[k]) for k in expected_non_mirt_cols}
 
-    N, J, y_train, train_mask_current_t = build_training_targets(
-        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
-        train_retention=train_retention
-    )
+    if data.get('cross_revision_post_binary', False):
+        y_support, support_mask_current_t = build_cross_revision_support_targets(
+            data,
+            train_retention=train_retention,
+        )
+        N = int(y_support.shape[0])
+        J = int(y_support.shape[1])
+        y_train = y_support
+        train_mask_current_t = support_mask_current_t
+    else:
+        N, J, y_train, train_mask_current_t = build_training_targets(
+            n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
+            train_retention=train_retention
+        )
 
     if non_mirt_metrics is None:
         if baseline_embedding_type != actual_embedding_type:
@@ -1700,38 +1773,100 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'final_state': model_state
         }
 
-    # Build train targets only when the amortized model is needed
-    _, _, y_train, train_mask_current_t = build_training_targets(
-        n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
-        train_retention=train_retention
-    )
-    observed_train_pairs = int(train_mask_current_t.sum().item())
+    if data.get('cross_revision_post_binary', False):
+        train_indices = data.get('train_global_shared_indices', global_shared_indices)
+        N_pre, _, y_train_pre, train_mask_pre_t = build_training_targets(
+            n_files,
+            all_dfs,
+            train_indices,
+            data,
+            model_type=model_type,
+            quiet=quiet,
+            train_retention=1.0,
+        )
+        y_support, support_mask_current_t = build_cross_revision_support_targets(
+            data,
+            train_retention=train_retention,
+        )
+        observed_train_pairs = int(support_mask_current_t.sum().item())
 
-    # 5. Amortized IRT (our method)
-    model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
-    final_rmse, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
-                                     model_type=model_type, beta_phi=beta_phi,
-                                     epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet)
+        pre_model = AmortizedIRTModel(N_pre, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+        _, pre_state = train_amortized_irt(
+            pre_model,
+            y_train_pre,
+            train_mask_pre_t,
+            y_train_pre,
+            train_mask_pre_t.detach().cpu().numpy().astype(bool),
+            model_type=model_type,
+            beta_phi=beta_phi,
+            epochs=EPOCHS,
+            lambda_tau=LAMBDA_TAU,
+            quiet=quiet,
+        )
 
-    model.eval()
-    with torch.no_grad():
-        model.load_state_dict({k: v.to(device) for k, v in final_state.items()})
-        p_amortized = model()
+        model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.0, no_tau=no_tau).to(device)
+        state_dict = model.state_dict()
+        for key, value in pre_state.items():
+            if key in {'theta', 'theta_bias'}:
+                continue
+            if key in state_dict and tuple(state_dict[key].shape) == tuple(value.shape):
+                state_dict[key] = value.to(device)
+        model.load_state_dict(state_dict)
+        p_amortized, final_state = adapt_amortized_irt_users(
+            model,
+            y_support,
+            support_mask_current_t,
+            model_type=model_type,
+            beta_phi=beta_phi,
+            quiet=quiet,
+        )
+        final_rmse = compute_rmse(
+            p_amortized.detach().cpu().numpy(),
+            y_oracle.detach().cpu().numpy(),
+            test_mask,
+        )
         auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
-        
         tau_val = model.get_tau()
         active_mask = tau_val > TAU_THRESHOLD
         active_dims = active_mask.sum().item()
-        
         active_dim_indices = torch.nonzero(active_mask).squeeze().cpu().tolist()
         if isinstance(active_dim_indices, int):
             active_dim_indices = [active_dim_indices]
+    else:
+        _, _, y_train, train_mask_current_t = build_training_targets(
+            n_files, all_dfs, global_shared_indices, data, model_type=model_type, quiet=quiet,
+            train_retention=train_retention
+        )
+        observed_train_pairs = int(train_mask_current_t.sum().item())
+
+        model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+        final_rmse, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
+                                         model_type=model_type, beta_phi=beta_phi,
+                                         epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet)
+
+        model.eval()
+        with torch.no_grad():
+            model.load_state_dict({k: v.to(device) for k, v in final_state.items()})
+            p_amortized = model()
+            auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
+
+            tau_val = model.get_tau()
+            active_mask = tau_val > TAU_THRESHOLD
+            active_dims = active_mask.sum().item()
+
+            active_dim_indices = torch.nonzero(active_mask).squeeze().cpu().tolist()
+            if isinstance(active_dim_indices, int):
+                active_dim_indices = [active_dim_indices]
 
     neighbor_support_rows = []
     p_knn = None
     if neighbor_support_output:
+        if data.get('cross_revision_post_binary', False):
+            y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=train_retention)
+        else:
+            y_knn, knn_mask_t = y_train, train_mask_current_t
         p_knn, support_diag = compute_knn_predictions(
-            y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k
+            y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k
         )
         neighbor_support_rows = build_neighbor_support_rows(
             n_files,
@@ -1754,7 +1889,11 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     outlier_robustness_rows = []
     if outlier_robustness_output:
         if p_knn is None:
-            p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k)
+            if data.get('cross_revision_post_binary', False):
+                y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=train_retention)
+            else:
+                y_knn, knn_mask_t = y_train, train_mask_current_t
+            p_knn, _ = compute_knn_predictions(y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k)
         outlier_robustness_rows = build_outlier_robustness_rows(
             n_files,
             model_type,
@@ -2569,7 +2708,8 @@ def run_single_config(config, args, n_values):
     # Prepare data on the local device
     data = prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map,
                                  embedding_type=actual_emb_type, j_percentage=args.j_percentage,
-                                 pre_revision=args.pre_revision)
+                                 pre_revision=args.pre_revision,
+                                 cross_revision_post_binary=args.cross_revision_post_binary)
     # Move tensors to the correct device
     data['x_j'] = data['x_j'].to(local_device)
     data['y_oracle'] = data['y_oracle'].to(local_device)
@@ -2775,6 +2915,8 @@ def main():
     parser.add_argument('--migrate-model-type', type=str, default=None,
                         choices=['beta', 'bernoulli'],
                         help='Optional model type filter for pair-efficiency migration.')
+    parser.add_argument('--cross-revision-post-binary', action='store_true',
+                        help='For pre-revision runs, train on pre data but evaluate on a binary post-revision oracle with a held-out 10%% item split.')
     args = parser.parse_args()
 
     import sys, os

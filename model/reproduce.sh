@@ -92,7 +92,7 @@ while [[ $# -gt 0 ]]; do
             SUPPORT_THINNING_STUDY=true
             shift
             ;;
-        --sample-size|--sample_size)
+        --sample-size-study|--sample-size|--sample_size)
             SAMPLE_SIZE_STUDY=true
             shift
             ;;
@@ -243,6 +243,7 @@ run_baseline() {
     local knn_k=${7:-10}
     local baseline_profile=${8:-full}
     local train_retention=${9:-1.0}
+    local cross_revision_post_binary=${10:-false}
 
     local seeds_csv=${seeds// /,}
     local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
@@ -255,6 +256,9 @@ run_baseline() {
     fi
     if [[ "$train_retention" != "1.0" ]]; then
         cmd="$cmd --train-retention $train_retention"
+    fi
+    if [[ "$cross_revision_post_binary" == "true" ]]; then
+        cmd="$cmd --cross-revision-post-binary"
     fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
@@ -287,10 +291,11 @@ run_exp() {
     local knn_k=${17:-10}
     local baseline_profile=${18:-full}
     local precompute_baseline=${19:-true}
+    local cross_revision_post_binary=${20:-false}
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" && "$precompute_baseline" == "true" ]]; then
-        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile" "$train_retention"
+        run_baseline "$n" "$model" "$pre" "$seeds" "$j_pct" "$baseline_emb" "$knn_k" "$baseline_profile" "$train_retention" "$cross_revision_post_binary"
     fi
 
     local taus_csv=${taus// /,}
@@ -349,6 +354,9 @@ run_exp() {
     if [[ "$train_retention" != "1.0" ]]; then
         cmd="$cmd --train-retention $train_retention"
     fi
+    if [[ "$cross_revision_post_binary" == "true" ]]; then
+        cmd="$cmd --cross-revision-post-binary"
+    fi
     if [[ "$PARALLEL" -gt 1 ]]; then
         cmd="$cmd --parallel $PARALLEL"
     fi
@@ -361,7 +369,7 @@ seed_support_thinning_araf_file() {
     local retention_dir=$1
     local araf_dir=$2
     local araf_emb=$3
-    local target_file="${araf_dir}/amortized_irt_${araf_emb}_beta_pre_max_n_max.csv"
+    local target_file="${araf_dir}/amortized_irt_${araf_emb}_bernoulli_pre_max_n_max.csv"
 
     mkdir -p "${araf_dir}"
 
@@ -375,7 +383,7 @@ seed_support_thinning_araf_file() {
             best_rows="${rows}"
             best_source="${candidate}"
         fi
-    done < <(find "${retention_dir}" -type f -name "amortized_irt_${araf_emb}_beta_pre_max_n_max*.csv" ! -path "${araf_dir}/*" 2>/dev/null)
+    done < <(find "${retention_dir}" -type f -name "amortized_irt_${araf_emb}_bernoulli_pre_max_n_max*.csv" ! -path "${araf_dir}/*" 2>/dev/null)
 
     if [[ -f "${target_file}" ]]; then
         local target_rows
@@ -522,8 +530,8 @@ run_neighbor_support_study() {
 import pandas as pd
 from pathlib import Path
 
-pair_csv = Path(${pair_csv@Q})
-config_csv = Path(${config_csv@Q})
+pair_csv = Path(r"""${pair_csv}""")
+config_csv = Path(r"""${config_csv}""")
 checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
 df = pd.read_csv(pair_csv, low_memory=False)
 df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
@@ -582,7 +590,7 @@ run_support_thinning_study() {
 
     mkdir -p "${THIN_RESULT_DIR}"
 
-    echo " -> Running beta support-thinning ladder on Pre-max, J=1.0..."
+    echo " -> Running Bernoulli cross-revision support-thinning ladder on Pre-max, J=1.0..."
     echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
     echo " -> Reusing cached outputs when seed/tau rows already exist."
     for retention in "${THIN_RETENTIONS[@]}"; do
@@ -616,7 +624,7 @@ run_support_thinning_study() {
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
             seed_support_thinning_araf_file "${THIN_RESULT_DIR}/${ret_label}" "${araf_dir}" "${araf_emb}"
             local taus="$SHARED_TAUS"
-            run_exp "${araf_emb}" max beta "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false"
+            run_exp "${araf_emb}" max bernoulli "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false" "true"
         done
 
         for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
@@ -639,9 +647,9 @@ PY
                 python - <<PY
 from pathlib import Path
 
-ret = ${retention_token@Q}
+ret = r"""${retention_token}"""
 keep_suffix = f"_ret_{ret}.csv"
-base = Path(${baselines_dir@Q})
+base = Path(r"""${baselines_dir}""")
 if base.is_dir():
     for p in base.glob("baseline_knn_*.csv"):
         if p.name.endswith(keep_suffix):
@@ -654,7 +662,7 @@ if base.is_dir():
         p.unlink(missing_ok=True)
 PY
 
-                run_baseline max beta "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}"
+                run_baseline max bernoulli "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "true"
             done
         done
     done
@@ -684,7 +692,7 @@ run_sample_size_study() {
 import re
 from pathlib import Path
 
-root = Path(${saved_result_dir@Q})
+root = Path(r"""${saved_result_dir}""")
 if root.is_dir():
     pat = re.compile(r"^amortized_irt_(sae|pca|raw)_beta_pre_(4|8|16|32|64|max)_n_max(?:_j(?:0\.1|0\.3|0\.5|0\.7|0\.9))?(?:_braw_k10)?\.csv$")
     removed = 0
@@ -701,18 +709,18 @@ PY
     MIRT_SWEEP_CSV="${SAMPLE_SIZE_RESULT_DIR}/baselines/mirt_sweep.csv"
     mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
 
-    echo " -> Running dedicated sample-size study into ${RESULT_DIR} ..."
+    echo " -> Running dedicated cross-revision sample-size study into ${RESULT_DIR} ..."
 
     for pre in "${SAMPLE_PRE_LEVELS[@]}"; do
-        run_tau_sweep sae max beta 0.16 "$pre" "1.0"
-        run_tau_sweep pca max beta 0.054 "$pre" "1.0"
-        run_tau_sweep raw max beta 0.029 "$pre" "1.0"
+        run_exp sae max bernoulli 0.0159 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
+        run_exp pca max bernoulli 0.0155 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
+        run_exp raw max bernoulli 0.0151 "$pre" "$SEEDS" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
     done
 
     for j in "${SAMPLE_J_LEVELS[@]}"; do
-        run_tau_sweep sae max beta 0.16 "32" "$j"
-        run_tau_sweep pca max beta 0.054 "32" "$j"
-        run_tau_sweep raw max beta 0.029 "32" "$j"
+        run_exp sae max bernoulli 0.0159 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
+        run_exp pca max bernoulli 0.0155 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
+        run_exp raw max bernoulli 0.0151 "32" "$SEEDS" "${RESULT_DIR}" false false "$j" "" "" "" "" "1.0" "raw" "10" "full" "true" "true"
     done
 
     RESULT_DIR="${saved_result_dir}"
@@ -745,8 +753,8 @@ run_outlier_robustness_study() {
 import pandas as pd
 from pathlib import Path
 
-pair_csv = Path(${pair_csv@Q})
-config_csv = Path(${config_csv@Q})
+pair_csv = Path(r"""${pair_csv}""")
+config_csv = Path(r"""${config_csv}""")
 checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
 df = pd.read_csv(pair_csv, low_memory=False)
 df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
