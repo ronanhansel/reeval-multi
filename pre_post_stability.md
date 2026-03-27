@@ -1,0 +1,387 @@
+# Pre/Post Stability Diagnosis
+
+## Configuration
+- Pre-revision setting: `max`
+- Column alignment: `intersection`
+- Repeated samples: 200
+- Seed: 42
+- Post binarization: `post_binary = where(isnan(post_beta), nan, (post_beta > 0.5).astype(float))`
+
+## Matrix Summary
+### pre_full_raw
+- rows: 143
+- cols: 1176
+- observed_fraction: 0.168153
+- overall_mean: 0.396849
+- avg_item_variance: 0.129674
+- avg_agent_variance: 0.133906
+- zero_variance_item_fraction: 0.059524
+### post_beta
+- rows: 32
+- cols: 1176
+- observed_fraction: 0.245509
+- overall_mean: 0.244931
+- avg_item_variance: 0.017086
+- avg_agent_variance: 0.083130
+- zero_variance_item_fraction: 0.093537
+### post_binary
+- rows: 32
+- cols: 1176
+- observed_fraction: 0.245509
+- overall_mean: 0.198939
+- avg_item_variance: 0.048789
+- avg_agent_variance: 0.112896
+- zero_variance_item_fraction: 0.742347
+- mean_item_entropy: 0.186096
+### pre_full_binary_sensitivity
+- rows: 143
+- cols: 1176
+- observed_fraction: 0.168153
+- overall_mean: 0.386944
+- avg_item_variance: 0.156567
+- avg_agent_variance: 0.140086
+- zero_variance_item_fraction: 0.075680
+- mean_item_entropy: 0.657537
+
+## Full Comparison
+### raw_pre_vs_binary_post
+- avg_item_variance_pre: 0.129674
+- avg_item_variance_post: 0.048789
+- delta_post_minus_pre: -0.080885
+- avg_agent_variance_pre: 0.133906
+- avg_agent_variance_post: 0.112896
+- mean_score_pre: 0.396849
+- mean_pass_rate_post: 0.198939
+### binary_sensitivity_pre_vs_post
+- avg_item_variance_pre_binary: 0.156567
+- avg_item_variance_post_binary: 0.048789
+- delta_post_minus_pre_binary: -0.107777
+- mean_item_entropy_pre_binary: 0.657537
+- mean_item_entropy_post_binary: 0.186096
+### per_benchmark_avg_item_variance
+- pre_full_raw:
+  - colbench_backend_programming: 0.134212
+  - corebench_hard: 0.140581
+  - scicode: 0.015585
+  - scienceagentbench: 0.112810
+- post_binary:
+  - colbench_backend_programming: 0.046107
+  - corebench_hard: 0.085185
+  - scicode: 0.008621
+  - scienceagentbench: 0.071564
+- pre_full_binary_sensitivity:
+  - colbench_backend_programming: 0.165838
+  - corebench_hard: 0.140581
+  - scicode: 0.015585
+  - scienceagentbench: 0.112810
+
+## Matched Sampling
+### benchmark_balanced_raw_pre_vs_binary_post
+- Target pre sample size: 32
+- Repeats: 200
+- Sampler: benchmark_balanced
+- Max resampling attempts per repeat: 100
+- Rejected samples during validation: 0
+- Benchmark count diagnostics:
+  - sample counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - post counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - mean_observed_per_item(sample)=8.000000, mean_observed_per_item(post)=7.856293, ratio=1.018292
+- overall_mean: sampled pre mean=0.418571, SE=0.001270, 95% CI=[0.416081, 0.421060], post=0.198939, delta(post-pre)=-0.219631, reduction=52.47%, z=-172.902, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_item_variance: sampled pre mean=0.131788, SE=0.001175, 95% CI=[0.129485, 0.134091], post=0.048789, delta(post-pre)=-0.082999, reduction=62.98%, z=-70.636, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_agent_variance: sampled pre mean=0.137546, SE=0.000515, 95% CI=[0.136537, 0.138555], post=0.112896, delta(post-pre)=-0.024650, reduction=17.92%, z=-47.877, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- zero_variance_item_fraction: sampled pre mean=0.150157, SE=0.003555, 95% CI=[0.143190, 0.157125], post=0.742347, delta(post-pre)=0.592190, reduction=-394.38%, z=166.594, post percentile in pre samples=1.000, empirical two-sided p=0.000
+- macro_benchmark_avg_item_variance: sampled pre mean=0.101596, SE=0.000539, 95% CI=[0.100539, 0.102652], post=0.052869, delta(post-pre)=-0.048727, reduction=47.96%, z=-90.390, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- mean_observed_per_item: sampled pre mean=8.000000, SE=0.000000, 95% CI=[8.000000, 8.000000], post=7.856293, delta(post-pre)=-0.143707, reduction=1.80%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q10: sampled pre mean=0.000624, SE=0.000183, 95% CI=[0.000266, 0.000983], post=0.000000, delta(post-pre)=-0.000624, reduction=100.00%, z=-3.412, post percentile in pre samples=0.895, empirical two-sided p=1.000
+- q25: sampled pre mean=0.062454, SE=0.002691, 95% CI=[0.057181, 0.067727], post=0.000000, delta(post-pre)=-0.062454, reduction=100.00%, z=-23.213, post percentile in pre samples=0.080, empirical two-sided p=0.160
+- q50: sampled pre mean=0.131132, SE=0.001400, 95% CI=[0.128388, 0.133877], post=0.000000, delta(post-pre)=-0.131132, reduction=100.00%, z=-93.653, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q75: sampled pre mean=0.205652, SE=0.000852, 95% CI=[0.203982, 0.207323], post=0.125000, delta(post-pre)=-0.080652, reduction=39.22%, z=-94.629, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q90: sampled pre mean=0.257417, SE=0.000531, 95% CI=[0.256377, 0.258456], post=0.214286, delta(post-pre)=-0.043131, reduction=16.76%, z=-81.290, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- Benchmark-wise avg item variance:
+  - colbench_backend_programming: sampled pre mean=0.136658, SE=0.001375, 95% CI=[0.133962, 0.139354], post=0.046107, delta(post-pre)=-0.090551, reduction=66.26%, z=-65.833, post percentile=0.000, empirical two-sided p=0.000
+  - corebench_hard: sampled pre mean=0.142236, SE=0.001490, 95% CI=[0.139315, 0.145157], post=0.085185, delta(post-pre)=-0.057051, reduction=40.11%, z=-38.282, post percentile=0.000, empirical two-sided p=0.000
+  - scicode: sampled pre mean=0.014791, SE=0.000405, 95% CI=[0.013996, 0.015585], post=0.008621, delta(post-pre)=-0.006170, reduction=41.72%, z=-15.217, post percentile=0.195, empirical two-sided p=0.390
+  - scienceagentbench: sampled pre mean=0.112699, SE=0.000423, 95% CI=[0.111870, 0.113527], post=0.071564, delta(post-pre)=-0.041135, reduction=36.50%, z=-97.340, post percentile=0.000, empirical two-sided p=0.000
+- Strength-match diagnostics:
+  - sample_mean_strength: mean=0.234216, SE=0.001080, 95% CI=[0.232100, 0.236333]
+  - post_mean_strength: mean=0.141134, SE=0.000000, 95% CI=[0.141134, 0.141134]
+  - delta_mean_strength: mean=0.093082, SE=0.001080, 95% CI=[0.090966, 0.095199]
+  - sample_sd_strength: mean=0.180340, SE=0.000759, 95% CI=[0.178853, 0.181827]
+  - post_sd_strength: mean=0.098315, SE=0.000000, 95% CI=[0.098315, 0.098315]
+  - delta_sd_strength: mean=0.082025, SE=0.000759, 95% CI=[0.080538, 0.083512]
+- Strength-match diagnostics by benchmark:
+  - colbench_backend_programming:
+    - sample_mean_strength: mean=0.458920, SE=0.001489, 95% CI=[0.456002, 0.461839]
+    - post_mean_strength: mean=0.204000, SE=0.000000, 95% CI=[0.204000, 0.204000]
+    - delta_mean_strength: mean=0.254920, SE=0.001489, 95% CI=[0.252002, 0.257839]
+    - sample_sd_strength: mean=0.070230, SE=0.001010, 95% CI=[0.068251, 0.072210]
+    - post_sd_strength: mean=0.049558, SE=0.000000, 95% CI=[0.049558, 0.049558]
+    - delta_sd_strength: mean=0.020672, SE=0.001010, 95% CI=[0.018692, 0.022652]
+  - corebench_hard:
+    - sample_mean_strength: mean=0.248042, SE=0.003548, 95% CI=[0.241087, 0.254996]
+    - post_mean_strength: mean=0.121393, SE=0.000000, 95% CI=[0.121393, 0.121393]
+    - delta_mean_strength: mean=0.126649, SE=0.003548, 95% CI=[0.119694, 0.133603]
+    - sample_sd_strength: mean=0.127928, SE=0.002875, 95% CI=[0.122293, 0.133562]
+    - post_sd_strength: mean=0.069649, SE=0.000000, 95% CI=[0.069649, 0.069649]
+    - delta_sd_strength: mean=0.058279, SE=0.002875, 95% CI=[0.052645, 0.063913]
+  - scicode:
+    - sample_mean_strength: mean=0.017716, SE=0.000537, 95% CI=[0.016663, 0.018768]
+    - post_mean_strength: mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621]
+    - delta_mean_strength: mean=0.009095, SE=0.000537, 95% CI=[0.008042, 0.010147]
+    - sample_sd_strength: mean=0.021397, SE=0.000491, 95% CI=[0.020435, 0.022358]
+    - post_sd_strength: mean=0.022808, SE=0.000000, 95% CI=[0.022808, 0.022808]
+    - delta_sd_strength: mean=-0.001412, SE=0.000491, 95% CI=[-0.002373, -0.000450]
+  - scienceagentbench:
+    - sample_mean_strength: mean=0.212188, SE=0.001671, 95% CI=[0.208912, 0.215463]
+    - post_mean_strength: mean=0.230523, SE=0.000000, 95% CI=[0.230523, 0.230523]
+    - delta_mean_strength: mean=-0.018335, SE=0.001671, 95% CI=[-0.021610, -0.015060]
+    - sample_sd_strength: mean=0.076804, SE=0.001280, 95% CI=[0.074295, 0.079313]
+    - post_sd_strength: mean=0.030724, SE=0.000000, 95% CI=[0.030724, 0.030724]
+    - delta_sd_strength: mean=0.046081, SE=0.001280, 95% CI=[0.043571, 0.048590]
+
+### benchmark_balanced_binary_sensitivity_pre_vs_post
+- Target pre sample size: 32
+- Repeats: 200
+- Sampler: benchmark_balanced
+- Max resampling attempts per repeat: 100
+- Rejected samples during validation: 0
+- Benchmark count diagnostics:
+  - sample counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - post counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - mean_observed_per_item(sample)=8.000000, mean_observed_per_item(post)=7.856293, ratio=1.018292
+- overall_mean: sampled pre mean=0.407830, SE=0.001323, 95% CI=[0.405236, 0.410423], post=0.198939, delta(post-pre)=-0.208890, reduction=51.22%, z=-157.890, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_item_variance: sampled pre mean=0.159123, SE=0.001284, 95% CI=[0.156606, 0.161640], post=0.048789, delta(post-pre)=-0.110333, reduction=69.34%, z=-85.913, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_agent_variance: sampled pre mean=0.147630, SE=0.000516, 95% CI=[0.146619, 0.148640], post=0.112896, delta(post-pre)=-0.034734, reduction=23.53%, z=-67.344, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- zero_variance_item_fraction: sampled pre mean=0.227317, SE=0.005036, 95% CI=[0.217446, 0.237189], post=0.742347, delta(post-pre)=0.515030, reduction=-226.57%, z=102.261, post percentile in pre samples=1.000, empirical two-sided p=0.000
+- macro_benchmark_avg_item_variance: sampled pre mean=0.109632, SE=0.000562, 95% CI=[0.108531, 0.110734], post=0.052869, delta(post-pre)=-0.056763, reduction=51.78%, z=-101.015, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- mean_observed_per_item: sampled pre mean=8.000000, SE=0.000000, 95% CI=[8.000000, 8.000000], post=7.856293, delta(post-pre)=-0.143707, reduction=1.80%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q10: sampled pre mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000], post=0.000000, delta(post-pre)=0.000000, reduction=nan%, z=nan, post percentile in pre samples=1.000, empirical two-sided p=1.000
+- q25: sampled pre mean=0.075938, SE=0.004310, 95% CI=[0.067490, 0.084385], post=0.000000, delta(post-pre)=-0.075938, reduction=100.00%, z=-17.620, post percentile in pre samples=0.390, empirical two-sided p=0.780
+- q50: sampled pre mean=0.170089, SE=0.003164, 95% CI=[0.163887, 0.176292], post=0.000000, delta(post-pre)=-0.170089, reduction=100.00%, z=-53.749, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q75: sampled pre mean=0.256004, SE=0.001563, 95% CI=[0.252940, 0.259069], post=0.125000, delta(post-pre)=-0.131004, reduction=51.17%, z=-83.794, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q90: sampled pre mean=0.272232, SE=0.000541, 95% CI=[0.271172, 0.273292], post=0.214286, delta(post-pre)=-0.057946, reduction=21.29%, z=-107.162, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- mean_item_entropy: sampled pre mean=0.601794, SE=0.004617, 95% CI=[0.592744, 0.610844], post=0.186096, delta(post-pre)=-0.415698, reduction=69.08%, z=-90.034, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- Benchmark-wise avg item variance:
+  - colbench_backend_programming: sampled pre mean=0.168803, SE=0.001504, 95% CI=[0.165855, 0.171751], post=0.046107, delta(post-pre)=-0.122696, reduction=72.69%, z=-81.574, post percentile=0.000, empirical two-sided p=0.000
+  - corebench_hard: sampled pre mean=0.142236, SE=0.001490, 95% CI=[0.139315, 0.145157], post=0.085185, delta(post-pre)=-0.057051, reduction=40.11%, z=-38.282, post percentile=0.000, empirical two-sided p=0.000
+  - scicode: sampled pre mean=0.014791, SE=0.000405, 95% CI=[0.013996, 0.015585], post=0.008621, delta(post-pre)=-0.006170, reduction=41.72%, z=-15.217, post percentile=0.195, empirical two-sided p=0.390
+  - scienceagentbench: sampled pre mean=0.112699, SE=0.000423, 95% CI=[0.111870, 0.113527], post=0.071564, delta(post-pre)=-0.041135, reduction=36.50%, z=-97.340, post percentile=0.000, empirical two-sided p=0.000
+- Strength-match diagnostics:
+  - sample_mean_strength: mean=0.231058, SE=0.001084, 95% CI=[0.228934, 0.233182]
+  - post_mean_strength: mean=0.141134, SE=0.000000, 95% CI=[0.141134, 0.141134]
+  - delta_mean_strength: mean=0.089924, SE=0.001084, 95% CI=[0.087800, 0.092048]
+  - sample_sd_strength: mean=0.176740, SE=0.000780, 95% CI=[0.175212, 0.178268]
+  - post_sd_strength: mean=0.098315, SE=0.000000, 95% CI=[0.098315, 0.098315]
+  - delta_sd_strength: mean=0.078425, SE=0.000780, 95% CI=[0.076897, 0.079954]
+- Strength-match diagnostics by benchmark:
+  - colbench_backend_programming:
+    - sample_mean_strength: mean=0.446289, SE=0.001552, 95% CI=[0.443246, 0.449331]
+    - post_mean_strength: mean=0.204000, SE=0.000000, 95% CI=[0.204000, 0.204000]
+    - delta_mean_strength: mean=0.242289, SE=0.001552, 95% CI=[0.239246, 0.245331]
+    - sample_sd_strength: mean=0.072996, SE=0.001043, 95% CI=[0.070951, 0.075040]
+    - post_sd_strength: mean=0.049558, SE=0.000000, 95% CI=[0.049558, 0.049558]
+    - delta_sd_strength: mean=0.023437, SE=0.001043, 95% CI=[0.021393, 0.025482]
+  - corebench_hard:
+    - sample_mean_strength: mean=0.248042, SE=0.003548, 95% CI=[0.241087, 0.254996]
+    - post_mean_strength: mean=0.121393, SE=0.000000, 95% CI=[0.121393, 0.121393]
+    - delta_mean_strength: mean=0.126649, SE=0.003548, 95% CI=[0.119694, 0.133603]
+    - sample_sd_strength: mean=0.127928, SE=0.002875, 95% CI=[0.122293, 0.133562]
+    - post_sd_strength: mean=0.069649, SE=0.000000, 95% CI=[0.069649, 0.069649]
+    - delta_sd_strength: mean=0.058279, SE=0.002875, 95% CI=[0.052645, 0.063913]
+  - scicode:
+    - sample_mean_strength: mean=0.017716, SE=0.000537, 95% CI=[0.016663, 0.018768]
+    - post_mean_strength: mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621]
+    - delta_mean_strength: mean=0.009095, SE=0.000537, 95% CI=[0.008042, 0.010147]
+    - sample_sd_strength: mean=0.021397, SE=0.000491, 95% CI=[0.020435, 0.022358]
+    - post_sd_strength: mean=0.022808, SE=0.000000, 95% CI=[0.022808, 0.022808]
+    - delta_sd_strength: mean=-0.001412, SE=0.000491, 95% CI=[-0.002373, -0.000450]
+  - scienceagentbench:
+    - sample_mean_strength: mean=0.212188, SE=0.001671, 95% CI=[0.208912, 0.215463]
+    - post_mean_strength: mean=0.230523, SE=0.000000, 95% CI=[0.230523, 0.230523]
+    - delta_mean_strength: mean=-0.018335, SE=0.001671, 95% CI=[-0.021610, -0.015060]
+    - sample_sd_strength: mean=0.076804, SE=0.001280, 95% CI=[0.074295, 0.079313]
+    - post_sd_strength: mean=0.030724, SE=0.000000, 95% CI=[0.030724, 0.030724]
+    - delta_sd_strength: mean=0.046081, SE=0.001280, 95% CI=[0.043571, 0.048590]
+
+### benchmark_constrained_ability_matched_raw_pre_vs_binary_post
+- Target pre sample size: 32
+- Repeats: 200
+- Sampler: benchmark_constrained_ability_matched
+- Max resampling attempts per repeat: 100
+- Rejected samples during validation: 0
+- Benchmark count diagnostics:
+  - sample counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - post counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - mean_observed_per_item(sample)=8.000000, mean_observed_per_item(post)=7.856293, ratio=1.018292
+- overall_mean: sampled pre mean=0.339764, SE=0.000011, 95% CI=[0.339742, 0.339786], post=0.198939, delta(post-pre)=-0.140825, reduction=41.45%, z=-12296.934, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_item_variance: sampled pre mean=0.147334, SE=0.000018, 95% CI=[0.147300, 0.147369], post=0.048789, delta(post-pre)=-0.098545, reduction=66.89%, z=-5579.743, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_agent_variance: sampled pre mean=0.121018, SE=0.000040, 95% CI=[0.120941, 0.121096], post=0.112896, delta(post-pre)=-0.008123, reduction=6.71%, z=-205.350, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- zero_variance_item_fraction: sampled pre mean=0.118282, SE=0.000119, 95% CI=[0.118049, 0.118516], post=0.742347, delta(post-pre)=0.624065, reduction=-527.61%, z=5242.412, post percentile in pre samples=1.000, empirical two-sided p=0.000
+- macro_benchmark_avg_item_variance: sampled pre mean=0.091513, SE=0.000079, 95% CI=[0.091359, 0.091668], post=0.052869, delta(post-pre)=-0.038644, reduction=42.23%, z=-490.963, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- mean_observed_per_item: sampled pre mean=8.000000, SE=0.000000, 95% CI=[8.000000, 8.000000], post=7.856293, delta(post-pre)=-0.143707, reduction=1.80%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q10: sampled pre mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000], post=0.000000, delta(post-pre)=0.000000, reduction=nan%, z=nan, post percentile in pre samples=1.000, empirical two-sided p=1.000
+- q25: sampled pre mean=0.105530, SE=0.000063, 95% CI=[0.105407, 0.105652], post=0.000000, delta(post-pre)=-0.105530, reduction=100.00%, z=-1686.128, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q50: sampled pre mean=0.148787, SE=0.000029, 95% CI=[0.148730, 0.148844], post=0.000000, delta(post-pre)=-0.148787, reduction=100.00%, z=-5086.053, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q75: sampled pre mean=0.214286, SE=0.000000, 95% CI=[0.214286, 0.214286], post=0.125000, delta(post-pre)=-0.089286, reduction=41.67%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q90: sampled pre mean=0.258408, SE=0.000035, 95% CI=[0.258339, 0.258478], post=0.214286, delta(post-pre)=-0.044123, reduction=17.07%, z=-1246.759, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- Benchmark-wise avg item variance:
+  - colbench_backend_programming: sampled pre mean=0.157581, SE=0.000000, 95% CI=[0.157581, 0.157581], post=0.046107, delta(post-pre)=-0.111474, reduction=70.74%, z=nan, post percentile=0.000, empirical two-sided p=0.000
+  - corebench_hard: sampled pre mean=0.086861, SE=0.000273, 95% CI=[0.086326, 0.087396], post=0.085185, delta(post-pre)=-0.001676, reduction=1.93%, z=-6.140, post percentile=0.335, empirical two-sided p=0.670
+  - scicode: sampled pre mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621], post=0.008621, delta(post-pre)=-0.000000, reduction=0.00%, z=-14.107, post percentile=1.000, empirical two-sided p=1.000
+  - scienceagentbench: sampled pre mean=0.112990, SE=0.000170, 95% CI=[0.112658, 0.113323], post=0.071564, delta(post-pre)=-0.041427, reduction=36.66%, z=-244.084, post percentile=0.000, empirical two-sided p=0.000
+- Strength-match diagnostics:
+  - sample_mean_strength: mean=0.183366, SE=0.000056, 95% CI=[0.183256, 0.183475]
+  - post_mean_strength: mean=0.141134, SE=0.000000, 95% CI=[0.141134, 0.141134]
+  - delta_mean_strength: mean=0.042231, SE=0.000056, 95% CI=[0.042122, 0.042341]
+  - sample_sd_strength: mean=0.140558, SE=0.000020, 95% CI=[0.140519, 0.140597]
+  - post_sd_strength: mean=0.098315, SE=0.000000, 95% CI=[0.098315, 0.098315]
+  - delta_sd_strength: mean=0.042243, SE=0.000020, 95% CI=[0.042204, 0.042282]
+- Strength-match diagnostics by benchmark:
+  - colbench_backend_programming:
+    - sample_mean_strength: mean=0.370262, SE=0.000000, 95% CI=[0.370262, 0.370262]
+    - post_mean_strength: mean=0.204000, SE=0.000000, 95% CI=[0.204000, 0.204000]
+    - delta_mean_strength: mean=0.166262, SE=0.000000, 95% CI=[0.166262, 0.166262]
+    - sample_sd_strength: mean=0.046778, SE=0.000000, 95% CI=[0.046778, 0.046778]
+    - post_sd_strength: mean=0.049558, SE=0.000000, 95% CI=[0.049558, 0.049558]
+    - delta_sd_strength: mean=-0.002780, SE=0.000000, 95% CI=[-0.002780, -0.002780]
+  - corebench_hard:
+    - sample_mean_strength: mean=0.124861, SE=0.000197, 95% CI=[0.124476, 0.125247]
+    - post_mean_strength: mean=0.121393, SE=0.000000, 95% CI=[0.121393, 0.121393]
+    - delta_mean_strength: mean=0.003468, SE=0.000197, 95% CI=[0.003083, 0.003853]
+    - sample_sd_strength: mean=0.066067, SE=0.000025, 95% CI=[0.066018, 0.066116]
+    - post_sd_strength: mean=0.069649, SE=0.000000, 95% CI=[0.069649, 0.069649]
+    - delta_sd_strength: mean=-0.003582, SE=0.000025, 95% CI=[-0.003630, -0.003533]
+  - scicode:
+    - sample_mean_strength: mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621]
+    - post_mean_strength: mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621]
+    - delta_mean_strength: mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000]
+    - sample_sd_strength: mean=0.022808, SE=0.000000, 95% CI=[0.022808, 0.022808]
+    - post_sd_strength: mean=0.022808, SE=0.000000, 95% CI=[0.022808, 0.022808]
+    - delta_sd_strength: mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000]
+  - scienceagentbench:
+    - sample_mean_strength: mean=0.229718, SE=0.000093, 95% CI=[0.229536, 0.229901]
+    - post_mean_strength: mean=0.230523, SE=0.000000, 95% CI=[0.230523, 0.230523]
+    - delta_mean_strength: mean=-0.000805, SE=0.000093, 95% CI=[-0.000987, -0.000622]
+    - sample_sd_strength: mean=0.030131, SE=0.000057, 95% CI=[0.030019, 0.030243]
+    - post_sd_strength: mean=0.030724, SE=0.000000, 95% CI=[0.030724, 0.030724]
+    - delta_sd_strength: mean=-0.000592, SE=0.000057, 95% CI=[-0.000705, -0.000480]
+- Difficulty-restricted sensitivity:
+  - retained where sample/post pass rates both in [0.200, 0.800]
+  - retained_item_count: mean=138.900, SE=0.106, min=136, max=142
+  - retained_item_fraction: mean=0.118112, SE=0.000090, min=0.115646, max=0.120748
+  - min_items_per_benchmark=5
+  - retained items per benchmark:
+    - colbench_backend_programming: mean=115.000, min=115, max=115, too_few_rate=0.000
+    - corebench_hard: mean=8.320, min=5, max=12, too_few_rate=0.000
+    - scicode: mean=0.000, min=0, max=0, too_few_rate=1.000
+    - scienceagentbench: mean=15.580, min=15, max=16, too_few_rate=0.000
+  - explicitly flagged benchmarks with too-few retained items: ['scicode']
+  - filtered metric comparison (post minus sampled pre):
+    - avg_item_variance: sample=0.223606 (SE=0.000045), post=0.244441 (SE=0.000036), delta=0.020834 (SE=0.000052), reduction=-9.32%
+    - macro_benchmark_avg_item_variance: sample=0.238293 (SE=0.000240), post=0.259196 (SE=0.000098), delta=0.020903 (SE=0.000246), reduction=-8.77%
+    - zero_variance_item_fraction: sample=0.000000 (SE=0.000000), post=0.000000 (SE=0.000000), delta=0.000000 (SE=0.000000), reduction=nan%
+
+### benchmark_constrained_ability_matched_binary_sensitivity_pre_vs_post
+- Target pre sample size: 32
+- Repeats: 200
+- Sampler: benchmark_constrained_ability_matched
+- Max resampling attempts per repeat: 100
+- Rejected samples during validation: 0
+- Benchmark count diagnostics:
+  - sample counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - post counts: {'colbench_backend_programming': 8, 'corebench_hard': 8, 'scicode': 8, 'scienceagentbench': 8}
+  - mean_observed_per_item(sample)=8.000000, mean_observed_per_item(post)=7.856293, ratio=1.018292
+- overall_mean: sampled pre mean=0.326361, SE=0.000011, 95% CI=[0.326338, 0.326383], post=0.198939, delta(post-pre)=-0.127421, reduction=39.04%, z=-11126.531, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_item_variance: sampled pre mean=0.174385, SE=0.000018, 95% CI=[0.174350, 0.174419], post=0.048789, delta(post-pre)=-0.125596, reduction=72.02%, z=-7111.387, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- avg_agent_variance: sampled pre mean=0.130026, SE=0.000040, 95% CI=[0.129948, 0.130103], post=0.112896, delta(post-pre)=-0.017130, reduction=13.17%, z=-433.073, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- zero_variance_item_fraction: sampled pre mean=0.177806, SE=0.000119, 95% CI=[0.177573, 0.178039], post=0.742347, delta(post-pre)=0.564541, reduction=-317.50%, z=4742.386, post percentile in pre samples=1.000, empirical two-sided p=0.000
+- macro_benchmark_avg_item_variance: sampled pre mean=0.099466, SE=0.000079, 95% CI=[0.099312, 0.099620], post=0.052869, delta(post-pre)=-0.046597, reduction=46.85%, z=-592.003, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- mean_observed_per_item: sampled pre mean=8.000000, SE=0.000000, 95% CI=[8.000000, 8.000000], post=7.856293, delta(post-pre)=-0.143707, reduction=1.80%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q10: sampled pre mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000], post=0.000000, delta(post-pre)=0.000000, reduction=nan%, z=nan, post percentile in pre samples=1.000, empirical two-sided p=1.000
+- q25: sampled pre mean=0.125000, SE=0.000000, 95% CI=[0.125000, 0.125000], post=0.000000, delta(post-pre)=-0.125000, reduction=100.00%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q50: sampled pre mean=0.214286, SE=0.000000, 95% CI=[0.214286, 0.214286], post=0.000000, delta(post-pre)=-0.214286, reduction=100.00%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q75: sampled pre mean=0.267857, SE=0.000000, 95% CI=[0.267857, 0.267857], post=0.125000, delta(post-pre)=-0.142857, reduction=53.33%, z=nan, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- q90: sampled pre mean=0.281875, SE=0.000488, 95% CI=[0.280918, 0.282832], post=0.214286, delta(post-pre)=-0.067589, reduction=23.98%, z=-138.429, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- mean_item_entropy: sampled pre mean=0.655208, SE=0.000070, 95% CI=[0.655070, 0.655346], post=0.186096, delta(post-pre)=-0.469112, reduction=71.60%, z=-6668.308, post percentile in pre samples=0.000, empirical two-sided p=0.000
+- Benchmark-wise avg item variance:
+  - colbench_backend_programming: sampled pre mean=0.189393, SE=0.000000, 95% CI=[0.189393, 0.189393], post=0.046107, delta(post-pre)=-0.143286, reduction=75.66%, z=-72824781913304608.000, post percentile=0.000, empirical two-sided p=0.000
+  - corebench_hard: sampled pre mean=0.086861, SE=0.000273, 95% CI=[0.086326, 0.087396], post=0.085185, delta(post-pre)=-0.001676, reduction=1.93%, z=-6.140, post percentile=0.335, empirical two-sided p=0.670
+  - scicode: sampled pre mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621], post=0.008621, delta(post-pre)=-0.000000, reduction=0.00%, z=-14.107, post percentile=1.000, empirical two-sided p=1.000
+  - scienceagentbench: sampled pre mean=0.112990, SE=0.000170, 95% CI=[0.112658, 0.113323], post=0.071564, delta(post-pre)=-0.041427, reduction=36.66%, z=-244.084, post percentile=0.000, empirical two-sided p=0.000
+- Strength-match diagnostics:
+  - sample_mean_strength: mean=0.179425, SE=0.000056, 95% CI=[0.179315, 0.179535]
+  - post_mean_strength: mean=0.141134, SE=0.000000, 95% CI=[0.141134, 0.141134]
+  - delta_mean_strength: mean=0.038291, SE=0.000056, 95% CI=[0.038181, 0.038401]
+  - sample_sd_strength: mean=0.135519, SE=0.000020, 95% CI=[0.135481, 0.135558]
+  - post_sd_strength: mean=0.098315, SE=0.000000, 95% CI=[0.098315, 0.098315]
+  - delta_sd_strength: mean=0.037205, SE=0.000020, 95% CI=[0.037166, 0.037244]
+- Strength-match diagnostics by benchmark:
+  - colbench_backend_programming:
+    - sample_mean_strength: mean=0.354500, SE=0.000000, 95% CI=[0.354500, 0.354500]
+    - post_mean_strength: mean=0.204000, SE=0.000000, 95% CI=[0.204000, 0.204000]
+    - delta_mean_strength: mean=0.150500, SE=0.000000, 95% CI=[0.150500, 0.150500]
+    - sample_sd_strength: mean=0.048267, SE=0.000000, 95% CI=[0.048267, 0.048267]
+    - post_sd_strength: mean=0.049558, SE=0.000000, 95% CI=[0.049558, 0.049558]
+    - delta_sd_strength: mean=-0.001291, SE=0.000000, 95% CI=[-0.001291, -0.001291]
+  - corebench_hard:
+    - sample_mean_strength: mean=0.124861, SE=0.000197, 95% CI=[0.124476, 0.125247]
+    - post_mean_strength: mean=0.121393, SE=0.000000, 95% CI=[0.121393, 0.121393]
+    - delta_mean_strength: mean=0.003468, SE=0.000197, 95% CI=[0.003083, 0.003853]
+    - sample_sd_strength: mean=0.066067, SE=0.000025, 95% CI=[0.066018, 0.066116]
+    - post_sd_strength: mean=0.069649, SE=0.000000, 95% CI=[0.069649, 0.069649]
+    - delta_sd_strength: mean=-0.003582, SE=0.000025, 95% CI=[-0.003630, -0.003533]
+  - scicode:
+    - sample_mean_strength: mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621]
+    - post_mean_strength: mean=0.008621, SE=0.000000, 95% CI=[0.008621, 0.008621]
+    - delta_mean_strength: mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000]
+    - sample_sd_strength: mean=0.022808, SE=0.000000, 95% CI=[0.022808, 0.022808]
+    - post_sd_strength: mean=0.022808, SE=0.000000, 95% CI=[0.022808, 0.022808]
+    - delta_sd_strength: mean=0.000000, SE=0.000000, 95% CI=[0.000000, 0.000000]
+  - scienceagentbench:
+    - sample_mean_strength: mean=0.229718, SE=0.000093, 95% CI=[0.229536, 0.229901]
+    - post_mean_strength: mean=0.230523, SE=0.000000, 95% CI=[0.230523, 0.230523]
+    - delta_mean_strength: mean=-0.000805, SE=0.000093, 95% CI=[-0.000987, -0.000622]
+    - sample_sd_strength: mean=0.030131, SE=0.000057, 95% CI=[0.030019, 0.030243]
+    - post_sd_strength: mean=0.030724, SE=0.000000, 95% CI=[0.030724, 0.030724]
+    - delta_sd_strength: mean=-0.000592, SE=0.000057, 95% CI=[-0.000705, -0.000480]
+- Difficulty-restricted sensitivity:
+  - retained where sample/post pass rates both in [0.200, 0.800]
+  - retained_item_count: mean=136.900, SE=0.106, min=134, max=140
+  - retained_item_fraction: mean=0.116412, SE=0.000090, min=0.113946, max=0.119048
+  - min_items_per_benchmark=5
+  - retained items per benchmark:
+    - colbench_backend_programming: mean=113.000, min=113, max=113, too_few_rate=0.000
+    - corebench_hard: mean=8.320, min=5, max=12, too_few_rate=0.000
+    - scicode: mean=0.000, min=0, max=0, too_few_rate=1.000
+    - scienceagentbench: mean=15.580, min=15, max=16, too_few_rate=0.000
+  - explicitly flagged benchmarks with too-few retained items: ['scicode']
+  - filtered metric comparison (post minus sampled pre):
+    - avg_item_variance: sample=0.254876 (SE=0.000052), post=0.243707 (SE=0.000037), delta=-0.011169 (SE=0.000069), reduction=4.38%
+    - macro_benchmark_avg_item_variance: sample=0.250889 (SE=0.000240), post=0.258876 (SE=0.000098), delta=0.007987 (SE=0.000246), reduction=-3.18%
+    - zero_variance_item_fraction: sample=0.000000 (SE=0.000000), post=0.000000 (SE=0.000000), delta=0.000000 (SE=0.000000), reduction=nan%
+    - mean_item_entropy: sample=0.919232 (SE=0.000138), post=0.885945 (SE=0.000053), delta=-0.033287 (SE=0.000154), reduction=3.62%
+
+## Item-Level Inference
+### raw_pre_vs_binary_post
+- avg_item_variance_bootstrap:
+-   observed_gap: -0.080885
+-   bootstrap_mean_gap: -0.080979
+-   bootstrap_se: 0.000083
+-   ci_lower: -0.081142
+-   ci_upper: -0.080816
+- macro_benchmark_avg_item_variance_bootstrap:
+-   observed_gap: -0.047928
+-   bootstrap_mean_gap: -0.047886
+-   bootstrap_se: 0.000266
+-   ci_lower: -0.048408
+-   ci_upper: -0.047364
+- avg_item_variance_permutation:
+-   observed_gap: -0.080885
+-   null_mean_gap: -0.000130
+-   null_se_gap: 0.000172
+-   p_value_two_sided: 0
+- macro_benchmark_avg_item_variance_permutation:
+-   observed_gap: -0.047928
+-   null_mean_gap: -0.000090
+-   null_se_gap: 0.000194
+-   p_value_two_sided: 0

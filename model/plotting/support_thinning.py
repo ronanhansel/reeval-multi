@@ -149,7 +149,7 @@ def _plot_metric(ax, df, y_label, title, lower_better=False):
     ax.plot(x, araf_mean, color='steelblue', marker='o', linewidth=1.6, label='ARAF')
     ax.fill_between(x, araf_mean - araf_sem, araf_mean + araf_sem, color='steelblue', alpha=0.18)
     ax.set_title(title, fontsize=10)
-    ax.set_xlabel('Mean Observed Train Pairs', fontsize=9)
+    ax.set_xlabel('Mean Observed Pre-Train Pairs', fontsize=9)
     ax.set_ylabel(y_label, fontsize=9)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{int(round(v)):,}" for v in x], rotation=35, ha='right', fontsize=8)

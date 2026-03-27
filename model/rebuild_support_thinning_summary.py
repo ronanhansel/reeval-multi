@@ -281,13 +281,23 @@ def main():
         int(r["seed"]),
     ))
 
+    final_combo_counts = defaultdict(int)
+    for row in final_rows:
+        combo_key = (
+            round(float(row["train_retention"]), 3),
+            row["embedding_type"],
+            row["baseline_embedding_type"],
+            int(row["knn_k"]),
+        )
+        final_combo_counts[combo_key] += 1
+
     print(f"Scanned rows: {len(rows)}")
     print(f"Deduped rows: {len(final_rows)}")
     print(f"Expected rows: {len(RETENTIONS) * len(ARAF_EMBEDDINGS) * len(KNN_EMBEDDINGS) * len(K_VALUES) * EXPECTED_ROWS_PER_COMBO}")
 
     print("\nPer-combo row counts:")
     for combo in expected_combos():
-        count = combo_counts.get(combo, 0)
+        count = final_combo_counts.get(combo, 0)
         status = "complete" if count >= EXPECTED_ROWS_PER_COMBO else "partial" if count > 0 else "missing"
         print(f"  retention={combo[0]:>4} emb={combo[1]:>3} baseline={combo[2]:>3} k={combo[3]:>2}: {count:>5} rows [{status}]")
 

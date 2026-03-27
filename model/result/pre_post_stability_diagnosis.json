@@ -1,0 +1,236 @@
+{
+  "config": {
+    "pre_revision": "max",
+    "column_mode": "intersection",
+    "n_repeats": 50,
+    "seed": 42,
+    "post_binarization_rule": "post_binary = where(isnan(post_beta), nan, (post_beta > 0.5).astype(float))"
+  },
+  "matrices": {
+    "pre_full_raw": {
+      "rows": 143,
+      "cols": 1176,
+      "observed_fraction": 0.16815327529613244,
+      "overall_mean": 0.39684914067472954,
+      "avg_item_variance": 0.12967389195444604,
+      "avg_agent_variance": 0.13390564159336638,
+      "median_item_variance": 0.12377705627705626,
+      "median_agent_variance": 0.1636363636363637,
+      "zero_variance_item_fraction": 0.05952380952380952,
+      "mean_item_score": 0.415225963558288
+    },
+    "post_beta": {
+      "rows": 32,
+      "cols": 1176,
+      "observed_fraction": 0.24550914115646258,
+      "overall_mean": 0.24495181252312453,
+      "avg_item_variance": 0.017152261042881256,
+      "avg_agent_variance": 0.08317935445861735,
+      "median_item_variance": 0.0033863405332515604,
+      "median_agent_variance": 0.06521550471385962,
+      "zero_variance_item_fraction": 0.0935374149659864,
+      "mean_item_score": 0.24541826875494305
+    },
+    "post_binary": {
+      "rows": 32,
+      "cols": 1176,
+      "observed_fraction": 0.24550914115646258,
+      "overall_mean": 0.19839809503192987,
+      "avg_item_variance": 0.04859094790777113,
+      "avg_agent_variance": 0.11117013498833378,
+      "median_item_variance": 0.0,
+      "median_agent_variance": 0.14488278890452805,
+      "zero_variance_item_fraction": 0.7431972789115646,
+      "mean_item_score": 0.19958389152762557,
+      "mean_item_entropy": 0.18536519410474014
+    },
+    "pre_full_binary_sensitivity": {
+      "rows": 143,
+      "cols": 1176,
+      "observed_fraction": 0.16815327529613244,
+      "overall_mean": 0.3869439139967466,
+      "avg_item_variance": 0.15656667179365447,
+      "avg_agent_variance": 0.14008593874366354,
+      "median_item_variance": 0.15584415584415587,
+      "median_agent_variance": 0.1636363636363637,
+      "zero_variance_item_fraction": 0.07568027210884354,
+      "mean_item_score": 0.40439958755334054,
+      "mean_item_entropy": 0.657537294045712
+    }
+  },
+  "full_comparison": {
+    "raw_pre_vs_binary_post": {
+      "avg_item_variance_pre": 0.12967389195444604,
+      "avg_item_variance_post": 0.04859094790777113,
+      "delta_post_minus_pre": -0.0810829440466749,
+      "avg_agent_variance_pre": 0.13390564159336638,
+      "avg_agent_variance_post": 0.11117013498833378,
+      "mean_score_pre": 0.39684914067472954,
+      "mean_pass_rate_post": 0.19839809503192987
+    },
+    "binary_sensitivity_pre_vs_post": {
+      "avg_item_variance_pre_binary": 0.15656667179365447,
+      "avg_item_variance_post_binary": 0.04859094790777113,
+      "delta_post_minus_pre_binary": -0.10797572388588333,
+      "mean_item_entropy_pre_binary": 0.657537294045712,
+      "mean_item_entropy_post_binary": 0.18536519410474014
+    },
+    "per_benchmark_avg_item_variance": {
+      "pre_full_raw": {
+        "colbench_backend_programming": 0.13421175324675325,
+        "corebench_hard": 0.1405805571790376,
+        "scicode": 0.01558455006730869,
+        "scienceagentbench": 0.11281045751633986
+      },
+      "post_binary": {
+        "colbench_backend_programming": 0.04610714285714286,
+        "corebench_hard": 0.0851851851851852,
+        "scicode": 0.004310344827586207,
+        "scienceagentbench": 0.07045900834560628
+      },
+      "pre_full_binary_sensitivity": {
+        "colbench_backend_programming": 0.16583766233766237,
+        "corebench_hard": 0.1405805571790376,
+        "scicode": 0.01558455006730869,
+        "scienceagentbench": 0.11281045751633986
+      }
+    }
+  },
+  "matched_sampling": {
+    "raw_pre_vs_binary_post": {
+      "target_rows": 32,
+      "n_repeats": 50,
+      "per_metric": {
+        "overall_mean": {
+          "mean": 0.4168071853741496,
+          "se": 0.0023938894970478002,
+          "post": 0.19839809503192987,
+          "delta_post_minus_sampled_pre": -0.21840909034221975,
+          "empirical_percentile_of_post": 0.0
+        },
+        "avg_item_variance": {
+          "mean": 0.132924310617104,
+          "se": 0.0024908599224159104,
+          "post": 0.04859094790777113,
+          "delta_post_minus_sampled_pre": -0.08433336270933287,
+          "empirical_percentile_of_post": 0.0
+        },
+        "avg_agent_variance": {
+          "mean": 0.13792869570885008,
+          "se": 0.0010544974704994117,
+          "post": 0.11117013498833378,
+          "delta_post_minus_sampled_pre": -0.0267585607205163,
+          "empirical_percentile_of_post": 0.0
+        },
+        "zero_variance_item_fraction": {
+          "mean": 0.14731292517006803,
+          "se": 0.007449692730864176,
+          "post": 0.7431972789115646,
+          "delta_post_minus_sampled_pre": 0.5958843537414966,
+          "empirical_percentile_of_post": 1.0
+        }
+      },
+      "per_benchmark_avg_item_variance": {
+        "colbench_backend_programming": {
+          "mean": 0.138185775,
+          "se": 0.0029194631024924995,
+          "post": 0.04610714285714286,
+          "delta_post_minus_sampled_pre": -0.09207863214285715,
+          "empirical_percentile_of_post": 0.0
+        },
+        "corebench_hard": {
+          "mean": 0.14172222222222222,
+          "se": 0.0029606387765705854,
+          "post": 0.0851851851851852,
+          "delta_post_minus_sampled_pre": -0.056537037037037025,
+          "empirical_percentile_of_post": 0.0
+        },
+        "scicode": {
+          "mean": 0.01604679802955665,
+          "se": 0.0008416138022647326,
+          "post": 0.004310344827586207,
+          "delta_post_minus_sampled_pre": -0.011736453201970443,
+          "empirical_percentile_of_post": 0.02
+        },
+        "scienceagentbench": {
+          "mean": 0.11068977591036414,
+          "se": 0.0008828327362582249,
+          "post": 0.07045900834560628,
+          "delta_post_minus_sampled_pre": -0.04023076756475785,
+          "empirical_percentile_of_post": 0.0
+        }
+      }
+    },
+    "binary_sensitivity_pre_vs_post": {
+      "target_rows": 32,
+      "n_repeats": 50,
+      "per_metric": {
+        "overall_mean": {
+          "mean": 0.4060905612244898,
+          "se": 0.0024690219228172276,
+          "post": 0.19839809503192987,
+          "delta_post_minus_sampled_pre": -0.2076924661925599,
+          "empirical_percentile_of_post": 0.0
+        },
+        "avg_item_variance": {
+          "mean": 0.1605627429543246,
+          "se": 0.00272287948777325,
+          "post": 0.04859094790777113,
+          "delta_post_minus_sampled_pre": -0.11197179504655347,
+          "empirical_percentile_of_post": 0.0
+        },
+        "avg_agent_variance": {
+          "mean": 0.14800836978918042,
+          "se": 0.0010730269803688802,
+          "post": 0.11117013498833378,
+          "delta_post_minus_sampled_pre": -0.036838234800846636,
+          "empirical_percentile_of_post": 0.0
+        },
+        "zero_variance_item_fraction": {
+          "mean": 0.222687074829932,
+          "se": 0.010346022139687544,
+          "post": 0.7431972789115646,
+          "delta_post_minus_sampled_pre": 0.5205102040816326,
+          "empirical_percentile_of_post": 1.0
+        },
+        "mean_item_entropy": {
+          "mean": 0.6067969329760662,
+          "se": 0.009716914262703377,
+          "post": 0.18536519410474014,
+          "delta_post_minus_sampled_pre": -0.421431738871326,
+          "empirical_percentile_of_post": 0.0
+        }
+      },
+      "per_benchmark_avg_item_variance": {
+        "colbench_backend_programming": {
+          "mean": 0.1706885714285714,
+          "se": 0.0031923553032738522,
+          "post": 0.04610714285714286,
+          "delta_post_minus_sampled_pre": -0.12458142857142855,
+          "empirical_percentile_of_post": 0.0
+        },
+        "corebench_hard": {
+          "mean": 0.14172222222222222,
+          "se": 0.0029606387765705854,
+          "post": 0.0851851851851852,
+          "delta_post_minus_sampled_pre": -0.056537037037037025,
+          "empirical_percentile_of_post": 0.0
+        },
+        "scicode": {
+          "mean": 0.01604679802955665,
+          "se": 0.0008416138022647326,
+          "post": 0.004310344827586207,
+          "delta_post_minus_sampled_pre": -0.011736453201970443,
+          "empirical_percentile_of_post": 0.02
+        },
+        "scienceagentbench": {
+          "mean": 0.11068977591036414,
+          "se": 0.0008828327362582249,
+          "post": 0.07045900834560628,
+          "delta_post_minus_sampled_pre": -0.04023076756475785,
+          "empirical_percentile_of_post": 0.0
+        }
+      }
+    }
+  }
+}

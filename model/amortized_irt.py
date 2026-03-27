@@ -699,6 +699,11 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         'x_j': x_j,
         'test_idx': test_idx,
         'train_idx': train_idx,
+        'pre_train_idx': (
+            np.arange(J, dtype=int)
+            if cross_revision_post_binary and str(pre_revision).strip().lower() != 'none'
+            else train_idx
+        ),
         'N': N,
         'J': J,
         'embedding_dim': x_j.shape[1],
@@ -716,7 +721,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_type='beta',
                            quiet=False, train_retention=1.0):
     """Build training matrix/mask for a specific n_files configuration."""
-    train_idx = data['train_idx']
+    train_idx = np.asarray(data.get('pre_train_idx', data['train_idx']), dtype=int)
 
     dfs_to_use = data.get('all_dfs', all_dfs)
     if n_files < len(dfs_to_use):
@@ -1585,7 +1590,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     if data.get('cross_revision_post_binary', False):
         y_support, support_mask_current_t = build_cross_revision_support_targets(
             data,
-            train_retention=train_retention,
+            train_retention=1.0,
         )
         N = int(y_support.shape[0])
         J = int(y_support.shape[1])
@@ -1782,13 +1787,13 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             data,
             model_type=model_type,
             quiet=quiet,
-            train_retention=1.0,
+            train_retention=train_retention,
         )
         y_support, support_mask_current_t = build_cross_revision_support_targets(
             data,
-            train_retention=train_retention,
+            train_retention=1.0,
         )
-        observed_train_pairs = int(support_mask_current_t.sum().item())
+        observed_train_pairs = int(train_mask_pre_t.sum().item())
 
         pre_model = AmortizedIRTModel(N_pre, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
         _, pre_state = train_amortized_irt(
@@ -1862,7 +1867,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     p_knn = None
     if neighbor_support_output:
         if data.get('cross_revision_post_binary', False):
-            y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=train_retention)
+            y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=1.0)
         else:
             y_knn, knn_mask_t = y_train, train_mask_current_t
         p_knn, support_diag = compute_knn_predictions(
@@ -1890,7 +1895,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     if outlier_robustness_output:
         if p_knn is None:
             if data.get('cross_revision_post_binary', False):
-                y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=train_retention)
+                y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=1.0)
             else:
                 y_knn, knn_mask_t = y_train, train_mask_current_t
             p_knn, _ = compute_knn_predictions(y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k)
