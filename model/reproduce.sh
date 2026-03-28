@@ -656,6 +656,7 @@ run_support_thinning_study() {
     echo " -> Running post-matrix support-thinning study on the revised oracle..."
     echo " -> Thinning only the observed train support after the standard 90/10 post item split."
     echo " -> Sweeping both Bernoulli and Beta variants for ARAF and kNN."
+    echo " -> Priming shared Rasch and MIRT baselines (with MIRT dimension sweep) per thinning level."
     echo " -> Also preserving the legacy pre-max thinning branch for Binary Pre comparisons."
     echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
     echo " -> Reusing cached outputs when seed/tau rows already exist."
@@ -673,6 +674,10 @@ run_support_thinning_study() {
         local pre_revision="false"
         local j_percentage="1.0"
         for model_type in bernoulli beta; do
+            RESULT_DIR="${araf_dir}"
+            BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
+            MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
+            run_baseline max "${model_type}" "${pre_revision}" "${SEEDS}" "${j_percentage}" "raw" "10" "full" "${retention}" "false" "32"
             for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
                 local taus="$SHARED_TAUS"
                 run_exp "${araf_emb}" max "${model_type}" "${taus}" "${pre_revision}" "${SEEDS}" "${araf_dir}" false false "${j_percentage}" "" "" "" "" "${retention}" "${araf_emb}" "10" "knn_only" "false" "false" "transfer" "32"
@@ -695,6 +700,7 @@ run_support_thinning_study() {
         RESULT_DIR="${araf_dir}"
         BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
         MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
+        run_baseline max "${legacy_model_type}" "${legacy_pre_revision}" "${SEEDS}" "1.0" "raw" "10" "full" "${retention}"
         for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
             local taus="$SHARED_TAUS"
             run_exp "${araf_emb}" max "${legacy_model_type}" "${taus}" "${legacy_pre_revision}" "${SEEDS}" "${araf_dir}" false false "1.0" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false"

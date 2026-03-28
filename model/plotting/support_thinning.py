@@ -26,10 +26,14 @@ THIN_CSV = os.path.join(RESULT_DIR, "support_thinning_grid.csv")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 RETENTIONS = [0.05, 0.1, 0.25, 0.5, 1.0]
+PREFERRED_BASELINE_EMBEDDING = "raw"
+MODEL_ORDER = ["rasch", "mirt", "knn", "araf"]
 
 MODEL_STYLES = {
-    "araf": {"label": "ARAF", "color": "steelblue", "linestyle": "-"},
-    "knn": {"label": "kNN", "color": "orange", "linestyle": "--"},
+    "rasch": {"label": "Rasch", "color": "navajowhite", "linestyle": "--", "alpha": 0.65},
+    "mirt": {"label": "MIRT", "color": "tan", "linestyle": "--", "alpha": 0.6},
+    "knn": {"label": "kNN", "color": "orange", "linestyle": "--", "alpha": 0.9},
+    "araf": {"label": "ARAF", "color": "steelblue", "linestyle": "-", "alpha": 0.85},
 }
 
 PANEL_SPECS = [
@@ -78,6 +82,10 @@ def load_data():
         "observed_train_pairs",
         "auc_knn",
         "rmse_knn",
+        "auc_rasch",
+        "rmse_rasch",
+        "auc_mirt",
+        "rmse_mirt",
         "auc_araf",
         "rmse_araf",
     ]
@@ -145,6 +153,30 @@ def _select_best_knn(sub, metric):
     return rows, pick
 
 
+def _select_preferred_baseline_rows(sub):
+    if "baseline_embedding_type" not in sub.columns:
+        return sub
+
+    available = set(sub["baseline_embedding_type"].dropna().astype(str))
+    if PREFERRED_BASELINE_EMBEDDING in available:
+        return sub[sub["baseline_embedding_type"] == PREFERRED_BASELINE_EMBEDDING]
+    if "raw" in available:
+        return sub[sub["baseline_embedding_type"] == "raw"]
+    if "pca" in available:
+        return sub[sub["baseline_embedding_type"] == "pca"]
+    return sub
+
+
+def _seed_summary(rows, metric_col):
+    if rows.empty or metric_col not in rows.columns:
+        return None
+    vals = rows.groupby("seed", as_index=False)[metric_col].mean()[metric_col]
+    vals = pd.to_numeric(vals, errors="coerce").dropna()
+    if vals.empty:
+        return None
+    return float(vals.mean()), float(vals.sem()) if len(vals) > 1 else 0.0
+
+
 def build_panel_df(df, comparison_slice, metric):
     rows = []
     for retention in RETENTIONS:
@@ -157,29 +189,47 @@ def build_panel_df(df, comparison_slice, metric):
 
         araf_rows, araf_pick = _select_best_araf(sub, metric)
         knn_rows, knn_pick = _select_best_knn(sub, metric)
-        if araf_rows.empty or knn_rows.empty:
+        if araf_rows.empty:
             continue
 
-        araf_col = f"{metric}_araf"
-        knn_col = f"{metric}_knn"
-        seed_araf = araf_rows.groupby("seed", as_index=False)[araf_col].mean()[araf_col]
-        seed_knn = knn_rows.groupby("seed", as_index=False)[knn_col].mean()[knn_col]
+        baseline_rows = _select_preferred_baseline_rows(sub)
+        araf_stats = _seed_summary(araf_rows, f"{metric}_araf")
+        knn_stats = _seed_summary(knn_rows, f"{metric}_knn")
+        rasch_stats = _seed_summary(baseline_rows, f"{metric}_rasch")
+        mirt_stats = _seed_summary(baseline_rows, f"{metric}_mirt")
 
-        rows.append(
-            {
-                "retention": float(retention),
-                "retention_pct": float(retention) * 100.0,
-                "observed_train_pairs": float(araf_rows["observed_train_pairs"].mean()),
-                "araf_mean": float(seed_araf.mean()),
-                "araf_sem": float(seed_araf.sem()) if len(seed_araf) > 1 else 0.0,
-                "knn_mean": float(seed_knn.mean()),
-                "knn_sem": float(seed_knn.sem()) if len(seed_knn) > 1 else 0.0,
-                "araf_embedding_type": str(araf_pick["embedding_type"]),
-                "araf_lambda_tau": float(araf_pick["lambda_tau"]),
-                "knn_embedding_type": str(knn_pick["baseline_embedding_type"]),
-                "knn_k": int(knn_pick["knn_k"]),
-            }
-        )
+        if araf_stats is None:
+            continue
+
+        row = {
+            "retention": float(retention),
+            "retention_pct": float(retention) * 100.0,
+            "observed_train_pairs": float(araf_rows["observed_train_pairs"].mean()),
+            "araf_mean": araf_stats[0],
+            "araf_sem": araf_stats[1],
+            "araf_embedding_type": str(araf_pick["embedding_type"]),
+            "araf_lambda_tau": float(araf_pick["lambda_tau"]),
+        }
+        if knn_stats is not None and knn_pick is not None:
+            row["knn_mean"] = knn_stats[0]
+            row["knn_sem"] = knn_stats[1]
+            row["knn_embedding_type"] = str(knn_pick["baseline_embedding_type"])
+            row["knn_k"] = int(knn_pick["knn_k"])
+        else:
+            row["knn_mean"] = np.nan
+            row["knn_sem"] = np.nan
+            row["knn_embedding_type"] = ""
+            row["knn_k"] = np.nan
+
+        for key, stats in [("rasch", rasch_stats), ("mirt", mirt_stats)]:
+            if stats is not None:
+                row[f"{key}_mean"] = stats[0]
+                row[f"{key}_sem"] = stats[1]
+            else:
+                row[f"{key}_mean"] = np.nan
+                row[f"{key}_sem"] = np.nan
+
+        rows.append(row)
 
     if not rows:
         return None
@@ -190,21 +240,31 @@ def build_panel_df(df, comparison_slice, metric):
 def plot_panel(ax, panel_df, title, y_label, lower_better=False):
     x = panel_df["retention_pct"].to_numpy(dtype=float)
 
-    for key in ["araf", "knn"]:
+    for key in MODEL_ORDER:
         style = MODEL_STYLES[key]
         mean = panel_df[f"{key}_mean"].to_numpy(dtype=float)
         sem = panel_df[f"{key}_sem"].to_numpy(dtype=float)
+        valid = np.isfinite(mean) & np.isfinite(sem)
+        if not np.any(valid):
+            continue
         ax.plot(
-            x,
-            mean,
+            x[valid],
+            mean[valid],
             color=style["color"],
             linestyle=style["linestyle"],
             marker="o",
             markersize=3,
             linewidth=1.6,
             label=style["label"],
+            alpha=style["alpha"],
         )
-        ax.fill_between(x, mean - sem, mean + sem, color=style["color"], alpha=0.18)
+        ax.fill_between(
+            x[valid],
+            mean[valid] - sem[valid],
+            mean[valid] + sem[valid],
+            color=style["color"],
+            alpha=0.18 if key == "araf" else 0.10,
+        )
 
     ax.set_title(title, fontsize=10)
     ax.set_ylabel(y_label, fontsize=9)
@@ -219,7 +279,7 @@ def plot_panel(ax, panel_df, title, y_label, lower_better=False):
 
     lower_bounds = []
     upper_bounds = []
-    for key in ["araf", "knn"]:
+    for key in MODEL_ORDER:
         mean = panel_df[f"{key}_mean"].to_numpy(dtype=float)
         sem = panel_df[f"{key}_sem"].to_numpy(dtype=float)
         valid = np.isfinite(mean) & np.isfinite(sem)
@@ -273,7 +333,7 @@ def plot(df):
         labels,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.08),
-        ncol=2,
+        ncol=4,
         frameon=True,
         fontsize=8,
     )

@@ -17,6 +17,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+import pandas as pd
+
 from baseline_cache import load_baseline_store
 
 
@@ -130,6 +132,11 @@ def scan_result_file(path: Path, meta: dict):
                     "rmse_araf": float(record["rmse_amortized"]),
                     "auc_knn": "",
                     "rmse_knn": "",
+                    "auc_rasch": "",
+                    "rmse_rasch": "",
+                    "auc_mirt": "",
+                    "rmse_mirt": "",
+                    "selected_mirt_dim": "",
                     "comparison_slice": comparison_slice,
                     "source_path": source_path,
                 }
@@ -205,6 +212,58 @@ def build_knn_lookup(result_dir: Path):
     return lookup
 
 
+def build_baseline_lookup(result_dir: Path):
+    lookup = {}
+
+    for baseline_path in result_dir.rglob("baseline_metrics.csv"):
+        baseline_store = load_baseline_store(str(baseline_path))
+        if baseline_store.empty:
+            continue
+
+        retention = 1.0
+        for part in baseline_path.parts:
+            if part.startswith("retain_"):
+                retention = float(part.split("_", 1)[1])
+                break
+
+        for _, record in baseline_store.iterrows():
+            try:
+                seed = int(float(record["seed"]))
+                model_type = str(record.get("model_type", "")).strip().lower()
+                pre_revision = str(record.get("pre_revision", "none")).strip().lower()
+                j_percentage = float(record.get("j_percentage", "1.0") or "1.0")
+            except (TypeError, ValueError, KeyError):
+                continue
+
+            if model_type not in MODEL_TYPES:
+                continue
+
+            payload = {}
+            for metric_col in ["auc_rasch", "rmse_rasch", "auc_mirt", "rmse_mirt"]:
+                value = record.get(metric_col)
+                if value not in ("", None) and not pd.isna(value):
+                    payload[metric_col] = float(value)
+
+            selected_mirt_dim = record.get("selected_mirt_dim")
+            if selected_mirt_dim not in ("", None) and not pd.isna(selected_mirt_dim):
+                payload["selected_mirt_dim"] = int(float(selected_mirt_dim))
+
+            if not payload:
+                continue
+
+            lookup[
+                (
+                    seed,
+                    model_type,
+                    pre_revision,
+                    round(j_percentage, 3),
+                    round(retention, 3),
+                )
+            ] = payload
+
+    return lookup
+
+
 def main():
     parser = argparse.ArgumentParser(description="Rebuild support-thinning summary CSV from per-config results.")
     parser.add_argument("--result-dir", type=str, default=str(RESULT_DIR))
@@ -241,6 +300,7 @@ def main():
         rows.extend(scan_result_file(path, meta))
 
     knn_lookup = build_knn_lookup(result_dir)
+    baseline_lookup = build_baseline_lookup(result_dir)
     for row in rows:
         key = (
             row["seed"],
@@ -255,6 +315,17 @@ def main():
         if found is not None:
             row["auc_knn"] = found["auc_knn"]
             row["rmse_knn"] = found["rmse_knn"]
+
+        baseline_key = (
+            row["seed"],
+            row["model_type"],
+            row["pre_revision"],
+            round(float(row["j_percentage"]), 3),
+            round(float(row["train_retention"]), 3),
+        )
+        found_baseline = baseline_lookup.get(baseline_key)
+        if found_baseline is not None:
+            row.update(found_baseline)
 
     deduped = {}
     for row in rows:
@@ -287,6 +358,8 @@ def main():
     )
 
     missing_knn = sum(1 for r in final_rows if r["auc_knn"] == "" or r["rmse_knn"] == "")
+    missing_rasch = sum(1 for r in final_rows if r["auc_rasch"] == "" or r["rmse_rasch"] == "")
+    missing_mirt = sum(1 for r in final_rows if r["auc_mirt"] == "" or r["rmse_mirt"] == "")
     slice_counts = Counter(r["comparison_slice"] for r in final_rows)
 
     print(f"Scanned rows: {len(rows)}")
@@ -296,6 +369,10 @@ def main():
         print(f"  {key}: {slice_counts[key]}")
     if missing_knn:
         print(f"Warning: {missing_knn} rows are still missing kNN metrics after rescanning baseline files.")
+    if missing_rasch:
+        print(f"Warning: {missing_rasch} rows are still missing Rasch metrics after rescanning baseline files.")
+    if missing_mirt:
+        print(f"Warning: {missing_mirt} rows are still missing MIRT metrics after rescanning baseline files.")
 
     if args.dry_run:
         print("Dry run only; not writing output CSV.")
@@ -317,6 +394,11 @@ def main():
         "observed_train_pairs",
         "auc_knn",
         "rmse_knn",
+        "auc_rasch",
+        "rmse_rasch",
+        "auc_mirt",
+        "rmse_mirt",
+        "selected_mirt_dim",
         "auc_araf",
         "rmse_araf",
         "comparison_slice",
