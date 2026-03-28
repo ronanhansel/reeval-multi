@@ -15,16 +15,19 @@ echo "[ENV] conda env: hal (python: $(which python))"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
-RESULT_DIR="${SCRIPT_DIR}/result"
+RESULT_ROOT="${SCRIPT_DIR}/result"
+MAIN_RESULT_DIR="${RESULT_ROOT}/main"
+RESULT_DIR="${MAIN_RESULT_DIR}"
 BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
 MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
-PAIR_RESULT_DIR="${RESULT_DIR}/pair_efficiency_study"
+PAIR_RESULT_DIR="${RESULT_ROOT}/pair_efficiency_study"
 PAIR_BASELINE_CSV="${PAIR_RESULT_DIR}/baselines/baseline_metrics.csv"
 PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
-SUPPORT_RESULT_DIR="${RESULT_DIR}/neighbor_support_study"
-THIN_RESULT_DIR="${RESULT_DIR}/support_thinning_study"
-OUTLIER_RESULT_DIR="${RESULT_DIR}/outlier_robustness_study"
-SAMPLE_SIZE_RESULT_DIR="${RESULT_DIR}/sample_size_study"
+SUPPORT_RESULT_DIR="${RESULT_ROOT}/neighbor_support_study"
+THIN_RESULT_DIR="${RESULT_ROOT}/support_thinning_study"
+OUTLIER_RESULT_DIR="${RESULT_ROOT}/outlier_robustness_study"
+SAMPLE_SIZE_RESULT_DIR="${RESULT_ROOT}/sample_size_study"
+RESTORE_COMMIT="${RESTORE_COMMIT:-1b3737c3ddca6e8554948f967cb21e7fab2ef8aa}"
 
 # ── Parameters ───────────────────────────────────────────────────────────────
 SEEDS="42"
@@ -51,6 +54,7 @@ THIN_KNN_EMBEDDINGS=("raw" "pca")
 THIN_K_VALUES=("5" "10" "20" "50")
 SAMPLE_USER_LEVELS=("4" "8" "16" "32")
 SAMPLE_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "0.9")
+MAIN_KNN_GRID="${MAIN_KNN_GRID:-5,10,20,50}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -154,15 +158,62 @@ echo "=========================================================="
 echo "  REPRODUCE — Amortized IRT"
 echo "=========================================================="
 echo "  Working dir : ${SCRIPT_DIR}"
-echo "  Output dir  : ${RESULT_DIR}"
+echo "  Main dir    : ${MAIN_RESULT_DIR}"
+echo "  Result root : ${RESULT_ROOT}"
 echo "  MIRT sweep  : ${MIRT_DIM_MIN}-${MIRT_DIM_MAX} dims (cache: ${MIRT_SWEEP_CSV})"
 echo ""
 
+restore_main_results_from_commit() {
+    local commit_ref="${1:-${RESTORE_COMMIT}}"
+    local target_dir="${MAIN_RESULT_DIR}"
+    echo "[RESTORE] Restoring canonical main results from ${commit_ref} into ${target_dir}"
+    python - <<PY
+import subprocess
+from pathlib import Path
+
+repo_root = Path(r"""${REPO_ROOT}""")
+commit_ref = r"""${commit_ref}"""
+target_dir = Path(r"""${target_dir}""")
+target_dir.mkdir(parents=True, exist_ok=True)
+
+paths = subprocess.check_output(
+    ["git", "ls-tree", "-r", "--name-only", commit_ref, "model/result"],
+    cwd=repo_root,
+    text=True,
+).splitlines()
+
+restored = 0
+for rel in paths:
+    if not (
+        rel.startswith("model/result/amortized_irt_")
+        or rel.startswith("model/result/baselines/")
+        or rel in {
+            "model/result/comprehensive_results.csv",
+            "model/result/comprehensive_results.md",
+        }
+    ):
+        continue
+
+    suffix = Path(rel).relative_to("model/result")
+    out_path = target_dir / suffix
+    if out_path.exists():
+        continue
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    data = subprocess.check_output(["git", "show", f"{commit_ref}:{rel}"], cwd=repo_root)
+    out_path.write_bytes(data)
+    restored += 1
+
+print(f"Restored {restored} file(s).")
+PY
+}
+
 # ── Clean/Verify results ─────────────────────────────────────────────────────
 if $ONLY_PLOT; then
+    restore_main_results_from_commit
     echo "[VERIFY] Checking for required data files..."
     check_file() {
-        if [[ ! -f "${RESULT_DIR}/$1" ]]; then
+        if [[ ! -f "${MAIN_RESULT_DIR}/$1" ]]; then
             echo "ERROR: Missing required result file: $1"
             exit 1
         fi
@@ -186,8 +237,8 @@ if $ONLY_PLOT; then
     echo "[VERIFY] All required data files found."
 else
     if ! $CLEAN_RESULTS && ! $OVERRIDE_RESULTS; then
-        if [ -d "${RESULT_DIR}" ] && [ "$(ls -A ${RESULT_DIR})" ]; then
-            read -p "[WARNING] Output directory (${RESULT_DIR}) is not empty. Do you want to [o]verwrite, or [c]ontinue? (o/c): " choice
+        if [ -d "${RESULT_ROOT}" ] && [ "$(ls -A ${RESULT_ROOT})" ]; then
+            read -p "[WARNING] Output directory (${RESULT_ROOT}) is not empty. Do you want to [o]verwrite, or [c]ontinue? (o/c): " choice
             case "$choice" in
               o|O|overwrite|Overwrite) CLEAN_RESULTS=true ;;
               c|C|continue|Continue) OVERRIDE_RESULTS=true ;;
@@ -197,21 +248,21 @@ else
     fi
 
     if $CLEAN_RESULTS; then
-        echo "[CLEAN] Removing previous results from ${RESULT_DIR} ..."
-        rm -rf "${RESULT_DIR}"
-        mkdir -p "${RESULT_DIR}"
+        echo "[CLEAN] Removing previous results from ${RESULT_ROOT} ..."
+        rm -rf "${RESULT_ROOT}"
+        mkdir -p "${MAIN_RESULT_DIR}"
     else
-        echo "[OVERRIDE] Keeping previous results. New results will be appended/overridden in ${RESULT_DIR}."
-        mkdir -p "${RESULT_DIR}"
+        echo "[OVERRIDE] Keeping previous results. New results will be appended/overridden in ${RESULT_ROOT}."
+        mkdir -p "${MAIN_RESULT_DIR}"
     fi
 
     echo "[CLEAN] Verifying integrity of existing CSVs..."
     python -c "
 import os, pandas as pd
-for f in os.listdir('${RESULT_DIR}'):
+for f in os.listdir('${MAIN_RESULT_DIR}'):
     if not f.endswith('.csv'):
         continue
-    p = os.path.join('${RESULT_DIR}', f)
+    p = os.path.join('${MAIN_RESULT_DIR}', f)
     try:
         pd.read_csv(p)
     except Exception:
@@ -225,7 +276,7 @@ if $THIN_ONLY_MODE; then
     echo "[BASELINE] Thinning-only mode: skipping global baseline migration."
 else
     echo "[BASELINE] Migrating existing CSVs to separated baseline schema..."
-    baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
+    baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${MAIN_RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
     if $QUIET; then
         baseline_migrate_cmd="$baseline_migrate_cmd --quiet"
     fi
@@ -247,7 +298,7 @@ run_baseline() {
     local user_count=${11:-""}
 
     local seeds_csv=${seeds// /,}
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
@@ -307,7 +358,7 @@ run_exp() {
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi
@@ -1000,4 +1051,5 @@ echo "=========================================================="
 echo "  REPRODUCTION COMPLETE"
 echo "=========================================================="
 echo "Plots saved in paper/figures/"
-echo "CSV results in model/result/"
+echo "Main CSV results in model/result/main/"
+echo "Study CSV results in model/result/*_study/"

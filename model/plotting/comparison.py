@@ -8,6 +8,7 @@ Focuses on paper-ready bar charts:
 
 import os
 import sys
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,6 +16,7 @@ import seaborn as sns
 from tueplots import bundles
 from model.plotting import colors as pc
 from model.baseline_cache import load_baseline_store
+from model.result_paths import ensure_main_result_dir, main_result_dir
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths
@@ -24,8 +26,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
 
-RESULT_DIR = os.path.join(MODEL_DIR, "result")
-BASELINE_PATH = os.path.join(RESULT_DIR, "baselines", "baseline_metrics.csv")
+RESULT_DIR = str(main_result_dir())
+BASELINE_PATH = str(Path(RESULT_DIR) / "baselines" / "baseline_metrics.csv")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 PREFERRED_BASELINE_EMBEDDING = 'raw'
@@ -73,6 +75,8 @@ def lookup_baseline_stats(baseline_df, model_type, n_samples, pre_revision, metr
     pre_key = str(pre_revision).strip().lower() if pre_revision is not None else 'none'
     if not pre_key:
         pre_key = 'none'
+    if pre_key.startswith('pre_'):
+        pre_key = pre_key.split('pre_', 1)[1]
 
     sub = baseline_df[
         (baseline_df['model_type'] == str(model_type)) &
@@ -380,6 +384,7 @@ def generate_comprehensive_table():
 
 def main():
     print("Generating Result Comparison Plots...")
+    ensure_main_result_dir()
     plot_remediation_summary()
     plot_embedding_comparison()
     generate_comprehensive_table()

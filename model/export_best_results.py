@@ -6,9 +6,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from model.baseline_cache import load_baseline_store
+from model.result_paths import main_result_dir
 
 
-RESULT_DIR = Path('/Users/ronan/Developer/agent-eval/model/result')
+RESULT_DIR = main_result_dir()
 OUTPUT_CSV = RESULT_DIR / 'comprehensive_results.csv'
 OUTPUT_MD = RESULT_DIR / 'comprehensive_results.md'
 APPENDIX_GENERATOR = RESULT_DIR.parent / 'generate_appendix_table.py'

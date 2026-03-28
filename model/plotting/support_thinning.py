@@ -11,6 +11,7 @@ Generates a 3-panel figure with:
 import os
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 from tueplots import bundles
@@ -32,9 +33,9 @@ MODEL_STYLES = {
 }
 
 PANEL_SPECS = [
-    ("pre_binary", "auc", "AUC (Binary Pre)", False),
-    ("post_binary", "auc", "AUC (Binary Post)", False),
-    ("post_beta", "rmse", "RMSE (Beta Post)", True),
+    ("pre_binary", "auc", "AUC (Pre Revision)", False),
+    ("post_binary", "auc", "AUC (Post Revision)", False),
+    ("post_beta", "rmse", "RMSE (Post Revision)", True),
 ]
 
 
@@ -207,7 +208,8 @@ def plot_panel(ax, panel_df, title, y_label, lower_better=False):
     ax.set_title(title, fontsize=10)
     ax.set_ylabel(y_label, fontsize=9)
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{int(round(v))}%" for v in x], fontsize=8)
+    x_labels = ["" if np.isclose(v, 5.0, atol=1e-9) else f"{int(round(v))}%" for v in x]
+    ax.set_xticklabels(x_labels, fontsize=8)
     ax.grid(linestyle=":", alpha=0.8)
     ax.tick_params(labelsize=8)
 
@@ -244,23 +246,39 @@ def plot(df):
         raise RuntimeError(f"Missing support-thinning panels: {', '.join(missing)}")
 
     plt.rcParams.update(get_bundle())
-    fig, axes = plt.subplots(1, 3, figsize=(8.6, 2.9), constrained_layout=False)
+    fig, axes = plt.subplots(1, 3, figsize=(8.6, 2.2), constrained_layout=False)
 
     for ax, (comparison_slice, metric, title, lower_better) in zip(axes, PANEL_SPECS):
         plot_panel(
             ax,
             panel_dfs[(comparison_slice, metric)],
             title=title,
-            y_label="AUC" if metric == "auc" else "RMSE",
+            # y_label="AUC" if metric == "auc" else "RMSE",
+            y_label=None,
             lower_better=lower_better,
         )
+        if metric == "auc":
+            ax.set_ylim(0.58, 0.78)
+            ax.set_yticks(np.arange(0.60, 0.751, 0.05))
+        elif metric == "rmse":
+            ax.set_ylim(0.235, 0.28)
+            ax.set_yticks([0.24, 0.25, 0.26, 0.27])
+            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.supxlabel("Percentage of Observed Train Pairs", fontsize=9, y=0.12)
-    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, -0.06), ncol=2, frameon=True, fontsize=8)
-    fig.subplots_adjust(bottom=0.34, wspace=0.28)
+    fig.supxlabel("Percentage of Observed Train Pairs", fontsize=9, y=0.08)
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.08),
+        ncol=2,
+        frameon=True,
+        fontsize=8,
+    )
+    fig.subplots_adjust(bottom=0.26, wspace=0.28)
 
-    out_path = os.path.join(FIGURE_DIR, "support_thinning_triptych.pdf")
+    out_path = os.path.join(FIGURE_DIR, "support_thinning.pdf")
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     print(f"Support-thinning figure saved to {out_path}")

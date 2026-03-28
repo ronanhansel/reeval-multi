@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tueplots import bundles
+from model.result_paths import ensure_main_result_dir, main_result_dir
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -16,7 +17,7 @@ from tueplots import bundles
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
-RESULT_DIR = os.path.join(MODEL_DIR, "result")
+RESULT_DIR = str(main_result_dir())
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures", "appendix")
 RESULT_PATH = Path(RESULT_DIR)
 
@@ -194,6 +195,7 @@ def plot_merged_sensitivity_all_embeddings(suite_name):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    ensure_main_result_dir()
     for suite in ['max', 'n32']:
         plot_merged_sensitivity_all_embeddings(suite)
 

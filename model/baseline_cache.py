@@ -16,7 +16,7 @@ BASELINE_METRIC_COLS = [
 ]
 NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'train_retention', 'baseline_embedding_type']
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
+BASELINE_AUX_COLS = ['agent_batch_size', 'selected_knn_k', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
 MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt', 'val_rmse_mirt', 'val_auc_mirt']
@@ -138,6 +138,8 @@ def write_grouped_baseline_files(path, row):
         **key,
         'agent_batch_size': row.get('agent_batch_size', compute_agent_batch_size(key['pre_revision'], key['n_samples'])),
     }
+    if 'selected_knn_k' in row and not pd.isna(row['selected_knn_k']):
+        base_payload['selected_knn_k'] = int(row['selected_knn_k'])
     for method_key, (auc_col, rmse_col) in BASELINE_METHOD_SPECS.items():
         if method_key == 'mirt':
             payload = dict(base_payload)

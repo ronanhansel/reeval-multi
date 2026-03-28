@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,6 +15,7 @@ from sklearn.metrics import silhouette_score
 from scipy.stats import entropy
 from matplotlib.patches import FancyBboxPatch
 from model.baseline_cache import load_baseline_store
+from model.result_paths import ensure_main_result_dir, main_result_dir
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -24,8 +26,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
 
-RESULT_DIR = os.path.join(MODEL_DIR, "result")
-BASELINE_PATH = os.path.join(RESULT_DIR, "baselines", "baseline_metrics.csv")
+RESULT_DIR = str(main_result_dir())
+BASELINE_PATH = str(Path(RESULT_DIR) / "baselines" / "baseline_metrics.csv")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures", "interpretability")
 EMB_DIR = os.path.join(MODEL_DIR, "processed_embeddings")
 PREFERRED_BASELINE_EMBEDDING = 'raw'
@@ -906,6 +908,7 @@ def main():
     print("=" * 60)
     print("GENERATING INTERPRETABILITY PLOTS")
     print("=" * 60)
+    ensure_main_result_dir()
     
     plot_stability_comparison()
     plot_dimensionality_bar()

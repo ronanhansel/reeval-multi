@@ -49,12 +49,14 @@ from functools import partial
 
 from utils import compute_rmse, evaluate_auc
 import baseline_cache as bc
+from result_paths import configured_main_result_dir, ensure_main_result_dir
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
-RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
+RESULT_DIR = str(configured_main_result_dir())
+ensure_main_result_dir()
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 BASELINE_DIR = os.path.join(RESULT_DIR, 'baselines')
@@ -76,7 +78,7 @@ BASELINE_PROFILE_KNN_ONLY = 'knn_only'
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'train_retention', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
+BASELINE_AUX_COLS = ['agent_batch_size', 'selected_knn_k', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
 
 MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt', 'val_rmse_mirt', 'val_auc_mirt']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
@@ -118,6 +120,7 @@ BETA_PHI = 10.0
 
 # Embedding kNN baseline settings
 KNN_K = 10
+KNN_K_GRID = (5, 10, 20, 50)
 
 # CSV append operations for study sweeps can queue behind many workers.
 CSV_LOCK_TIMEOUT = 7200
@@ -1278,9 +1281,41 @@ def append_neighbor_support_rows(path, rows):
         df.to_csv(path, index=False)
 
 
+def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t, x_j,
+                             y_auc_oracle=None, auc_mask_t=None, knn_k=KNN_K, knn_k_values=None):
+    """Evaluate one or more kNN neighbor counts and keep the best by AUC, then RMSE."""
+    y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
+    auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
+
+    candidates = parse_knn_k_grid(knn_k_values if knn_k_values is not None else [knn_k])
+    best = None
+    for curr_k in candidates:
+        p_knn, support_diag = compute_knn_predictions(
+            y_train, train_mask_current_t, x_j, test_mask, knn_k=curr_k
+        )
+        curr = {
+            'selected_knn_k': int(curr_k),
+            'p_knn': p_knn,
+            'support_diag': support_diag,
+            'rmse_knn': compute_rmse(p_knn.cpu().numpy(), y_oracle.cpu().numpy(), test_mask),
+            'auc_knn': evaluate_auc(p_knn, y_auc_oracle, auc_mask_t),
+        }
+        if best is None:
+            best = curr
+            continue
+
+        if (
+            curr['auc_knn'] > best['auc_knn'] or
+            (np.isclose(curr['auc_knn'], best['auc_knn']) and curr['rmse_knn'] < best['rmse_knn'])
+        ):
+            best = curr
+
+    return best
+
+
 def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                       model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
-                                      y_auc_oracle=None, auc_mask_t=None):
+                                      y_auc_oracle=None, auc_mask_t=None, knn_k_values=None):
     """Compute non-MIRT baselines for one configuration."""
     # 1. Naive item-mean baseline
     valid_counts = train_mask_current_t.sum(dim=0)
@@ -1307,10 +1342,12 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
 
     # 4. Embedding kNN cold-start baseline (predict held-out items from nearest train items)
     # Uses item embeddings only and observed user responses on train items.
-    p_knn, _ = compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=knn_k)
-
-    rmse_knn = compute_rmse(p_knn.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
-    auc_knn = evaluate_auc(p_knn, y_auc_oracle, auc_mask_t)
+    knn_result = compute_best_knn_metrics(
+        y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t, x_j,
+        y_auc_oracle=y_auc_oracle, auc_mask_t=auc_mask_t, knn_k=knn_k, knn_k_values=knn_k_values
+    )
+    rmse_knn = knn_result['rmse_knn']
+    auc_knn = knn_result['auc_knn']
 
     return {
         'rmse_naive': rmse_naive,
@@ -1321,6 +1358,7 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
         'auc_2pl': auc_2pl,
         'rmse_knn': rmse_knn,
         'auc_knn': auc_knn,
+        'selected_knn_k': int(knn_result['selected_knn_k']),
     }
 
 
@@ -1541,6 +1579,9 @@ def _baseline_payload_from_row(row):
     for k in BASELINE_METRIC_COLS:
         v = row.get(k, np.nan)
         payload[k] = float(v) if not pd.isna(v) else np.nan
+    selected_knn_k = _optional_int(row.get('selected_knn_k'))
+    if selected_knn_k is not None:
+        payload['selected_knn_k'] = selected_knn_k
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     if selected_dim is not None:
         payload['selected_mirt_dim'] = selected_dim
@@ -1565,7 +1606,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                              allow_compute=True, quiet=False, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                              mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT, embedding_type=None,
                              baseline_embedding_type=None, train_retention=1.0, knn_k=KNN_K,
-                             baseline_profile=BASELINE_PROFILE_FULL):
+                             baseline_profile=BASELINE_PROFILE_FULL, knn_k_grid=None):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
     actual_embedding_type = normalize_baseline_embedding_type(embedding_type)
     baseline_embedding_type = normalize_baseline_embedding_type(
@@ -1580,6 +1621,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         'train_retention': normalize_train_retention(train_retention),
         'baseline_embedding_type': baseline_embedding_type,
     }
+    knn_k_grid = parse_knn_k_grid(knn_k_grid)
 
     cached = try_get_cached_baseline(
         baseline_output,
@@ -1629,8 +1671,12 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 f"--baseline-embedding-type {baseline_embedding_type}."
             )
         if baseline_profile in {BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY}:
-            p_knn, _ = compute_knn_predictions(
-                y_train, train_mask_current_t, data.get('x_j'), data['test_mask'], knn_k=knn_k
+            knn_result = compute_best_knn_metrics(
+                y_train, train_mask_current_t,
+                data['y_oracle'], data['test_mask'], data['test_mask_t'], data.get('x_j'),
+                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t'],
+                knn_k=knn_k,
+                knn_k_values=[knn_k] if baseline_profile == BASELINE_PROFILE_KNN_ONLY else knn_k_grid,
             )
             non_mirt_metrics = {
                 'rmse_naive': np.nan,
@@ -1639,15 +1685,17 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 'auc_naive': np.nan,
                 'auc_rasch': np.nan,
                 'auc_2pl': np.nan,
-                'rmse_knn': compute_rmse(p_knn.cpu().numpy(), data['y_oracle'].cpu().numpy(), data['test_mask']),
-                'auc_knn': evaluate_auc(p_knn, data['y_auc_oracle'], data['auc_test_mask_t']),
+                'rmse_knn': knn_result['rmse_knn'],
+                'auc_knn': knn_result['auc_knn'],
+                'selected_knn_k': int(knn_result['selected_knn_k']),
             }
         else:
             non_mirt_metrics = compute_non_mirt_baseline_metrics(
                 N, J, y_train, train_mask_current_t,
                 data['y_oracle'], data['test_mask'], data['test_mask_t'],
                 model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k,
-                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t']
+                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t'],
+                knn_k_values=knn_k_grid,
             )
 
     best_mirt = None
@@ -1714,6 +1762,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    neighbor_support_output=None, support_thinning_output=None,
                    outlier_robustness_output=None,
                    train_retention=1.0, knn_k=KNN_K,
+                   knn_k_grid=KNN_K_GRID,
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT,
                    cross_revision_araf_mode='transfer',
@@ -1756,6 +1805,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         baseline_embedding_type=baseline_embedding_type,
         train_retention=train_retention,
         knn_k=knn_k,
+        knn_k_grid=knn_k_grid,
         baseline_profile=baseline_profile,
     )
 
@@ -2097,6 +2147,19 @@ def normalize_baseline_embedding_type(value):
         return 'pca'
     v = str(value).strip().lower()
     return v if v and v != 'nan' else 'pca'
+
+
+def parse_knn_k_grid(values):
+    """Normalize a kNN sweep specification into a sorted tuple of unique positive ints."""
+    if values is None:
+        return tuple(KNN_K_GRID)
+    if isinstance(values, (list, tuple, set)):
+        raw_values = list(values)
+    else:
+        raw_values = [tok.strip() for tok in str(values).split(',') if tok.strip()]
+
+    parsed = sorted({int(v) for v in raw_values if int(v) > 0})
+    return tuple(parsed) if parsed else tuple(KNN_K_GRID)
 
 
 def compute_agent_batch_size(pre_revision, n_samples):
@@ -2815,6 +2878,7 @@ def run_single_config(config, args, n_values):
                     baseline_embedding_type=args.baseline_embedding_type,
                     train_retention=args.train_retention,
                     knn_k=args.knn_k,
+                    knn_k_grid=args.knn_k_grid,
                     baseline_profile=args.baseline_profile,
                 )
                 continue
@@ -2832,6 +2896,7 @@ def run_single_config(config, args, n_values):
                                     outlier_robustness_output=args.outlier_robustness_output,
                                     train_retention=args.train_retention,
                                     knn_k=args.knn_k,
+                                    knn_k_grid=args.knn_k_grid,
                                     allow_compute_baselines=True,
                                     mirt_dim_min=args.mirt_dim_min,
                                     mirt_dim_max=args.mirt_dim_max,
@@ -2968,6 +3033,8 @@ def main():
                         help='Retention rate for observed training entries (0,1].')
     parser.add_argument('--knn-k', type=int, default=KNN_K,
                         help='Number of nearest neighbors used by the kNN baseline.')
+    parser.add_argument('--knn-k-grid', type=str, default="5,10,20,50",
+                        help='Comma-separated k values used to pick the best headline kNN baseline.')
     parser.add_argument('--baseline-profile', type=str, default=BASELINE_PROFILE_FULL,
                         choices=[BASELINE_PROFILE_FULL, BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY],
                         help='Baseline computation profile: full computes all classic baselines; knn_mirt computes only kNN + MIRT; knn_only computes only kNN.')
@@ -3032,6 +3099,7 @@ def main():
         EPOCHS = args.epochs
     if args.snapping_threshold is not None:
         SNAPPING_THRESHOLD = args.snapping_threshold
+    args.knn_k_grid = parse_knn_k_grid(args.knn_k_grid)
 
     seed_mirt_sweep_from_baseline_store(args.baseline_output, args.mirt_sweep_output, quiet=args.quiet)
 

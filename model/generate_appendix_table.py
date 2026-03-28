@@ -7,10 +7,11 @@ import re
 from pathlib import Path
 
 import pandas as pd
+from model.result_paths import main_result_dir
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RESULT_CSV = REPO_ROOT / "model" / "result" / "comprehensive_results.csv"
+RESULT_CSV = main_result_dir() / "comprehensive_results.csv"
 OUTPUT_TEX = REPO_ROOT / "paper" / "data" / "appendix_all_setups_table.tex"
 
 def latex_escape(value: object) -> str:
