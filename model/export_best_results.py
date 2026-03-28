@@ -12,7 +12,7 @@ from model.result_paths import main_result_dir
 RESULT_DIR = main_result_dir()
 OUTPUT_CSV = RESULT_DIR / 'comprehensive_results.csv'
 OUTPUT_MD = RESULT_DIR / 'comprehensive_results.md'
-APPENDIX_GENERATOR = RESULT_DIR.parent / 'generate_appendix_table.py'
+APPENDIX_GENERATOR = Path(__file__).resolve().parent / 'generate_appendix_table.py'
 BASELINE_CSV = RESULT_DIR / 'baselines' / 'baseline_metrics.csv'
 
 
@@ -35,8 +35,8 @@ def parse_setup_from_filename(filename: str) -> dict[str, str]:
     stem = filename.replace('.csv', '')
     if stem.startswith('baseline_'):
         prefix = 'baseline_'
-        tau_mode = 'baseline'
-        tau_label = 'baseline'
+        tau_mode = '-'
+        tau_label = '-'
         emb_label_map = {
             'naive': 'Naive-Baseline',
             'rasch': 'Rasch-1PL',
@@ -143,6 +143,14 @@ def summarize_result_file(filename: str) -> dict[str, str] | None:
 
     row = {
         'Model Configuration': setup['setup_label'],
+        'Embedding': setup['embedding'],
+        'Likelihood': setup['model'],
+        'N': setup['n_samples'],
+        'Pre': setup['pre_revision'],
+        'Tau Mode': setup['tau_mode'],
+        'j': setup['j_percentage'],
+        'Baseline Embedding': '---',
+        'Selected k': '---',
         'AUC': format_res(auc_mean, auc_sem),
         'RMSE': format_res(rmse_mean, rmse_sem),
         'Best Tau': f"{best_tau:.6g}",
@@ -172,6 +180,7 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
         'seed',
         'n_samples',
         'j_percentage',
+        'train_retention',
         'auc_naive',
         'rmse_naive',
         'auc_rasch',
@@ -182,6 +191,7 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
         'rmse_mirt',
         'auc_knn',
         'rmse_knn',
+        'selected_knn_k',
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -209,6 +219,17 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
         if curr.empty:
             continue
 
+        if 'baseline_embedding_type' in curr.columns:
+            available = set(curr['baseline_embedding_type'].dropna().astype(str))
+            target = 'raw' if 'raw' in available else ('pca' if 'pca' in available else None)
+            if target is not None:
+                curr = curr[curr['baseline_embedding_type'] == target]
+
+        if 'train_retention' in curr.columns:
+            fresh = curr[np.isclose(pd.to_numeric(curr['train_retention'], errors='coerce'), 1.0, atol=1e-6, equal_nan=False)]
+            if not fresh.empty:
+                curr = fresh
+
         agg_df = (
             curr.groupby(group_cols, dropna=False)
             .agg(
@@ -217,6 +238,9 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
                 rmse_mean=(rmse_col, 'mean'),
                 rmse_sem=(rmse_col, 'sem'),
                 seeds=('seed', pd.Series.nunique),
+                baseline_embedding_type=('baseline_embedding_type', 'last'),
+                selected_knn_k_min=('selected_knn_k', 'min'),
+                selected_knn_k_max=('selected_knn_k', 'max'),
             )
             .reset_index()
         )
@@ -236,6 +260,13 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
             pre_label = 'none' if pre_revision in {'', 'nan'} else pre_revision
             j_label = '1.0' if pd.isna(j_val) else f"{float(j_val):g}"
             source_file = build_baseline_source_filename(method_key, model, n_label, pre_label, j_label)
+            baseline_embedding = str(row.get('baseline_embedding_type', '---'))
+            if method_key == 'knn' and not pd.isna(row.get('selected_knn_k_min', np.nan)):
+                k_min = int(row['selected_knn_k_min'])
+                k_max = int(row['selected_knn_k_max'])
+                selected_k = str(k_min) if k_min == k_max else f"{k_min}-{k_max}"
+            else:
+                selected_k = '---'
 
             rows.append(
                 {
@@ -243,6 +274,14 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
                         f"{label} | model={model} | n={n_label} | pre={pre_label} | "
                         f"tau=baseline | j={j_label}"
                     ),
+                    'Embedding': label,
+                    'Likelihood': model,
+                    'N': n_label,
+                    'Pre': pre_label,
+                    'Tau Mode': '-',
+                    'j': j_label,
+                    'Baseline Embedding': baseline_embedding,
+                    'Selected k': selected_k,
                     'AUC': format_res(
                         float(row['auc_mean']),
                         float(row['auc_sem']) if not pd.isna(row['auc_sem']) else 0.0,
@@ -251,7 +290,7 @@ def summarize_baseline_cache() -> list[dict[str, str]]:
                         float(row['rmse_mean']),
                         float(row['rmse_sem']) if not pd.isna(row['rmse_sem']) else 0.0,
                     ),
-                    'Best Tau': 'baseline',
+                    'Best Tau': '-',
                     'Seeds @ Best Tau': int(row['seeds']) if not pd.isna(row['seeds']) else 0,
                     'Source File': source_file,
                 }

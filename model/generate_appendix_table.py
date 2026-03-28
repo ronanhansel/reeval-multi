@@ -101,6 +101,8 @@ def sem_to_math(value: object) -> str:
     text = str(value)
     if text.strip().lower() in {"n/a", "na", "unavailable", "---"}:
         return "---"
+    if text.strip() == "-":
+        return "-"
     # convert 0.700±0.009 -> $0.700 \pm 0.009$
     if "±" in text:
         left, right = text.split("±", 1)
@@ -114,6 +116,8 @@ def numeric_to_math(value: object) -> str:
     text = str(value).strip()
     if text.lower() in {"n/a", "na", "baseline", "unavailable", "---"}:
         return "---"
+    if text == "-":
+        return "-"
     if text == "max":
         return r"$\max$"
     if text == "none":
@@ -137,23 +141,41 @@ def normalize_test_takers(value: object) -> str:
     return str(value).strip()
 
 
+def format_embedding_with_note(embedding: object, selected_k: object) -> str:
+    label = latex_escape(embedding)
+    k_text = str(selected_k).strip()
+    if k_text == "5-50":
+        return label + r"\textsuperscript{a}"
+    if k_text == "10-50":
+        return label + r"\textsuperscript{b}"
+    return label
+
+
 def build_table(df: pd.DataFrame) -> str:
     records = []
     for _, row in df.iterrows():
         src = str(row.get("Source File", ""))
-        meta = parse_source_filename(src)
+        meta = parse_source_filename(src) if src else {}
+        embedding = row.get("Embedding", meta.get("embedding", "---"))
+        likelihood = row.get("Likelihood", meta.get("model", "---"))
+        n_value = row.get("N", meta.get("n", "unknown"))
+        pre_value = row.get("Pre", meta.get("pre", "none"))
+        tau_mode = row.get("Tau Mode", meta.get("tau", "---"))
+        j_value = row.get("j", meta.get("j", "1.0"))
+        baseline_embedding = row.get("Baseline Embedding", "---")
+        selected_k = row.get("Selected k", "---")
         records.append(
             {
-                "Embedding": meta["embedding"],
-                "Model": meta["model"],
-                "N": normalize_n_mode(meta["n"]),
-                "Pre": meta["pre"],
-                "Tau": meta["tau"],
-                "j": meta["j"],
-                "BestTau": row.get("Best Tau", "---"),
+                "Embedding": embedding,
+                "Model": likelihood,
+                "N": normalize_n_mode(n_value),
+                "Pre": pre_value,
+                "Tau": "-" if str(tau_mode).strip().lower() in {"baseline", "---"} else tau_mode,
+                "j": j_value,
+                "SelectedK": selected_k,
+                "BestTau": "-" if str(row.get("Best Tau", "---")).strip().lower() in {"baseline", "---"} else row.get("Best Tau", "---"),
                 "AUC": row.get("AUC", "---"),
                 "RMSE": row.get("RMSE", "---"),
-                "Seeds": row.get("Seeds @ Best Tau", "---"),
             }
         )
 
@@ -221,20 +243,20 @@ def build_table(df: pd.DataFrame) -> str:
     lines.append(r"% Required packages: longtable, booktabs")
     lines.append(r"\scriptsize")
     lines.append(r"\setlength{\tabcolsep}{3pt}")
-    lines.append(r"\begin{longtable}{llccccccccc}")
-    lines.append(r"\caption{Appendix summary of all experimental setups. Each row reports one setup from the full sweep, evaluated at the best $\tau$ (selected by highest mean $\mathrm{AUC}$). Baseline rows are also included for Naive, Rasch-1PL, IRT-2PL, MIRT, and kNN, preserving variation over test takers and item subsets. Notation: \emph{Revision} indicates whether the run is pre-revision (Pre) or post-revision (Post). \emph{Test Takers} is the effective test-taker count used for that run (for Pre rows this comes from the pre-revision subset level; for Post rows this follows the run setting), with any legacy \texttt{max}/\texttt{full} test-taker setting shown as $143$. $N\in\{1,\mathrm{full}\}$ denotes repeated matrix-sampling mode, where \emph{full} uses all available repetitions for that setup. $\tau\in\{\mathrm{on},\mathrm{off},\texttt{---}\}$ indicates whether regularization is enabled (or not applicable for baseline-only rows); $j$ is the item-fraction control used in scaling-law runs; \emph{Best $\tau$} is the selected regularization value for amortized setups and \texttt{---} for baseline rows; $\mathrm{AUC}$ and $\mathrm{RMSE}$ are reported as mean $\pm$ standard error over repetitions; \emph{Seeds} is the number of random seeds contributing to that summary.}\\")
+    lines.append(r"\begin{longtable}{llcccccccc}")
+    lines.append(r"\caption{Appendix summary of all experimental setups. Each row reports one setup from the full sweep, evaluated at the best $\tau$ (selected by highest mean $\mathrm{AUC}$). Baseline rows are also included for Naive, Rasch-1PL, IRT-2PL, MIRT, and kNN, preserving variation over test takers and item subsets. Notation: \emph{Revision} indicates whether the run is pre-revision (Pre) or post-revision (Post). \emph{Test Takers} is the effective test-taker count used for that run (for Pre rows this comes from the pre-revision subset level; for Post rows this follows the run setting), with any legacy \texttt{max}/\texttt{full} test-taker setting shown as $143$. $N\in\{1,\mathrm{full}\}$ denotes repeated matrix-sampling mode, where \emph{full} uses all available repetitions for that setup. $\tau\in\{\mathrm{on},\mathrm{off},-\}$ indicates whether regularization is enabled (or not applicable for baseline-only rows); $j$ is the item-fraction control used in scaling-law runs; \emph{Best $\tau$} is the selected regularization value for amortized setups and $-$ for baseline rows; $\mathrm{AUC}$ and $\mathrm{RMSE}$ are reported as mean $\pm$ standard error across 50 repetitions. kNN rows marked with \textsuperscript{a} selected $k$ values spanning $5$ to $50$ across repetitions, while rows marked with \textsuperscript{b} selected $k$ values spanning $10$ to $50$.}\\")
     lines.append(r"\label{tab:appendix_all_setups}\\")
     lines.append(r"\toprule")
-    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ & Seeds \\")
+    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ \\")
     lines.append(r"\midrule")
     lines.append(r"\endfirsthead")
-    lines.append(r"\multicolumn{11}{c}{\tablename\ \thetable{} -- continued from previous page}\\")
+    lines.append(r"\multicolumn{10}{c}{\tablename\ \thetable{} -- continued from previous page}\\")
     lines.append(r"\toprule")
-    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ & Seeds \\")
+    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ \\")
     lines.append(r"\midrule")
     lines.append(r"\endhead")
     lines.append(r"\midrule")
-    lines.append(r"\multicolumn{11}{r}{continued on next page}\\")
+    lines.append(r"\multicolumn{10}{r}{continued on next page}\\")
     lines.append(r"\endfoot")
     lines.append(r"\bottomrule")
     lines.append(r"\endlastfoot")
@@ -243,10 +265,10 @@ def build_table(df: pd.DataFrame) -> str:
     for _, row in out.iterrows():
         group_key = (row["Model"], row["Stage"], row["TestTakers"], row["j"])
         if prev_group is not None and group_key != prev_group:
-            lines.append(r"\cmidrule(lr){1-11}")
+            lines.append(r"\cmidrule(lr){1-10}")
 
         line = (
-            f"{latex_escape(row['Embedding'])} & "
+            f"{format_embedding_with_note(row['Embedding'], row['SelectedK'])} & "
             f"{latex_escape(row['Model'])} & "
             f"{latex_escape(row['Stage'])} & "
             f"{numeric_to_math(row['TestTakers'])} & "
@@ -255,8 +277,7 @@ def build_table(df: pd.DataFrame) -> str:
             f"{numeric_to_math(row['j'])} & "
             f"{sem_to_math(row['BestTau'])} & "
             f"{sem_to_math(row['AUC'])} & "
-            f"{sem_to_math(row['RMSE'])} & "
-            f"{numeric_to_math(row['Seeds'])} \\\\" 
+            f"{sem_to_math(row['RMSE'])} \\\\"
         )
         lines.append(line)
         prev_group = group_key

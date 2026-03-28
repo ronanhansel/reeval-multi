@@ -33,9 +33,9 @@ MODEL_STYLES = {
 }
 
 PANEL_SPECS = [
-    ("pre_binary", "auc", "AUC (Pre Revision)", False),
-    ("post_binary", "auc", "AUC (Post Revision)", False),
-    ("post_beta", "rmse", "RMSE (Post Revision)", True),
+    ("pre_binary", "auc", "(a) AUC (Pre Revision)", False),
+    ("post_binary", "auc", "(b) AUC (Post Revision)", False),
+    ("post_beta", "rmse", "(c) RMSE (Post Revision)", True),
 ]
 
 
@@ -200,6 +200,7 @@ def plot_panel(ax, panel_df, title, y_label, lower_better=False):
             color=style["color"],
             linestyle=style["linestyle"],
             marker="o",
+            markersize=3,
             linewidth=1.6,
             label=style["label"],
         )
@@ -266,7 +267,7 @@ def plot(df):
             ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.supxlabel("Percentage of Observed Train Pairs", fontsize=9, y=0.08)
+    fig.supxlabel("Percentage of Observed Train Pairs", fontsize=10, y=0.08)
     fig.legend(
         handles,
         labels,

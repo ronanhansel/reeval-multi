@@ -59,6 +59,10 @@ def load_baseline_cache():
         )
     else:
         df['baseline_embedding_type'] = 'pca'
+    if 'train_retention' in df.columns:
+        df['train_retention'] = pd.to_numeric(df['train_retention'], errors='coerce')
+    if 'selected_knn_k' in df.columns:
+        df['selected_knn_k'] = pd.to_numeric(df['selected_knn_k'], errors='coerce')
     return df
 
 
@@ -75,6 +79,10 @@ def lookup_baseline_auc(baseline_df, model_type, n_samples, pre_revision, metric
         target = PREFERRED_BASELINE_EMBEDDING if PREFERRED_BASELINE_EMBEDDING in available else ('pca' if 'pca' in available else None)
         if target is not None:
             sub = sub[sub['baseline_embedding_type'] == target]
+    if 'train_retention' in sub.columns:
+        fresh = sub[np.isclose(pd.to_numeric(sub['train_retention'], errors='coerce'), 1.0, atol=1e-6, equal_nan=False)]
+        if not fresh.empty:
+            sub = fresh
     vals = pd.to_numeric(sub[metric_col], errors='coerce').dropna()
     if vals.empty:
         return None, 0.0
