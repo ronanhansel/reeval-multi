@@ -605,6 +605,7 @@ run_support_thinning_study() {
     echo " -> Running post-matrix support-thinning study on the revised oracle..."
     echo " -> Thinning only the observed train support after the standard 90/10 post item split."
     echo " -> Sweeping both Bernoulli and Beta variants for ARAF and kNN."
+    echo " -> Also preserving the legacy pre-max thinning branch for Binary Pre comparisons."
     echo " -> Using full tau sweep for ARAF across embeddings: ${THIN_ARAF_EMBEDDINGS[*]}"
     echo " -> Reusing cached outputs when seed/tau rows already exist."
     for retention in "${THIN_RETENTIONS[@]}"; do
@@ -635,6 +636,27 @@ run_support_thinning_study() {
                     mkdir -p "${combo_dir}"
                     run_baseline max "${model_type}" "${pre_revision}" "${SEEDS}" "${j_percentage}" "${knn_emb}" "${knn_k}" "knn_only" "${retention}" "false" "32"
                 done
+            done
+        done
+
+        local legacy_pre_revision="max"
+        local legacy_model_type="beta"
+        RESULT_DIR="${araf_dir}"
+        BASELINE_CSV="${shared_baseline_dir}/baseline_metrics.csv"
+        MIRT_SWEEP_CSV="${shared_baseline_dir}/mirt_sweep.csv"
+        for araf_emb in "${THIN_ARAF_EMBEDDINGS[@]}"; do
+            local taus="$SHARED_TAUS"
+            run_exp "${araf_emb}" max "${legacy_model_type}" "${taus}" "${legacy_pre_revision}" "${SEEDS}" "${araf_dir}" false false "1.0" "" "" "" "" "${retention}" "raw" "10" "knn_only" "false"
+        done
+        for knn_emb in "${THIN_KNN_EMBEDDINGS[@]}"; do
+            for knn_k in "${THIN_K_VALUES[@]}"; do
+                local legacy_combo_dir="${THIN_RESULT_DIR}/${ret_label}/knn_${knn_emb}_k${knn_k}"
+                local legacy_baselines_dir="${legacy_combo_dir}/baselines"
+                RESULT_DIR="${legacy_combo_dir}"
+                BASELINE_CSV="${legacy_baselines_dir}/baseline_metrics.csv"
+                MIRT_SWEEP_CSV="${legacy_baselines_dir}/mirt_sweep.csv"
+                mkdir -p "${legacy_combo_dir}"
+                run_baseline max "${legacy_model_type}" "${legacy_pre_revision}" "${SEEDS}" "1.0" "${knn_emb}" "${knn_k}" "knn_only" "${retention}"
             done
         done
     done

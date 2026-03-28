@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Post-matrix support-thinning plots.
+Support-thinning plots.
 
-Generates a 4-panel figure with:
-- Bernoulli AUC
-- Bernoulli RMSE
-- Beta AUC
-- Beta RMSE
+Generates a 3-panel figure with:
+- Binary pre AUC
+- Binary post AUC
+- Beta post RMSE
 """
 
 import os
@@ -22,10 +21,9 @@ REPO_ROOT = os.path.dirname(MODEL_DIR)
 
 RESULT_DIR = os.path.join(MODEL_DIR, "result", "support_thinning_study")
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
-THIN_CSV = os.path.join(RESULT_DIR, "support_thinning_post_grid.csv")
+THIN_CSV = os.path.join(RESULT_DIR, "support_thinning_grid.csv")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-MODEL_TYPES = ["bernoulli", "beta"]
 RETENTIONS = [0.05, 0.1, 0.25, 0.5, 1.0]
 
 MODEL_STYLES = {
@@ -34,15 +32,30 @@ MODEL_STYLES = {
 }
 
 PANEL_SPECS = [
-    ("bernoulli", "auc", "AUC (Binary)", False),
-    ("bernoulli", "rmse", "RMSE (Binary)", True),
-    ("beta", "auc", "AUC (Beta)", False),
-    ("beta", "rmse", "RMSE (Beta)", True),
+    ("pre_binary", "auc", "AUC (Binary Pre)", False),
+    ("post_binary", "auc", "AUC (Binary Post)", False),
+    ("post_beta", "rmse", "RMSE (Beta Post)", True),
 ]
 
 
 def get_bundle():
     return bundles.icml2024(usetex=False, family="serif")
+
+
+def _infer_slice_from_row(row):
+    pre_revision = str(row.get("pre_revision", "")).strip().lower()
+    model_type = str(row.get("model_type", "")).strip().lower()
+    try:
+        user_count = int(float(row.get("user_count", 0) or 0))
+    except Exception:
+        user_count = 0
+    if pre_revision == "none" and model_type == "bernoulli" and user_count == 32:
+        return "post_binary"
+    if pre_revision == "max" and model_type == "beta":
+        return "pre_binary"
+    if pre_revision == "none" and model_type == "beta" and user_count == 32:
+        return "post_beta"
+    return ""
 
 
 def load_data():
@@ -75,10 +88,14 @@ def load_data():
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.lower()
 
+    if "comparison_slice" in df.columns:
+        df["comparison_slice"] = df["comparison_slice"].astype(str).str.strip().str.lower()
+    else:
+        df["comparison_slice"] = df.apply(_infer_slice_from_row, axis=1)
+
     df = df[
-        (df["pre_revision"] == "none") &
-        (np.isclose(df["j_percentage"], 1.0, atol=1e-9)) &
-        (df["user_count"] == 32)
+        np.isclose(df["j_percentage"], 1.0, atol=1e-9)
+        & df["comparison_slice"].isin({"post_binary", "pre_binary", "post_beta"})
     ].copy()
     if df.empty:
         return None
@@ -100,8 +117,8 @@ def _select_best_araf(sub, metric):
         pick = grouped.sort_values(["rmse_araf", "auc_araf"], ascending=[True, False]).iloc[0]
 
     rows = sub[
-        (sub["embedding_type"] == pick["embedding_type"]) &
-        (np.isclose(sub["lambda_tau"], float(pick["lambda_tau"]), atol=1e-8))
+        (sub["embedding_type"] == pick["embedding_type"])
+        & (np.isclose(sub["lambda_tau"], float(pick["lambda_tau"]), atol=1e-8))
     ]
     return rows, pick
 
@@ -121,18 +138,18 @@ def _select_best_knn(sub, metric):
         pick = grouped.sort_values(["rmse_knn", "auc_knn"], ascending=[True, False]).iloc[0]
 
     rows = sub[
-        (sub["baseline_embedding_type"] == pick["baseline_embedding_type"]) &
-        (np.isclose(sub["knn_k"], float(pick["knn_k"]), atol=1e-8))
+        (sub["baseline_embedding_type"] == pick["baseline_embedding_type"])
+        & (np.isclose(sub["knn_k"], float(pick["knn_k"]), atol=1e-8))
     ]
     return rows, pick
 
 
-def build_panel_df(df, model_type, metric):
+def build_panel_df(df, comparison_slice, metric):
     rows = []
     for retention in RETENTIONS:
         sub = df[
-            (df["model_type"] == model_type) &
-            (np.isclose(df["train_retention"], float(retention), atol=1e-9))
+            (df["comparison_slice"] == comparison_slice)
+            & (np.isclose(df["train_retention"], float(retention), atol=1e-9))
         ].copy()
         if sub.empty:
             continue
@@ -150,6 +167,7 @@ def build_panel_df(df, model_type, metric):
         rows.append(
             {
                 "retention": float(retention),
+                "retention_pct": float(retention) * 100.0,
                 "observed_train_pairs": float(araf_rows["observed_train_pairs"].mean()),
                 "araf_mean": float(seed_araf.mean()),
                 "araf_sem": float(seed_araf.sem()) if len(seed_araf) > 1 else 0.0,
@@ -165,11 +183,11 @@ def build_panel_df(df, model_type, metric):
     if not rows:
         return None
 
-    return pd.DataFrame(rows).sort_values("observed_train_pairs")
+    return pd.DataFrame(rows).sort_values("retention_pct")
 
 
 def plot_panel(ax, panel_df, title, y_label, lower_better=False):
-    x = panel_df["observed_train_pairs"].to_numpy(dtype=float)
+    x = panel_df["retention_pct"].to_numpy(dtype=float)
 
     for key in ["araf", "knn"]:
         style = MODEL_STYLES[key]
@@ -187,10 +205,9 @@ def plot_panel(ax, panel_df, title, y_label, lower_better=False):
         ax.fill_between(x, mean - sem, mean + sem, color=style["color"], alpha=0.18)
 
     ax.set_title(title, fontsize=10)
-    ax.set_xlabel("Mean Observed Post Train Pairs", fontsize=9)
     ax.set_ylabel(y_label, fontsize=9)
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{int(round(v)):,}" for v in x], rotation=35, ha="right", fontsize=8)
+    ax.set_xticklabels([f"{int(round(v))}%" for v in x], fontsize=8)
     ax.grid(linestyle=":", alpha=0.8)
     ax.tick_params(labelsize=8)
 
@@ -215,29 +232,35 @@ def plot_panel(ax, panel_df, title, y_label, lower_better=False):
 
 def plot(df):
     panel_dfs = {}
-    for model_type, metric, _, _ in PANEL_SPECS:
-        panel_dfs[(model_type, metric)] = build_panel_df(df, model_type, metric)
+    for comparison_slice, metric, _, _ in PANEL_SPECS:
+        panel_dfs[(comparison_slice, metric)] = build_panel_df(df, comparison_slice, metric)
 
     if any(panel_dfs[key] is None for key in panel_dfs):
-        missing = [f"{model_type}:{metric}" for (model_type, metric), value in panel_dfs.items() if value is None]
+        missing = [
+            f"{comparison_slice}:{metric}"
+            for (comparison_slice, metric), value in panel_dfs.items()
+            if value is None
+        ]
         raise RuntimeError(f"Missing support-thinning panels: {', '.join(missing)}")
 
     plt.rcParams.update(get_bundle())
-    fig, axes = plt.subplots(1, 4, figsize=(11.2, 2.9), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(8.6, 2.9), constrained_layout=False)
 
-    for ax, (model_type, metric, title, lower_better) in zip(axes, PANEL_SPECS):
+    for ax, (comparison_slice, metric, title, lower_better) in zip(axes, PANEL_SPECS):
         plot_panel(
             ax,
-            panel_dfs[(model_type, metric)],
+            panel_dfs[(comparison_slice, metric)],
             title=title,
             y_label="AUC" if metric == "auc" else "RMSE",
             lower_better=lower_better,
         )
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=2, frameon=True, fontsize=8)
+    fig.supxlabel("Percentage of Observed Train Pairs", fontsize=9, y=0.12)
+    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, -0.06), ncol=2, frameon=True, fontsize=8)
+    fig.subplots_adjust(bottom=0.34, wspace=0.28)
 
-    out_path = os.path.join(FIGURE_DIR, "support_thinning_post_quad.pdf")
+    out_path = os.path.join(FIGURE_DIR, "support_thinning_triptych.pdf")
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     print(f"Support-thinning figure saved to {out_path}")
