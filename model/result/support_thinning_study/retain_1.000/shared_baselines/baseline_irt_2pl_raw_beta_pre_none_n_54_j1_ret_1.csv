@@ -1,0 +1,2 @@
+seed,model_type,n_samples,pre_revision,j_percentage,train_retention,baseline_embedding_type,agent_batch_size,selected_knn_k,auc_2pl,rmse_2pl
+42,beta,54,none,1.0,1.0,raw,54,50,0.5316400939315289,0.3432244379627617
