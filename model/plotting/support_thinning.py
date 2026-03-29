@@ -318,12 +318,12 @@ def plot(df):
             y_label=None,
             lower_better=lower_better,
         )
-        if metric == "auc":
-            ax.set_ylim(0.58, 0.78)
-            ax.set_yticks(np.arange(0.60, 0.751, 0.05))
-        elif metric == "rmse":
-            ax.set_ylim(0.235, 0.28)
-            ax.set_yticks([0.24, 0.25, 0.26, 0.27])
+        if metric == 'auc':
+            ax.set_yticks([0.5, 0.6, 0.7, 0.8])
+            ax.set_ylim(0.48, 0.78)
+        else:
+            ax.set_yticks([0.24, 0.26, 0.28])
+            ax.set_ylim(0.235, 0.285)
             ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
 
     handles, labels = axes[0].get_legend_handles_labels()

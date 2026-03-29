@@ -214,14 +214,24 @@ def build_knn_lookup(result_dir: Path):
 
 def build_baseline_lookup(result_dir: Path):
     lookup = {}
+    baseline_dirs = {
+        p for p in result_dir.rglob("shared_baselines") if p.is_dir()
+    }
+    baseline_dirs.update(
+        p for p in result_dir.rglob("baselines") if p.is_dir()
+    )
+    baseline_dirs.update(
+        p.parent for p in result_dir.rglob("baseline_metrics.csv")
+    )
 
-    for baseline_path in result_dir.rglob("baseline_metrics.csv"):
+    for baseline_dir in sorted(baseline_dirs):
+        baseline_path = baseline_dir / "baseline_metrics.csv"
         baseline_store = load_baseline_store(str(baseline_path))
         if baseline_store.empty:
             continue
 
         retention = 1.0
-        for part in baseline_path.parts:
+        for part in baseline_dir.parts:
             if part.startswith("retain_"):
                 retention = float(part.split("_", 1)[1])
                 break
