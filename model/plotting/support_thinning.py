@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 from tueplots import bundles
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -336,7 +337,23 @@ def plot(df):
             ax.set_ylim(0.235, 0.285)
             ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
 
-    handles, labels = axes[0].get_legend_handles_labels()
+    # Build legend handles explicitly so dashed styles remain visible in the legend.
+    handles = [
+        Line2D(
+            [0],
+            [0],
+            color=MODEL_STYLES[key]["color"],
+            linestyle=MODEL_STYLES[key]["linestyle"],
+            marker="o",
+            markersize=3,
+            linewidth=1.8,
+            alpha=MODEL_STYLES[key]["alpha"],
+            label=MODEL_STYLES[key]["label"],
+            dash_capstyle="butt",
+        )
+        for key in MODEL_ORDER
+    ]
+    labels = [MODEL_STYLES[key]["label"] for key in MODEL_ORDER]
     fig.supxlabel("Percentage of Observed Train Pairs", fontsize=10, y=0.08)
     fig.legend(
         handles,
@@ -346,6 +363,7 @@ def plot(df):
         ncol=4,
         frameon=True,
         fontsize=8,
+        handlelength=2.6,
     )
     fig.subplots_adjust(bottom=0.26, wspace=0.28)
 

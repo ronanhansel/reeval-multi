@@ -222,7 +222,29 @@ def collect_data(benchmarks, use_all_pre_agents=True):
     post_revision_agents = sorted(list(set().union(*[df.index for df in all_combined_res])))
     
     stacked_res = np.array([df.reindex(index=post_revision_agents, columns=post_revision_cols).values for df in all_combined_res], dtype=float)
-    post_revision_res_val = np.nanmean(stacked_res, axis=0) if all_combined_res else np.full((len(post_revision_agents), len(post_revision_cols)), np.nan)
+    if all_combined_res:
+        post_revision_res_val = np.nanmean(stacked_res, axis=0)
+
+        # Only convert NaN -> 0.0 for benchmark-agent regions that are actually implemented.
+        # Keep structurally non-applicable cells as NaN to avoid over-filling the matrix.
+        implemented_mask = np.zeros((len(post_revision_agents), len(post_revision_cols)), dtype=bool)
+        agent_pos = {a: i for i, a in enumerate(post_revision_agents)}
+        col_pos = {c: i for i, c in enumerate(post_revision_cols)}
+
+        for bench, iters in bench_iters.items():
+            bench_agents = sorted(list(set().union(*[it['res'].index for it in iters]) if iters else set()))
+            bench_cols = sorted(list(set().union(*[it['res'].columns for it in iters]) if iters else set()))
+            if not bench_agents or not bench_cols:
+                continue
+
+            a_idx = [agent_pos[a] for a in bench_agents if a in agent_pos]
+            c_idx = [col_pos[c] for c in bench_cols if c in col_pos]
+            if a_idx and c_idx:
+                implemented_mask[np.ix_(a_idx, c_idx)] = True
+
+        post_revision_res_val[np.isnan(post_revision_res_val) & implemented_mask] = 0.0
+    else:
+        post_revision_res_val = np.full((len(post_revision_agents), len(post_revision_cols)), np.nan)
     
     stacked_ver = np.array([df.reindex(columns=post_revision_cols).values for df in all_combined_ver if not df.empty], dtype=float)
     post_revision_ver_val = np.nanmean(stacked_ver, axis=0) if len(stacked_ver) > 0 else np.full((1, len(post_revision_cols)), np.nan)
@@ -344,8 +366,8 @@ def plot_matrices(data):
                     end = max(b_idx) + 1
                     ax_main.axvline(x=end, color='black', linewidth=0.3, linestyle='--')
                     ax_verdict.axvline(x=end, color='black', linewidth=0.3, linestyle='--')
-                    # Label on top of ax_main
-                    ax_main.text((min(b_idx) + end)/2, -0.02, bench_display.get(b), ha='center', va='bottom', transform=ax_main.get_xaxis_transform(), fontsize=7)
+                    # Keep benchmark labels consistently below the heatmap boundary.
+                    ax_main.text((min(b_idx) + end)/2, -0.05, bench_display.get(b), ha='center', va='top', transform=ax_main.get_xaxis_transform(), fontsize=7)
 
             plt.savefig(os.path.join(FIGURE_DIR, f"{label}_{plot_type}.pdf"), bbox_inches='tight')
             plt.close()
