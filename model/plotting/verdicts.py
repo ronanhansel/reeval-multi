@@ -39,7 +39,7 @@ def get_match_key(name):
     k = re.sub(r'[^a-z0-9]', '', k)
     return k
 
-def collect_data(benchmarks):
+def collect_data(benchmarks, use_all_pre_agents=True):
     PRE_REV_DIR = os.path.join(RESMAT_DIR, 'pre-revision')
     POST_REV_DIR = os.path.join(RESMAT_DIR, 'post-revision')
 
@@ -95,18 +95,22 @@ def collect_data(benchmarks):
     pre_ver_merged = pd.concat(pre_ver_list, axis=1, join='outer') if pre_ver_list else pd.DataFrame()
     pre_rub_merged = pd.concat(pre_rub_list, axis=1, join='outer') if pre_rub_list else pd.DataFrame()
 
-    # [ALIGNMENT FIX]: Sample 8 agents per benchmark for pre-revision to equate with post-revision (32 total)
-    sampled_pre_agents = []
-    for df in pre_res_list:
-        b_agents = df.dropna(how='all').index.tolist()
-        np.random.seed(RANDOM_SEED)
-        if len(b_agents) > 8:
-            sampled = np.random.choice(b_agents, size=8, replace=False)
-        else:
-            sampled = b_agents
-        sampled_pre_agents.extend(sampled)
-    
-    pre_revision_agents = sorted(list(set(sampled_pre_agents)))
+    if use_all_pre_agents:
+        # Use all available pre-revision rows (e.g., 143 agents across benchmarks).
+        pre_revision_agents = sorted(list(set(pre_res_merged.dropna(how='all').index.tolist())))
+    else:
+        # Sample 8 agents per benchmark for pre-revision to equate with post-revision (32 total).
+        sampled_pre_agents = []
+        for df in pre_res_list:
+            b_agents = df.dropna(how='all').index.tolist()
+            np.random.seed(RANDOM_SEED)
+            if len(b_agents) > 8:
+                sampled = np.random.choice(b_agents, size=8, replace=False)
+            else:
+                sampled = b_agents
+            sampled_pre_agents.extend(sampled)
+        pre_revision_agents = sorted(list(set(sampled_pre_agents)))
+
     pre_revision_cols = sorted(list(pre_res_merged.columns))
     
     pre_revision_res_val = pre_res_merged.reindex(index=pre_revision_agents, columns=pre_revision_cols).apply(pd.to_numeric, errors='coerce').values
@@ -319,12 +323,14 @@ def plot_matrices(data):
 
         # 4. Save Heatmaps
         for plot_type in ['resmat', 'verdict']:
-            # [ALIGNMENT FIX]: Both pre and post revision now have 32 agents, so we equate the heights
-            h = 4
+            data_to_plot = res_f if plot_type == 'resmat' else rub_f
+
+            # Scale figure height with row count so larger matrices remain legible.
+            n_rows = max(1, int(data_to_plot.shape[0]))
+            h = max(4.0, min(11.0, 2.4 + 0.035 * n_rows))
             hr = 15
             fig, (ax_main, ax_verdict) = plt.subplots(2, 1, figsize=(14, h), gridspec_kw={'height_ratios': [hr, 1], 'hspace': 0.05})
-            
-            data_to_plot = res_f if plot_type == 'resmat' else rub_f
+
             
             cbar_asp = 40
             sns.heatmap(data_to_plot, ax=ax_main, cmap=verdict_red_cmap, cbar_kws={'aspect': cbar_asp, 'pad': 0.01}, xticklabels=False, yticklabels=False, vmin=0, vmax=1)
@@ -346,7 +352,7 @@ def plot_matrices(data):
 
 def main():
     benchmarks = ['colbench_backend_programming', 'corebench_hard', 'scienceagentbench', 'scicode']
-    data = collect_data(benchmarks)
+    data = collect_data(benchmarks, use_all_pre_agents=True)
     plot_matrices(data)
 
 if __name__ == "__main__":
