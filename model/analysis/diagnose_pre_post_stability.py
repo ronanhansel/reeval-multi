@@ -74,8 +74,8 @@ def binarize_observed(frame: pd.DataFrame) -> pd.DataFrame:
     return binary
 
 
-def compute_post_binary_matrix() -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Return the post beta/oracle matrix and its binarized version."""
+def compute_post_binary_matrix() -> Tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
+    """Return the post beta/oracle matrix, its binarized version, and the aligned post stack."""
     post_dfs, post_indices = _load_post_revision_response_matrices()
     post_columns = sorted(list(set().union(*[df.columns for df in post_dfs])))
     post_filtered = [df.reindex(index=post_indices, columns=post_columns) for df in post_dfs]
@@ -86,7 +86,7 @@ def compute_post_binary_matrix() -> Tuple[pd.DataFrame, pd.DataFrame]:
         columns=post_columns,
     )
     post_binary = binarize_observed(post_beta)
-    return post_beta, post_binary
+    return post_beta, post_binary, post_stack
 
 
 def align_columns(
@@ -353,6 +353,38 @@ def summarize_matrix(frame: pd.DataFrame, *, entropy_on_binary: bool = False) ->
         summary["mean_item_entropy"] = safe_mean(binary_entropy(item_means[~np.isnan(item_means)]))
 
     return summary
+
+
+def summarize_post_repeatability(post_stack: np.ndarray) -> Dict[str, float]:
+    """Summarize how often repeated post runs disagree before hard thresholding."""
+    if post_stack.size == 0:
+        return {
+            "observed_cell_count": 0,
+            "mean_within_cell_variance": float("nan"),
+            "fraction_cells_with_any_disagreement": float("nan"),
+            "fraction_majority_fail_with_some_success": float("nan"),
+            "fraction_majority_pass_with_some_failure": float("nan"),
+            "fraction_unanimous_fail": float("nan"),
+            "fraction_unanimous_pass": float("nan"),
+            "fraction_exactly_at_threshold": float("nan"),
+        }
+
+    post_mean = np.nanmean(post_stack, axis=0)
+    observed_mask = ~np.isnan(post_mean)
+    observed_means = post_mean[observed_mask]
+    within_cell_var = np.nanvar(post_stack, axis=0)
+    observed_var = within_cell_var[observed_mask]
+
+    return {
+        "observed_cell_count": int(observed_means.size),
+        "mean_within_cell_variance": safe_mean(observed_var),
+        "fraction_cells_with_any_disagreement": float(np.mean((observed_means > 0.0) & (observed_means < 1.0))),
+        "fraction_majority_fail_with_some_success": float(np.mean((observed_means > 0.0) & (observed_means <= 0.5))),
+        "fraction_majority_pass_with_some_failure": float(np.mean((observed_means > 0.5) & (observed_means < 1.0))),
+        "fraction_unanimous_fail": float(np.mean(np.isclose(observed_means, 0.0))),
+        "fraction_unanimous_pass": float(np.mean(np.isclose(observed_means, 1.0))),
+        "fraction_exactly_at_threshold": float(np.mean(np.isclose(observed_means, 0.5))),
+    }
 
 
 def benchmark_item_variance(frame: pd.DataFrame) -> Dict[str, float]:
@@ -714,6 +746,7 @@ def repeated_sampling_report(
     difficulty_low: float = 0.2,
     difficulty_high: float = 0.8,
     difficulty_min_items_per_benchmark: int = 5,
+    observed_per_item_ratio_floor: float = 0.9,
 ) -> Dict[str, object]:
     """Run repeated matched-size pre sampling and compare with post."""
     target_rows = post_df.shape[0]
@@ -744,6 +777,7 @@ def repeated_sampling_report(
             sample_valid, last_reason, last_diag = validate_sampled_pre_matrix(
                 candidate,
                 post_df,
+                observed_per_item_ratio_floor=observed_per_item_ratio_floor,
                 enforce_post_benchmark_counts=(sampler_name == "benchmark_constrained_ability_matched"),
             )
             if sample_valid:
@@ -990,13 +1024,15 @@ def repeated_sampling_report(
 def build_report(args: argparse.Namespace) -> Dict[str, object]:
     pre_dfs, _ = _load_pre_revision_response_matrix(args.pre_revision)
     pre_full = pre_dfs[0]
-    post_beta, post_binary = compute_post_binary_matrix()
+    post_beta, post_binary, post_stack = compute_post_binary_matrix()
     pre_full, post_beta, post_binary = align_columns(pre_full, post_beta, post_binary, args.column_mode)
     pre_binary = to_binary(pre_full)
 
     pre_full_summary = summarize_matrix(pre_full, entropy_on_binary=False)
+    post_beta_summary = summarize_matrix(post_beta, entropy_on_binary=False)
     post_binary_summary = summarize_matrix(post_binary, entropy_on_binary=True)
     pre_binary_summary = summarize_matrix(pre_binary, entropy_on_binary=True)
+    post_repeatability_summary = summarize_post_repeatability(post_stack)
 
     infer_rng = np.random.default_rng(args.seed + 1000)
 
@@ -1008,12 +1044,26 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
 
     item_bootstrap_raw = bootstrap_item_metric_gap(
         pre_full,
+        post_beta,
+        metric_fn=avg_item_var_metric,
+        n_bootstrap=args.n_bootstrap,
+        rng=infer_rng,
+    )
+    item_bootstrap_raw_hard = bootstrap_item_metric_gap(
+        pre_full,
         post_binary,
         metric_fn=avg_item_var_metric,
         n_bootstrap=args.n_bootstrap,
         rng=infer_rng,
     )
     item_bootstrap_macro = bootstrap_item_metric_gap(
+        pre_full,
+        post_beta,
+        metric_fn=macro_item_var_metric,
+        n_bootstrap=args.n_bootstrap,
+        rng=infer_rng,
+    )
+    item_bootstrap_macro_hard = bootstrap_item_metric_gap(
         pre_full,
         post_binary,
         metric_fn=macro_item_var_metric,
@@ -1023,12 +1073,26 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
 
     item_permutation_raw = permutation_test_item_metric_gap(
         pre_full,
+        post_beta,
+        metric_fn=avg_item_var_metric,
+        n_permutations=args.n_permutations,
+        rng=infer_rng,
+    )
+    item_permutation_raw_hard = permutation_test_item_metric_gap(
+        pre_full,
         post_binary,
         metric_fn=avg_item_var_metric,
         n_permutations=args.n_permutations,
         rng=infer_rng,
     )
     item_permutation_macro = permutation_test_item_metric_gap(
+        pre_full,
+        post_beta,
+        metric_fn=macro_item_var_metric,
+        n_permutations=args.n_permutations,
+        rng=infer_rng,
+    )
+    item_permutation_macro_hard = permutation_test_item_metric_gap(
         pre_full,
         post_binary,
         metric_fn=macro_item_var_metric,
@@ -1046,11 +1110,21 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
         },
         "matrices": {
             "pre_full_raw": pre_full_summary,
-            "post_beta": summarize_matrix(post_beta, entropy_on_binary=False),
+            "post_beta": post_beta_summary,
             "post_binary": post_binary_summary,
             "pre_full_binary_sensitivity": pre_binary_summary,
         },
+        "post_repeatability": post_repeatability_summary,
         "full_comparison": {
+            "raw_pre_vs_soft_post": {
+                "avg_item_variance_pre": pre_full_summary["avg_item_variance"],
+                "avg_item_variance_post": post_beta_summary["avg_item_variance"],
+                "delta_post_minus_pre": post_beta_summary["avg_item_variance"] - pre_full_summary["avg_item_variance"],
+                "avg_agent_variance_pre": pre_full_summary["avg_agent_variance"],
+                "avg_agent_variance_post": post_beta_summary["avg_agent_variance"],
+                "mean_score_pre": pre_full_summary["overall_mean"],
+                "mean_score_post_soft": post_beta_summary["overall_mean"],
+            },
             "raw_pre_vs_binary_post": {
                 "avg_item_variance_pre": pre_full_summary["avg_item_variance"],
                 "avg_item_variance_post": post_binary_summary["avg_item_variance"],
@@ -1060,6 +1134,12 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
                 "mean_score_pre": pre_full_summary["overall_mean"],
                 "mean_pass_rate_post": post_binary_summary["overall_mean"],
             },
+            "binary_sensitivity_pre_vs_soft_post": {
+                "avg_item_variance_pre_binary": pre_binary_summary["avg_item_variance"],
+                "avg_item_variance_post_soft": post_beta_summary["avg_item_variance"],
+                "delta_post_minus_pre_binary": post_beta_summary["avg_item_variance"] - pre_binary_summary["avg_item_variance"],
+                "mean_item_entropy_pre_binary": pre_binary_summary["mean_item_entropy"],
+            },
             "binary_sensitivity_pre_vs_post": {
                 "avg_item_variance_pre_binary": pre_binary_summary["avg_item_variance"],
                 "avg_item_variance_post_binary": post_binary_summary["avg_item_variance"],
@@ -1067,13 +1147,48 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
                 "mean_item_entropy_pre_binary": pre_binary_summary["mean_item_entropy"],
                 "mean_item_entropy_post_binary": post_binary_summary["mean_item_entropy"],
             },
+            "soft_vs_hard_post_binarization_effect": {
+                "mean_score_post_soft": post_beta_summary["overall_mean"],
+                "mean_score_post_hard": post_binary_summary["overall_mean"],
+                "delta_hard_minus_soft": post_binary_summary["overall_mean"] - post_beta_summary["overall_mean"],
+                "avg_item_variance_post_soft": post_beta_summary["avg_item_variance"],
+                "avg_item_variance_post_hard": post_binary_summary["avg_item_variance"],
+                "delta_item_variance_hard_minus_soft": post_binary_summary["avg_item_variance"] - post_beta_summary["avg_item_variance"],
+                "zero_variance_item_fraction_post_soft": post_beta_summary["zero_variance_item_fraction"],
+                "zero_variance_item_fraction_post_hard": post_binary_summary["zero_variance_item_fraction"],
+            },
             "per_benchmark_avg_item_variance": {
                 "pre_full_raw": benchmark_item_variance(pre_full),
+                "post_beta": benchmark_item_variance(post_beta),
                 "post_binary": benchmark_item_variance(post_binary),
                 "pre_full_binary_sensitivity": benchmark_item_variance(pre_binary),
             },
         },
         "matched_sampling": {
+            "benchmark_constrained_ability_matched_raw_pre_vs_soft_post": repeated_sampling_report(
+                pre_full,
+                post_beta,
+                n_repeats=args.n_repeats,
+                rng_seed=args.seed,
+                include_entropy=False,
+                sampler_name="benchmark_constrained_ability_matched",
+                enable_difficulty_restricted=True,
+                difficulty_low=args.difficulty_low,
+                difficulty_high=args.difficulty_high,
+                difficulty_min_items_per_benchmark=args.difficulty_min_items_per_benchmark,
+            ),
+            "benchmark_constrained_ability_matched_binary_sensitivity_pre_vs_soft_post": repeated_sampling_report(
+                pre_binary,
+                post_beta,
+                n_repeats=args.n_repeats,
+                rng_seed=args.seed,
+                include_entropy=True,
+                sampler_name="benchmark_constrained_ability_matched",
+                enable_difficulty_restricted=True,
+                difficulty_low=args.difficulty_low,
+                difficulty_high=args.difficulty_high,
+                difficulty_min_items_per_benchmark=args.difficulty_min_items_per_benchmark,
+            ),
             "benchmark_balanced_raw_pre_vs_binary_post": repeated_sampling_report(
                 pre_full,
                 post_binary,
@@ -1081,6 +1196,7 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
                 rng_seed=args.seed,
                 include_entropy=False,
                 sampler_name="benchmark_balanced",
+                observed_per_item_ratio_floor=0.8,
                 difficulty_low=args.difficulty_low,
                 difficulty_high=args.difficulty_high,
                 difficulty_min_items_per_benchmark=args.difficulty_min_items_per_benchmark,
@@ -1092,6 +1208,7 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
                 rng_seed=args.seed,
                 include_entropy=True,
                 sampler_name="benchmark_balanced",
+                observed_per_item_ratio_floor=0.8,
                 difficulty_low=args.difficulty_low,
                 difficulty_high=args.difficulty_high,
                 difficulty_min_items_per_benchmark=args.difficulty_min_items_per_benchmark,
@@ -1122,11 +1239,17 @@ def build_report(args: argparse.Namespace) -> Dict[str, object]:
             ),
         },
         "item_level_inference": {
-            "raw_pre_vs_binary_post": {
+            "raw_pre_vs_soft_post": {
                 "avg_item_variance_bootstrap": item_bootstrap_raw,
                 "macro_benchmark_avg_item_variance_bootstrap": item_bootstrap_macro,
                 "avg_item_variance_permutation": item_permutation_raw,
                 "macro_benchmark_avg_item_variance_permutation": item_permutation_macro,
+            },
+            "raw_pre_vs_binary_post": {
+                "avg_item_variance_bootstrap": item_bootstrap_raw_hard,
+                "macro_benchmark_avg_item_variance_bootstrap": item_bootstrap_macro_hard,
+                "avg_item_variance_permutation": item_permutation_raw_hard,
+                "macro_benchmark_avg_item_variance_permutation": item_permutation_macro_hard,
             }
         },
     }
@@ -1244,6 +1367,7 @@ def render_markdown(report: Dict[str, object]) -> str:
     lines: List[str] = []
     config = report["config"]
     matrices = report["matrices"]
+    post_repeatability = report.get("post_repeatability", {})
     full = report["full_comparison"]
     matched = report["matched_sampling"]
 
@@ -1271,6 +1395,11 @@ def render_markdown(report: Dict[str, object]) -> str:
             lines.append(format_metric_line(key, float(stats[key])))
         if "mean_item_entropy" in stats:
             lines.append(format_metric_line("mean_item_entropy", float(stats["mean_item_entropy"])))
+    if post_repeatability:
+        lines.append("")
+        lines.append("## Post Repeatability")
+        for key, value in post_repeatability.items():
+            lines.append(format_metric_line(key, float(value)))
     lines.append("")
     lines.append("## Full Comparison")
     for section_name, stats in full.items():

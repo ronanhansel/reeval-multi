@@ -239,7 +239,7 @@ def _load_post_revision_response_matrices():
             current_bench_parts.append(iters[idx])
         all_dfs.append(pd.concat(current_bench_parts, axis=1, join='outer'))
 
-    global_shared_indices = sorted(list(set(all_dfs[0].index)))
+    global_shared_indices = sorted(list(set().union(*[df.index for df in all_dfs])))
     return all_dfs, global_shared_indices
 
 
