@@ -276,6 +276,16 @@ def plot_panel(ax, panel_df, title, y_label, lower_better=False):
 
     if not lower_better:
         ax.axhline(0.5, color="slategray", linestyle="--", linewidth=1.0, alpha=0.7)
+        ax.text(
+            0.75,
+            0.505,
+            "Naive Baseline",
+            transform=ax.get_yaxis_transform(),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color="slategray",
+        )
 
     lower_bounds = []
     upper_bounds = []
