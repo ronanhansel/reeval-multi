@@ -719,7 +719,7 @@ run_support_thinning_study() {
     done
 
     echo " -> Rebuilding support-thinning summary from completed sweep files..."
-    local rebuild_cmd="python ${SCRIPT_DIR}/rebuild_support_thinning_summary.py"
+    local rebuild_cmd="python ${SCRIPT_DIR}/analysis/rebuild_support_thinning_summary.py"
     if $QUIET; then
         rebuild_cmd="$rebuild_cmd"
     fi

@@ -13,19 +13,19 @@ All embeddings are saved locally and can be pushed to HuggingFace.
 
 Usage:
     # Generate PCA/SAE from existing raw embeddings
-    python generate_embeddings.py
+    python model/utility/generate_embeddings.py
 
     # Full pipeline: generate raw embeddings from text, then PCA/SAE
-    python generate_embeddings.py --from-text
+    python model/utility/generate_embeddings.py --from-text
 
     # Custom dimensions
-    python generate_embeddings.py --from-text --pca-dim 48 --sae-features 48
+    python model/utility/generate_embeddings.py --from-text --pca-dim 48 --sae-features 48
 
     # Interpret SAE features with GPT-4o (requires OPENAI_API_KEY)
-    python generate_embeddings.py --interpret
+    python model/utility/generate_embeddings.py --interpret
 
     # Push all embeddings to HuggingFace
-    python generate_embeddings.py --from-text --push-to-hf
+    python model/utility/generate_embeddings.py --from-text --push-to-hf
 """
 
 import argparse
@@ -50,7 +50,9 @@ except ImportError:
 
 HF_REPO_ID = "aims-foundation/eval_response_matrix"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'processed_embeddings')
+MODEL_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_ROOT = os.path.dirname(MODEL_DIR)
+OUTPUT_DIR = os.path.join(MODEL_DIR, 'processed_embeddings')
 CACHE_DIR = os.path.join(OUTPUT_DIR, '.cache')
 
 # Benchmarks for raw embedding generation
@@ -164,8 +166,7 @@ def generate_raw_embeddings_from_text(data_dir, output_file, model_name=DEFAULT_
 
 def ensure_data_downloaded():
     """Returns local paths for the main data directory and raw embeddings."""
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
+    data_dir = os.path.join(REPO_ROOT, 'item-editor', 'eval_response_matrix')
     emb_file = os.path.join(data_dir, 'all_benchmarks_embeddings_4096_8B.pkl')
     return data_dir, emb_file
 
@@ -411,13 +412,13 @@ def main():
         epilog="""
 Examples:
   # Generate PCA/SAE from existing raw embeddings
-  python generate_embeddings.py
+  python model/utility/generate_embeddings.py
 
   # Full pipeline: raw embeddings from text -> PCA -> SAE
-  python generate_embeddings.py --from-text
+  python model/utility/generate_embeddings.py --from-text
 
   # Custom dimensions and push to HuggingFace
-  python generate_embeddings.py --from-text --pca-dim 64 --sae-features 64 --push-to-hf
+  python model/utility/generate_embeddings.py --from-text --pca-dim 64 --sae-features 64 --push-to-hf
         """
     )
 

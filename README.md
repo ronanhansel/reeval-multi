@@ -1,401 +1,435 @@
-# Reliable and Efficient Amortized Model-based Evaluation for AI Agents (ICML 2026)
+# agent-eval
 
-Research code for the paper: "Reliable and Efficient Amortized Model-based Evaluation for AI Agents". This repository implements amortized evaluation methods combining Item Response Theory (IRT), PCA, and Sparse Autoencoders (SAE) to predict AI model performance across benchmarks, alongside an automated item-editor pipeline for benchmark defect remediation.
+Research code and artifacts for amortized agent evaluation and item-level benchmark remediation.
 
----
+This repository contains two connected pipelines:
 
-## 1. Environment Setup
+1. `model/`: fit ARAF and baseline models that predict held-out agent performance from a partially observed response matrix.
+2. `item-editor/`: diagnose benchmark defects, generate non-destructive fixes, rerun benchmarks with those fixes, and materialize the revised response matrices consumed by the model.
 
-### Prerequisites
+The modeling code currently operates on the four canonical benchmarks used throughout the paper:
 
-- **OS**: Linux (Ubuntu 20.04+) or macOS
-- **Python**: 3.10+ (for hal analysis) or 3.11-3.12 (for item-editor pipeline)
-- **Docker**: Docker Engine 20.10+ (required for running benchmarks in isolated sandboxes)
-- **Conda**: Miniconda or Anaconda
-- **Git**: For cloning repository and submodules
+- `colbench_backend_programming`
+- `corebench_hard`
+- `scicode`
+- `scienceagentbench`
 
-### Basic Installation
+The raw data needed for reproducibility is available through [`data-collection/download_agent_eval_datasets.py`](data-collection/download_agent_eval_datasets.py), which downloads the checked-in response-matrix bundle and trace bundle into `item-editor/`.
+
+## Current Snapshot
+
+The repository already includes a substantial set of generated artifacts.
+
+- Main experiment CSVs live in `model/result/main/`.
+- Additional checked-in study outputs currently include `model/result/sample_size_study/` and `model/result/support_thinning_study/`.
+- Paper figures are written to `paper/figures/`.
+- The current checked-in post-revision matrix ensemble contains 54 ColBench revisions and 11 revisions each for CoreBench Hard, SciCode, and ScienceAgentBench.
+- The current checked-in fix inventory contains 79 ColBench fixes, 11 CoreBench Hard fixes, 34 SciCode fixes, and 24 ScienceAgentBench fixes under `item-editor/result/fixes/`.
+
+Some useful headline numbers from the current checked-in result files:
+
+- Best checked-in post-revision Beta ARAF run: `RAW`, AUC `0.745`, RMSE `0.233` from `model/result/main/amortized_irt_raw_beta_n_max.csv`.
+- Best checked-in post-revision Bernoulli ARAF run: `PCA`, AUC `0.711`, RMSE `0.250` from `model/result/main/amortized_irt_pca_bernoulli_n_1.csv`.
+- Full configuration summaries are exported in `model/result/main/comprehensive_results.md` and `model/result/main/comprehensive_results.csv`.
+
+## Repository Structure
+
+```text
+agent-eval/
+├── data-collection/          # Dataset download and trace/response-matrix utilities
+├── item-editor/              # Benchmark defect diagnosis and runtime fix pipeline
+│   ├── config/               # Rubrics and model-to-benchmark maps
+│   ├── docent/               # Submodule
+│   ├── hal-harness/          # Submodule
+│   ├── eval_response_matrix/ # Downloaded and generated matrices used by modeling
+│   ├── eval_traces/          # Downloaded rubric outputs and traces
+│   ├── result/fixes/         # Generated fix packages
+│   └── script/               # Item-fixing workflow scripts
+├── model/                    # ARAF training, baselines, studies, and analysis
+│   ├── analysis/             # Diagnostics, summaries, appendix tables, study post-processing
+│   ├── plotting/             # Figure generation
+│   ├── processed_embeddings/ # PCA/SAE embeddings and interpretations
+│   ├── result/               # Main and study outputs
+│   └── utility/              # Shared helpers and embedding-generation tooling
+├── paper/                    # LaTeX paper and generated figures
+├── traces/                   # Optional raw HAL traces
+└── README.md
+```
+
+## Reproducibility Setup
+
+### 1. Clone the repository
 
 ```bash
-# Clone repository with submodules
 git clone --recursive https://github.com/aims-foundation/agent-eval.git
 cd agent-eval
-
-# If you already cloned without --recursive, initialize submodules:
 git submodule update --init --recursive
+```
 
-# Create conda environment
+### 2. Create the modeling environment
+
+`model/reproduce.sh` expects a Conda environment named `hal`.
+
+```bash
 CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes conda create -n hal python=3.10 -y
 conda activate hal
-
-# Install base requirements
 pip install -r requirements.txt
 ```
 
-### Item-Editor Pipeline Setup & Patching
+### 3. Download the canonical datasets
 
-The item-editor pipeline requires additional setup for the `docent` and `hal-harness` submodules.
-
-**CRITICAL**: You must apply the patches to inject the latest fixes and ensure the execution system is in a consistent state.
+This is the main data bootstrap step for reproducing the checked-in modeling results.
 
 ```bash
-# Navigate to item-editor
-cd item-editor
-
-# Ensure submodules are initialized (hal-harness and docent)
-git submodule update --init --recursive
-
-# Apply patches (Contains critical Docent JSON enhancements and HAL harness fixes)
-bash patch/apply_patches.sh
+export HF_TOKEN=hf_...
+python data-collection/download_agent_eval_datasets.py
 ```
 
-Then, set up the virtual environment for the item-editor:
+This script downloads:
+
+- `item-editor/eval_response_matrix/`
+- `item-editor/eval_traces/`
+
+After download, you should have at least:
+
+- `item-editor/eval_response_matrix/pre-revision/...`
+- `item-editor/eval_response_matrix/post-revision/...`
+- `item-editor/eval_response_matrix/all_benchmarks_embeddings_4096_8B.pkl`
+
+### 4. Optional: regenerate processed embeddings
+
+The repo already includes `model/processed_embeddings/`. If you want to rebuild PCA or SAE features, run:
+
 ```bash
+python model/utility/generate_embeddings.py
+```
+
+If processed embeddings are missing, `model/amortized_irt.py` falls back to the raw embedding pickle.
+
+## How The Data Flows
+
+The modeling pipeline does not read benchmark tasks directly. It reads response matrices and item embeddings:
+
+- Pre-revision matrices come from `item-editor/eval_response_matrix/pre-revision/`.
+- Post-revision matrices come from `item-editor/eval_response_matrix/post-revision/`.
+- Raw embeddings come from `item-editor/eval_response_matrix/all_benchmarks_embeddings_4096_8B.pkl`.
+- PCA and SAE embeddings come from `model/processed_embeddings/`.
+
+Two important conventions in the current code:
+
+1. `model/amortized_irt.py` only trains on the four canonical benchmarks listed above, even though the pre-revision directory contains additional benchmark folders.
+2. The post-revision oracle is an ensemble over multiple revised response matrices, not a single file. ColBench contributes 54 matrices in this snapshot; the other three canonical benchmarks contribute 11 each.
+
+## Reproducing The Model Results
+
+### One-command reproduction
+
+The main entrypoint is [`model/reproduce.sh`](model/reproduce.sh).
+
+Quick reproduction:
+
+```bash
+bash model/reproduce.sh --clean
+```
+
+Research-faithful multi-seed sweep:
+
+```bash
+bash model/reproduce.sh --full --clean
+```
+
+Important notes:
+
+- The script activates the Conda environment named `hal`.
+- If `model/result/` is non-empty, the script will otherwise prompt whether to overwrite or continue. Use `--clean` or `--continue` to make that explicit.
+- Main experiment outputs land in `model/result/main/`.
+- Study outputs land in `model/result/*_study/`.
+
+### Study-specific reproductions
+
+Each study can be run on its own from the same downloaded response matrices.
+
+Pair-efficiency study:
+
+```bash
+bash model/reproduce.sh --pair-efficiency-study --clean
+python -m model.plotting.main --pair-efficiency-study
+```
+
+Neighbor-support study:
+
+```bash
+bash model/reproduce.sh --neighbor-support-study --clean
+```
+
+Support-thinning study:
+
+```bash
+bash model/reproduce.sh --support-thinning-study --clean
+python model/analysis/rebuild_support_thinning_summary.py
+python -m model.plotting.main --support-thinning-study
+```
+
+`model/reproduce.sh --support-thinning-study` already rebuilds the summary grid internally, but rerunning `python model/analysis/rebuild_support_thinning_summary.py` is the safe manual step if you add or edit thinning outputs afterwards.
+
+Sample-size study:
+
+```bash
+bash model/reproduce.sh --sample-size-study --clean
+python -m model.plotting.main --sample-size
+```
+
+Outlier-robustness study:
+
+```bash
+bash model/reproduce.sh --outlier-robustness-study --clean
+```
+
+Full multi-study sweep:
+
+```bash
+bash model/reproduce.sh --full --pair-efficiency-study --sample-size-study
+```
+
+### Direct model fitting
+
+The workflow below matches the way the experiments are fit in practice: use the downloaded response matrices and embeddings, then run `model/amortized_irt.py` either for a single configuration or via `model/reproduce.sh`.
+
+Examples:
+
+Prime the baseline cache only:
+
+```bash
+python model/amortized_irt.py \
+  --baseline-only \
+  --embedding-type raw \
+  --baseline-embedding-type raw \
+  --model-type beta \
+  --n-samples max \
+  --seed 42 \
+  --baseline-output model/result/main/baselines/baseline_metrics.csv \
+  --mirt-sweep-output model/result/main/baselines/mirt_sweep.csv
+```
+
+Run the canonical quick post-revision RAW Beta configuration:
+
+```bash
+python model/amortized_irt.py \
+  --embedding-type raw \
+  --baseline-embedding-type raw \
+  --model-type beta \
+  --n-samples max \
+  --lambda-tau 0.029 \
+  --seed 42 \
+  --output model/result/main/amortized_irt_raw_beta_n_max.csv \
+  --baseline-output model/result/main/baselines/baseline_metrics.csv \
+  --mirt-sweep-output model/result/main/baselines/mirt_sweep.csv
+```
+
+Run the canonical quick post-revision PCA Bernoulli configuration:
+
+```bash
+python model/amortized_irt.py \
+  --embedding-type pca \
+  --baseline-embedding-type pca \
+  --model-type bernoulli \
+  --n-samples 1 \
+  --lambda-tau 0.0155 \
+  --seed 42 \
+  --output model/result/main/amortized_irt_pca_bernoulli_n_1.csv \
+  --baseline-output model/result/main/baselines/baseline_metrics.csv \
+  --mirt-sweep-output model/result/main/baselines/mirt_sweep.csv
+```
+
+Useful direct-fit knobs:
+
+- `--pre-revision 4|8|16|32|64|max`: switch from post-revision to balanced pre-revision training.
+- `--j-percentage 0.1 ... 1.0`: subsample the fraction of observed items.
+- `--user-count 4|8|16|32`: subsample the number of observed agents in post-revision runs.
+- `--baseline-only`: compute only classical baselines.
+- `--parallel N`: parallelize seed and tau jobs.
+- `--save-weights`: save learned weights for interpretability plots.
+
+## Generating Plots
+
+The checked-in plot entrypoint is:
+
+```bash
+python -m model.plotting.main --all
+```
+
+Selective plot generation:
+
+```bash
+python -m model.plotting.main --benchmarks
+python -m model.plotting.main --comparison
+python -m model.plotting.main --sample-size
+python -m model.plotting.main --pair-efficiency-study
+python -m model.plotting.main --support-thinning-study
+python -m model.plotting.main --interpretability
+python -m model.plotting.main --rubrics
+python -m model.plotting.main --appendix
+```
+
+Outputs are written under `paper/figures/`.
+
+Current plotting coverage in this snapshot:
+
+- Supported modules: benchmark heatmaps, comparison, sample-size, pair-efficiency, support-thinning, interpretability, rubric statistics, appendix figures.
+- `neighbor-support` and `outlier-robustness` study CSVs can be generated by the experiment pipeline, but no dedicated plotting module is currently checked in for them.
+
+If you only want to regenerate figures from existing result CSVs, you do not need to rerun `model/reproduce.sh`; the plotting commands above are sufficient.
+
+## Analysis Utilities
+
+The study and summary scripts now live under `model/analysis/`.
+
+Useful analysis commands:
+
+```bash
+python model/analysis/export_best_results.py
+python model/analysis/generate_appendix_table.py
+python model/analysis/calculate_agreement.py
+python model/analysis/diagnose_pre_post_stability.py
+python model/analysis/calibration_study.py
+python model/analysis/rebuild_support_thinning_summary.py
+```
+
+What they produce:
+
+- `export_best_results.py`: refreshes `model/result/main/comprehensive_results.csv` and `.md`.
+- `generate_appendix_table.py`: writes the appendix LaTeX table for all setups.
+- `calculate_agreement.py`: refreshes `agreement_results.md`.
+- `diagnose_pre_post_stability.py`: regenerates pre/post variance and stability diagnostics.
+- `calibration_study.py`: runs the standalone post-hoc calibration analysis.
+- `rebuild_support_thinning_summary.py`: rebuilds `model/result/support_thinning_study/support_thinning_grid.csv` from thinning sweep outputs.
+
+## Item-Fixing Reproducibility Guide
+
+The `item-editor/` pipeline is used to identify intrinsic benchmark defects, synthesize fixes, rerun the affected tasks, and materialize revised matrices.
+
+### 1. Create the item-editor environment
+
+```bash
+cd item-editor
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# Install hal-harness (HAL evaluation framework)
 pip install -e ./hal-harness
-
-# Install docent (rubric evaluation library)
 pip install -e ./docent/docent/
 pip install -e ./docent/
-
-# Return to project root
 cd ..
 ```
 
-### Environment Variables
-
-For the item-editor pipeline, copy the template and fill in your API keys in `item-editor/.env`:
+### 2. Apply the pinned submodule patches
 
 ```bash
-cp item-editor/.env.template item-editor/.env
+cd item-editor
+bash patch/apply_patches.sh
+cd ..
 ```
 
-Ensure the following variables are configured in `.env`:
-```env
-# API Keys
-OPENAI_API_KEY=sk-your-key-here
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-WANDB_API_KEY=your-wandb-key
-HF_TOKEN=hf_your-token
+This script resets the submodules to pinned base commits and reapplies local patches:
 
-# For Azure/TRAPI direct access (recommended)
-USE_DIRECT_AZURE=true
-TRAPI_ENDPOINT=https://trapi.research.microsoft.com/gcr/shared
-TRAPI_API_VERSION=2025-03-01-preview
-TRAPI_SCOPE=api://trapi/.default
-```
+- `hal-harness` base commit: `edfbc3023173e0017625401e99045263ff61f3d1`
+- `docent` base commit: `9700ec0ac41b0f02e8ae32c6d987363448f5a364`
 
-### Azure Authentication (for TRAPI access)
+That is the reproducible path, but it is destructive inside those submodule worktrees.
+
+### 3. Configure secrets
 
 ```bash
-# Login to Azure
-az login
-
-# Verify authentication
-az account show
-az account get-access-token --resource api://trapi/.default
+cp item-editor/hal-harness/.env.template item-editor/hal-harness/.env
+cp item-editor/docent/.env.template item-editor/docent/.env
 ```
 
-### Optional Dependencies
+Populate the keys required by the models and backends you intend to use. The runtime scripts default to `item-editor/hal-harness/.env` unless you override `HAL_DOTENV_PATH`.
 
-**LaTeX Installation (Linux)** (For generating plots and figures):
-```bash
-sudo apt update
-sudo apt install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra cm-super dvipng fonts-liberation
-```
+### 4. Run the item-fixing loop
 
-**Jupyter Notebook Widgets (Azure)** (If `tqdm` does not render correctly):
-```bash
-conda install -c conda-forge ipywidgets
-jupyter nbextension enable --py widgetsnbextension
-```
-
----
-
-## 2. Global Directory Structure
-
-The repository is modularly structured into the following components:
-
-- `hal/`: Amortised model execution on ColBench from HAL with `Qwen3-Embedding-8B` alongside Sparse Autoencoder (SAE) interpretations. Contains `pca_aggregate_survey.ipynb` (held out response matrices) and `sae_beta_irt.ipynb` ($N=22$).
-- `item-editor/`: **Automated Item-Level Fixing Pipeline**. Detects and fixes Intrinsic Formation Errors (IFEs) in AI agent benchmarks non-destructively.
-- `model/`: Configurations for LLM evaluation.
-- `data-collection/`: Scripts for downloading existing benchmarks and traces (e.g., `hal.py`).
-- `test/`: Backend scripts and testing utilities.
-
----
-
-## 3. The Item-Editor Pipeline
-
-The item-editor pipeline automates the diagnosis and remediation of Intrinsic Formation Errors (IFEs) without modifying the static benchmark source code. It injects non-destructive patches (environment overrides, instruction headers, evaluation shims) dynamically at runtime.
-
-### Project Structure & Data Layout
-
-Navigate to `item-editor/` to access the pipeline tools. All persistent outputs are centralized in the `result/` directory.
-
-```
-item-editor/
-├── docent/                     # Docent evaluation library (TransluceAI)
-├── hal-harness/                # Core evaluation harness (Princeton PLI)
-├── eval_traces/                # Working directory for trace consolidation
-├── eval_response_matrix/       # Generated binary result matrices
-├── result/                     # Permanent results and metadata
-│   ├── fixes/                  # Item-level patches (env, instructions, etc.)
-│   └── .hal_data/              # Centralized data store (logs, results, cache)
-├── config/                     # Static configurations
-│   ├── model/                  # Model-to-baseline benchmark maps
-│   └── rubric/                 # Rubric templates (.txt)
-└── script/                     # Automation engine
-    ├── eval/                   # qualitative evaluation & consensus
-    ├── trace/                  # Trace management & merges
-    ├── fix/                    # Diagnosis & patching tools
-    ├── summary/                # Statistics counting and analysis utilities
-    └── utils/                  # System utilities & reporting
-```
-
-### Sequential Roadmap (End-to-End)
-
-To run the pipeline from scratch for a benchmark like `scicode`:
+Example for `scicode`:
 
 ```bash
 cd item-editor
 
-# 1. Prep: Build Docker execution sandboxes
 python script/utils/prebuild_all_images.py scicode
 
-# 2. Baseline: Run the benchmark without fixes
-python script/fix/runtime_fixes.py --benchmark scicode --prefix base_ --docker
+python script/fix/runtime_fixes.py \
+  --benchmark scicode \
+  --prefix base_ \
+  --docker
 
-# 3. Process: Consolidate the distributed traces
-python script/trace/collect_upload_traces.py --prefix base_ --output eval_traces
-python script/trace/merge_traces.py --input 'eval_traces/traces/*base_*' --output result/.hal_data/traces/merged_base.json
+python script/trace/collect_upload_traces.py \
+  --prefix base_ \
+  --output eval_traces
 
-# 4. Grade: Execute Docent rubric evaluations and Meta-Judge consensus
-python script/eval/eval_rubric.py --trace-file result/.hal_data/traces/merged_base.json --rubric config/rubric/scicode.txt --failed-only -y
-python script/eval/judge.py --pattern "base_*" --rubric-dir result/.hal_data/rubrics_output/scicode --model openai:gpt-4o -y
+python script/trace/merge_traces.py \
+  --input 'eval_traces/traces/*base_*' \
+  --output result/.hal_data/traces/merged_base.json
 
-# 5. Fix: Synthesize latent overlays using Claude 
-python script/fix/claude_fixer.py --benchmark scicode --ife-only --judge-csv result/.hal_data/judge_output/scicode_verdict.csv
+python script/eval/eval_rubric.py \
+  --trace-file result/.hal_data/traces/merged_base.json \
+  --rubric config/rubric/scicode.txt \
+  --failed-only -y
 
-# 6. Verify: Re-run the benchmark *with* the newly generated fixes
-python script/fix/runtime_fixes.py --benchmark scicode --prefix fixed_ --docker --fix-only
+python script/eval/judge.py \
+  --pattern "base_*" \
+  --rubric-dir result/.hal_data/rubrics_output/scicode \
+  --model openai:gpt-4o -y
 
-# 7. Final: Extract binary evaluation matrices for IRT
-python script/utils/build_response_matrix.py --prefix fixed_ --traces-dir eval_traces --extract-subscores
+python script/fix/claude_fixer.py \
+  --benchmark scicode \
+  --ife-only \
+  --judge-csv result/.hal_data/judge_output/scicode_verdict.csv
+
+python script/fix/runtime_fixes.py \
+  --benchmark scicode \
+  --prefix fixed_ \
+  --docker \
+  --fix-only
 ```
 
-### CLI Reference
+The main outputs of that loop are:
 
-#### Infrastructure & Maintenance
+- Generated fixes in `item-editor/result/fixes/<benchmark>/<task_id>/`
+- Rerun traces in `item-editor/result/.hal_data/`
+- Updated response-matrix artifacts under `item-editor/eval_response_matrix/`
 
-*   **Prebuild Docker Images**:
-    ```bash
-    python script/utils/prebuild_all_images.py [benchmarks] --force
-    ```
-    Builds the necessary agent execution environments for benchmarks (`scicode`, `corebench`, `colbench`, `scienceagentbench`).
+### Runtime fix package layout
 
-*   **Unified Cleanup**:
-    ```bash
-    python script/utils/cleanup.py --aggressive --images
-    ```
-    Kills evaluation processes and prunes Docker resources to free up space.
+Each task-level fix directory may contain files such as:
 
-#### Execution Engine
+- `instruction_override.json`
+- `evaluation_override.json`
+- `env_override.json`
+- `dependency_override.json`
+- `input_override.json`
+- `simulated_user_override.json`
+- `README.md`
 
-*   **Unified Benchmark Runner**:
-    ```bash
-    python script/fix/runtime_fixes.py --benchmark scicode --prefix myrun_ --docker
-    ```
-    *   `--prefix`: Tag for the Run IDs and traces (e.g. `run1_`).
-    *   `--fix-only`: Runs only items with existing fixes in `result/fixes/`.
-    *   `--no-fix`: Baseline mode. Ignores all generated fixes.
-    *   `--parallel-tasks`: Concurrent tasks running per model config (default: 10).
+These are runtime overlays. The pipeline is designed to avoid editing the original benchmark sources directly.
 
-*   **Real-time Log Watcher**:
-    ```bash
-    python script/utils/watch_all.py --prefix myrun_
-    ```
-    Tails logs for an active prefix run with color-coding.
+## What To Cite Or Inspect For Results
 
-#### Diagnosis & Consensus
+For a concise audit trail, the most useful checked-in result files are:
 
-*   **Rubric Evaluator**:
-    ```bash
-    python script/eval/eval_rubric.py --trace-file [PATH] --rubric config/rubric/scicode.txt --failed-only
-    ```
-    Grades agent failure traces. Supports `openai:gpt-4o` and specific `--reasoning-effort` flags for models like `o3-mini`.
+- `model/result/main/comprehensive_results.md`
+- `model/result/statistics.md`
+- `agreement_results.md`
+- `pre_post_stability.md`
 
-*   **Judge Aggregator**:
-    ```bash
-    python script/eval/judge.py --pattern "run1_*" --rubric-dir result/.hal_data/rubrics_output/scicode 
-    ```
-    Produces binary IFE verdicts (`0` = Agent Flaw, `1` = Structural Defect) by aggregating multiple model evaluations.
-
-#### Fixing & Reporting
-
-*   **Claude Fixer**:
-    ```bash
-    python script/fix/claude_fixer.py --benchmark scicode --ife-only 
-    ```
-    Generates JSON fix packages (`env_override.json`, `instruction_override.json`, etc.) in `result/fixes/`.
-
-*   **Count Fix Statistics**:
-    ```bash
-    python script/summary/count_stats.py
-    ```
-    Outputs the aggregated fix counts and verifiable defect proportions.
-
-*   **Response Matrix Generator**:
-    ```bash
-    python script/utils/build_response_matrix.py --prefix run1_ --extract-subscores
-    ```
-    Generates the final binary result matrix and detailed metrics needed for Amortized Factor Model IRT analysis.
-
----
-
-## 4. Latest Updates & Patch Details
-
-The system includes crucial patches that solve execution blockades:
-1.  **Smolagents Security Policy**: Allows safe filesystem ops and subprocess execution.
-2.  **Scientific Operator Support**: Authorizes `@` (matrix multiplication) in the agent interpreter.
-3.  **Docent Structured Outputs**: Implements rigorous JSON format enforcement.
-
-### Amortized IRT Optimal Hyperparameters
-Thorough grid-search optimization was conducted over our Beta Amortized Factor IRT Model on 4 benchmarks (SciCode, CoreBench, ColBench, ScienceAgentBench). Optimal settings to achieve a structural collapse from $K=30$ down to 5-10 interpretable latent dimensions are:
-- **PCA Embeddings**: `LAMBDA_TAU=0.054` ($N=\text{max}$) / `0.13` ($N=1$). Achieves **6-7 Active Dimensions** with Test AUC **0.792-0.820**.
-- **SAE Embeddings**: `LAMBDA_TAU=0.0535` ($N=\text{max}$) / `0.113` ($N=1$). Achieves **6-7 Active Dimensions** with Test AUC **0.771-0.797**.
-- **RAW Embeddings**: `LAMBDA_TAU=0.029` ($N=\text{max}$) / `0.067` ($N=1$). Achieves **5-6 Active Dimensions** with Test AUC **0.781-0.810**.
-
-#### Pre-Revision SAE (Ultra-Sparse 5-7 Dims)
-- **8 Agents (Randomly Sampled)**: `LAMBDA_TAU=0.12`. Bernoulli $N=1$ sensitivity leads to **0 or 30 dims** across seeds.
-- **Max Agents (Beta)**: `LAMBDA_TAU=0.16`. Achieves stable **8 Active Dimensions** with an AUC of **0.758**.
-
-### Comparative Analysis: Bernoulli N=1 (Raw) vs. Beta N=max (Stable)
-
-We conducted a universal 1-vs-Max comparison where **every configuration was run with 10 independent random seeds** to establish standard error scores.
-
-| Regime | Iterations ($N$) | Model | Naive Mean AUC | Rasch IRT AUC | **Amortized AUC** | **Interpretability ($K$)** |
-|-------|---|---|---|---|---|---|
-| **Raw/Noisy** | 1 | Bernoulli | 0.500 | 0.552 | **0.840 ± 0.12** | Unstable (0 or 30) |
-| **Aggregated** | 54 | Beta | 0.500 | 0.614 | **0.793 ± 0.01** | **Stable (5-7)** |
-
-**Statistical Robustness**: By providing 10 repetitions for every scenario (including $N=\text{max}$), we establish that while Amortized IRT provides a massive predictive boost, the aggregated Beta regime is strictly necessary for reliable latent factor interpretation.
-
-### Comprehensive Model Comparison
-
-| Model Configuration           | AUC         | RMSE        |
-|:------------------------------|:------------|:------------|
-| **Post-Revision (Standard)**  |             |             |
-| Naive (Post-max Baseline)     | 0.500       | 0.269±0.004 |
-| Rasch IRT (Post-max Baseline) | 0.598±0.017 | 0.273±0.005 |
-| Naive (Post-1 Baseline)       | 0.500       | 0.252±0.006 |
-| Rasch IRT (Post-1 Baseline)   | 0.552±0.012 | 0.254±0.005 |
-| SAE Post (N=1)                | 0.672±0.024 | 0.256±0.005 |
-| SAE Post (N=max)              | 0.722±0.019 | 0.254±0.005 |
-| PCA Post (N=1)                | 0.664±0.036 | 0.254±0.006 |
-| PCA Post (N=max)              | 0.716±0.018 | 0.249±0.004 |
-| RAW Post (N=1)                | 0.656±0.039 | 0.252±0.006 |
-| RAW Post (N=max)              | 0.729±0.013 | 0.245±0.004 |
-| **Pre-Revision (Baseline)**   |             |             |
-| Naive-8 (Pre Baseline)        | 0.500       | 0.451±0.002 |
-| Rasch-8 (Pre Baseline)        | 0.578±0.007 | 0.478±0.007 |
-| SAE Pre-8 (N=1)               | 0.641±0.016 | 0.431±0.004 |
-| PCA Pre-8 (N=1)               | ...         | ...         |
-| RAW Pre-8 (N=1)               | ...         | ...         |
-| Naive Pre-max (Baseline)      | 0.500       | 0.450±0.002 |
-| Rasch Pre-max (Baseline)      | 0.596±0.022 | 0.460±0.012 |
-| SAE Pre-max (N=max)           | 0.710±0.014 | 0.422±0.006 |
-| PCA Pre-max (N=max)           | ...         | ...         |
-| RAW Pre-max (N=max)           | ...         | ...         |
-
-**Key Finding**: The Bernoulli model at $N=1$ exhibits a "razor's edge" transition. Across 10 random seeds, dimensionality often oscillates between total collapse (0 dims) and saturation (30 dims), highlighting the necessity of multi-agent aggregation (Beta $N=\text{max}$) for reliable latent factor interpretation.
-
----
-
-## 5. Reproducing Results
-
-We provide a centralized reproduction script to run all experiments and generate the paper figures.
-
-### Data Generation & Processing
-
-The `model/amortized_irt.py` script automatically downloads the necessary binary response matrices and embeddings from HuggingFace to `model/result/` and `model/processed_embeddings/` if they are not found locally.
-
-To reproduce the results from the paper:
+Helpful regeneration utilities:
 
 ```bash
-# Quick reproduction (single seed, main configurations)
-bash model/reproduce.sh
-
-# Full sweep (10 seeds, all SOTA configurations used in the paper)
-bash model/reproduce.sh --full
-
-# Plot only (generate figures using existing results in model/result/)
-bash model/reproduce.sh --plot
-bash model/reproduce.sh --full --plot  # Verify full sweep results before plotting
+python model/analysis/export_best_results.py
+python model/analysis/calculate_agreement.py
+python model/analysis/diagnose_pre_post_stability.py
+python data-collection/analyze_pre_revision_rubrics.py
+python data-collection/analyze_traces.py
 ```
 
-### Plotting & Visualization
+## Practical Recommendations
 
-The plotting logic is organized into the `model/plotting` module. You can run all visualizations using the unified entry point:
-
-```bash
-# 1. Generate ALL plots and tables (Performance, Matrices, Comparisons, etc.)
-python3 -m model.plotting.main --all
-```
-
-#### Individual Plotting Modules:
-*   **Benchmarks**: Matrix heatmaps ($Y_1$, $\hat{P}$) and benchmark comparison panels.
-    ```bash
-    python3 -m model.plotting.main --benchmarks
-    ```
-*   **Comparison**: High-clarity bar charts for Remediation and Latent Space comparisons.
-    ```bash
-    python3 -m model.plotting.main --comparison
-    ```
-*   **Sample Size**: Data-efficiency curves comparing ARAF to kNN/MIRT/Rasch as the number of agents or items changes.
-    ```bash
-    python3 -m model.plotting.main --sample-size
-    ```
-*   **Interpretability**: Latent factor projections and semantic alignment reports.
-    ```bash
-    python3 -m model.plotting.main --interpretability
-    ```
-*   **Rubrics**: Verification statistics for the automated item-editor.
-    ```bash
-    python3 -m model.plotting.main --rubrics
-    ```
-*   **Pair Efficiency Study**: Separate beta-only study comparing kNN and best-ARAF against actual observed train pairs.
-    ```bash
-    bash model/reproduce.sh --pair-efficiency-study
-    bash model/reproduce.sh --full --pair-efficiency-study
-    python3 -m model.plotting.main --pair-efficiency-study
-    ```
-The figures are saved in `paper/figures/`, and a comprehensive results report is saved to `model/result/comprehensive_results.md`.
-
-### SOTA Hyperparameters
-
-For transparency, the SOTA `lambda-tau` (sparsity) parameters configured in `reproduce.sh --full` are:
-
-- **PCA Embeddings**: `lambda-tau=0.054` (N=max, Beta)
-- **SAE Embeddings**: `lambda-tau=0.0535` (N=max, Beta)
-- **RAW Embeddings**: `lambda-tau=0.029` (N=max, Beta)
-- **Pre-Revision (8 agents)**: `lambda-tau=0.0159` (N=1, Bernoulli)
-- **Pre-Revision (max agents)**: `lambda-tau=0.16` (N=1, Beta)
-
----
-
-## 6. Latest Updates & Patch Details
-
-Licensed under MIT.
-
-If you use this pipeline in your research:
-```bibtex
-@misc{agent-eval,
-  title = {Reliable and Efficient Amortized Model-based Evaluation for AI Agents},
-  year = {2026},
-  howpublished = {\url{https://github.com/aims-foundation/agent-eval}}
-}
-```
+- If your goal is to reproduce the paper figures and headline model numbers, download the datasets, use the `hal` environment, run `model/reproduce.sh`, and regenerate plots from `model.plotting.main`.
+- If your goal is to continue item remediation, work inside `item-editor/`, apply the pinned patches first, and treat `item-editor/eval_response_matrix/` as the interface between the fixing pipeline and the modeling pipeline.
+- If you want a clean modeling rerun without rerunning HAL, you only need `item-editor/eval_response_matrix/`, `model/processed_embeddings/`, and the root Python dependencies.

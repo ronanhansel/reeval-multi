@@ -19,11 +19,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from baseline_cache import load_baseline_store
+from model.baseline_cache import load_baseline_store
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-RESULT_DIR = SCRIPT_DIR / "result" / "support_thinning_study"
+MODEL_DIR = SCRIPT_DIR.parent
+RESULT_DIR = MODEL_DIR / "result" / "support_thinning_study"
 OUTPUT_CSV = RESULT_DIR / "support_thinning_grid.csv"
 
 RETENTIONS = [0.05, 0.10, 0.25, 0.50, 1.0]
@@ -90,7 +91,7 @@ def parse_result_path(path: Path):
 def scan_result_file(path: Path, meta: dict):
     rows = []
     try:
-        source_path = str(path.relative_to(SCRIPT_DIR.parent))
+        source_path = str(path.relative_to(MODEL_DIR.parent))
     except Exception:
         source_path = str(path)
 

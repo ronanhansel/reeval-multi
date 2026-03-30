@@ -16,7 +16,7 @@ import seaborn as sns
 from tueplots import bundles
 from model.plotting import colors as pc
 from model.baseline_cache import load_baseline_store
-from model.result_paths import ensure_main_result_dir, main_result_dir
+from model.utility.result_paths import ensure_main_result_dir, main_result_dir
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config & Paths

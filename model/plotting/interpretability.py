@@ -15,7 +15,7 @@ from sklearn.metrics import silhouette_score
 from scipy.stats import entropy
 from matplotlib.patches import FancyBboxPatch
 from model.baseline_cache import load_baseline_store
-from model.result_paths import ensure_main_result_dir, main_result_dir
+from model.utility.result_paths import ensure_main_result_dir, main_result_dir
 
 
 # ══════════════════════════════════════════════════════════════════════════════

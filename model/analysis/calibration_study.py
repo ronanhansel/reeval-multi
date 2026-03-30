@@ -31,11 +31,11 @@ import torch.nn.functional as F
 from scipy.optimize import minimize
 from sklearn.isotonic import IsotonicRegression
 
-import amortized_irt as ai
-from utils import compute_rmse, evaluate_auc
+import model.amortized_irt as ai
+from model.utility.utils import compute_rmse, evaluate_auc
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULT_ROOT = REPO_ROOT / "model" / "result"
 DEFAULT_OUT_DIR = RESULT_ROOT / "calibration_study"
 

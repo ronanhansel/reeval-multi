@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tueplots import bundles
-from model.result_paths import ensure_main_result_dir, main_result_dir
+from model.utility.result_paths import ensure_main_result_dir, main_result_dir
 
 
 # ══════════════════════════════════════════════════════════════════════════════

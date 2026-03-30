@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from model.baseline_cache import load_baseline_store
-from model.result_paths import main_result_dir
+from model.utility.result_paths import main_result_dir
 
 
 RESULT_DIR = main_result_dir()
@@ -367,7 +367,7 @@ def main() -> None:
     if APPENDIX_GENERATOR.exists():
         try:
             subprocess.run([sys.executable, str(APPENDIX_GENERATOR)], check=True)
-            print("Regenerated appendix table via generate_appendix_table.py")
+            print("Regenerated appendix table via analysis/generate_appendix_table.py")
         except subprocess.CalledProcessError as exc:
             print(f"Warning: failed to regenerate appendix table ({exc})")
     else:

@@ -3,6 +3,7 @@ import numpy as np
 import os
 import glob
 import argparse
+from pathlib import Path
 
 def calculate_gwet_ac1(pair):
     """
@@ -50,7 +51,8 @@ def load_csv_transpose(filepath, rater_id):
         return None
 
 def main():
-    base_dir = "/Users/ronan/Developer/agent-eval/item-editor/eval_response_matrix/post-revision"
+    repo_root = Path(__file__).resolve().parents[2]
+    base_dir = repo_root / "item-editor" / "eval_response_matrix" / "post-revision"
     
     benchmarks = [
         ("SciCode", "scicode", ["beach"]),
@@ -66,14 +68,14 @@ def main():
         
         # Determine consensus file (index 0)
         consensus_prefix = prefixes[0]
-        consensus_path = os.path.join(base_dir, b_dir, "verdicts", f"verdict_{consensus_prefix}0.csv")
+        consensus_path = os.path.join(str(base_dir), b_dir, "verdicts", f"verdict_{consensus_prefix}0.csv")
         df_consensus = load_csv_transpose(consensus_path, "consensus")
         if df_consensus is not None:
             df_consensus["consensus"] = pd.to_numeric(df_consensus["consensus"], errors='coerce')
 
         files = []
         for prefix in prefixes:
-            path_pattern = os.path.join(base_dir, b_dir, "verdicts", f"verdict_{prefix}*.csv")
+            path_pattern = os.path.join(str(base_dir), b_dir, "verdicts", f"verdict_{prefix}*.csv")
             files.extend(glob.glob(path_pattern))
         
         files = sorted(list(set(files)))

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parents[1]
 RESULT_ROOT = MODEL_DIR / "result"
 DEFAULT_MAIN_RESULT_DIR = RESULT_ROOT / "main"
 

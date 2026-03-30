@@ -47,9 +47,9 @@ from filelock import FileLock, Timeout
 import multiprocessing as mp
 from functools import partial
 
-from utils import compute_rmse, evaluate_auc
-import baseline_cache as bc
-from result_paths import configured_main_result_dir, ensure_main_result_dir
+from model.utility.utils import compute_rmse, evaluate_auc
+import model.baseline_cache as bc
+from model.utility.result_paths import configured_main_result_dir, ensure_main_result_dir
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration
@@ -222,7 +222,7 @@ def _load_post_revision_response_matrices():
 
     other_benchmarks = [b for b in os.listdir(post_rev_dir) if b != 'colbench_backend_programming' and os.path.isdir(os.path.join(post_rev_dir, b))]
 
-    from utils import get_benchmark_iterations
+    from model.utility.utils import get_benchmark_iterations
     bench_iterations = {}
     for benchmark in other_benchmarks:
         b_resmat_dir = os.path.join(post_rev_dir, benchmark, 'resmat')
@@ -559,7 +559,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     # Fall back to raw if processed embeddings don't exist
     if emb_file is not None and not os.path.exists(emb_file):
         print(f"Warning: {emb_file} not found. Falling back to raw embeddings.")
-        print("Run 'python generate_embeddings.py' to generate processed embeddings.")
+        print("Run 'python model/utility/generate_embeddings.py' to generate processed embeddings.")
         emb_file = raw_emb_file
         embedding_type = 'raw'
 

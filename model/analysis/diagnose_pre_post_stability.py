@@ -35,7 +35,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-from amortized_irt import (
+from model.amortized_irt import (
     RANDOM_SEED,
     _load_post_revision_response_matrices,
     _load_pre_revision_response_matrix,
