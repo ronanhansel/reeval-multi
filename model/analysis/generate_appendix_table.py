@@ -138,6 +138,8 @@ def normalize_test_takers(value: object) -> str:
     text = str(value).strip().lower()
     if text in {"full", "max"}:
         return "143"
+    if text == "1":
+        return "32"
     return str(value).strip()
 
 
@@ -243,20 +245,20 @@ def build_table(df: pd.DataFrame) -> str:
     lines.append(r"% Required packages: longtable, booktabs")
     lines.append(r"\scriptsize")
     lines.append(r"\setlength{\tabcolsep}{3pt}")
-    lines.append(r"\begin{longtable}{llcccccccc}")
-    lines.append(r"\caption{Appendix summary of all experimental setups. Each row reports one setup from the full sweep, evaluated at the best $\tau$ (selected by highest mean $\mathrm{AUC}$). Baseline rows are also included for Naive, Rasch-1PL, IRT-2PL, MIRT, and kNN, preserving variation over test takers and item subsets. Notation: \emph{Revision} indicates whether the run is pre-revision (Pre) or post-revision (Post). \emph{Test Takers} is the effective test-taker count used for that run (for Pre rows this comes from the pre-revision subset level; for Post rows this follows the run setting), with any legacy \texttt{max}/\texttt{full} test-taker setting shown as $143$. $N\in\{1,\mathrm{full}\}$ denotes repeated matrix-sampling mode, where \emph{full} uses all available repetitions for that setup. $\tau\in\{\mathrm{on},\mathrm{off},-\}$ indicates whether regularization is enabled (or not applicable for baseline-only rows); $j$ is the item-fraction control used in scaling-law runs; \emph{Best $\tau$} is the selected regularization value for amortized setups and $-$ for baseline rows; $\mathrm{AUC}$ and $\mathrm{RMSE}$ are reported as mean $\pm$ standard error across 50 repetitions. kNN rows marked with \textsuperscript{a} selected $k$ values spanning $5$ to $50$ across repetitions, while rows marked with \textsuperscript{b} selected $k$ values spanning $10$ to $50$.}\\")
+    lines.append(r"\begin{longtable}{llccccccc}")
+    lines.append(r"\caption{Appendix summary of all experimental setups. Each row reports one setup from the full sweep, evaluated at the best $\tau$ (selected by highest mean $\mathrm{AUC}$). Baseline rows are also included for Naive, Rasch-1PL, IRT-2PL, MIRT, and kNN, preserving variation over test takers and item subsets. Notation: \emph{Revision} indicates whether the run is pre-revision (Pre) or post-revision (Post). \emph{Test Takers} is the effective test-taker count used for that run (for Pre rows this comes from the pre-revision subset level; for Post rows this follows the run setting), with any legacy \texttt{max}/\texttt{full} test-taker setting shown as $143$. $\tau\in\{\mathrm{on},\mathrm{off},-\}$ indicates whether regularization is enabled (or not applicable for baseline-only rows); $j$ is the item-fraction control used in scaling-law runs; \emph{Best $\tau$} is the selected regularization value for amortized setups and $-$ for baseline rows; $\mathrm{AUC}$ and $\mathrm{RMSE}$ are reported as mean $\pm$ standard error across 50 repetitions. kNN rows marked with \textsuperscript{a} selected $k$ values spanning $5$ to $50$ across repetitions, while rows marked with \textsuperscript{b} selected $k$ values spanning $10$ to $50$.}\\")
     lines.append(r"\label{tab:appendix_all_setups}\\")
     lines.append(r"\toprule")
-    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ \\")
+    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ \\")
     lines.append(r"\midrule")
     lines.append(r"\endfirsthead")
-    lines.append(r"\multicolumn{10}{c}{\tablename\ \thetable{} -- continued from previous page}\\")
+    lines.append(r"\multicolumn{9}{c}{\tablename\ \thetable{} -- continued from previous page}\\")
     lines.append(r"\toprule")
-    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $N$ & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ \\")
+    lines.append(r"Embedding & Likelihood & Revision & Test Takers & $\tau$ & $j$ & Best $\tau$ & $\mathrm{AUC}$ & $\mathrm{RMSE}$ \\")
     lines.append(r"\midrule")
     lines.append(r"\endhead")
     lines.append(r"\midrule")
-    lines.append(r"\multicolumn{10}{r}{continued on next page}\\")
+    lines.append(r"\multicolumn{9}{r}{continued on next page}\\")
     lines.append(r"\endfoot")
     lines.append(r"\bottomrule")
     lines.append(r"\endlastfoot")
@@ -265,14 +267,13 @@ def build_table(df: pd.DataFrame) -> str:
     for _, row in out.iterrows():
         group_key = (row["Model"], row["Stage"], row["TestTakers"], row["j"])
         if prev_group is not None and group_key != prev_group:
-            lines.append(r"\cmidrule(lr){1-10}")
+            lines.append(r"\cmidrule(lr){1-9}")
 
         line = (
             f"{format_embedding_with_note(row['Embedding'], row['SelectedK'])} & "
             f"{latex_escape(row['Model'])} & "
             f"{latex_escape(row['Stage'])} & "
             f"{numeric_to_math(row['TestTakers'])} & "
-            f"{numeric_to_math(row['N'])} & "
             f"{latex_escape(row['Tau'])} & "
             f"{numeric_to_math(row['j'])} & "
             f"{sem_to_math(row['BestTau'])} & "
