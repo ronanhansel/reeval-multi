@@ -969,33 +969,18 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     test_mask_t = torch.from_numpy(test_mask).to(device)
 
     task_ids = oracle_df.columns.tolist()
-    embedding_protocol, embedding_fit_scope = embedding_metadata_for_type(embedding_type)
-    if embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
-        embeddings = np.ones((len(task_ids), 1), dtype=np.float32)
-        embedding_cache_path = ''
-        embedding_fit_item_count = 0
-    else:
-        raw_embeddings = align_raw_item_embeddings(task_ids, raw_embs_map)
-        if embedding_type in {'pca', 'sae'}:
-            embeddings, fit_meta = fit_split_embeddings(
-                raw_embeddings,
-                task_ids,
-                train_idx,
-                embedding_type,
-                embedding_dim,
-            )
-            embedding_cache_path = fit_meta['embedding_cache_path']
-            embedding_fit_item_count = int(fit_meta['embedding_fit_item_count'])
-        else:
-            embeddings = normalize_embedding_matrix(raw_embeddings)
-            embedding_cache_path = ''
-            embedding_fit_item_count = 0
+    raw_item_embeddings = None
+    if embedding_type not in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
+        raw_item_embeddings = align_raw_item_embeddings(task_ids, raw_embs_map).astype(np.float32)
 
-    x_j = torch.tensor(embeddings, dtype=torch.float32).to(device)
+    embedding_protocol, embedding_fit_scope = embedding_metadata_for_type(embedding_type)
     train_item_ids = [str(task_ids[idx]) for idx in train_idx.tolist()]
     test_item_ids = [str(task_ids[idx]) for idx in test_idx.tolist()]
 
-    print(f"Embeddings shape: {x_j.shape}")
+    if raw_item_embeddings is not None:
+        print(f"Raw item embeddings shape: {raw_item_embeddings.shape}")
+    else:
+        print("Embedding backend: constant item features")
 
     return {
         'all_dfs': train_all_dfs_filtered,
@@ -1005,7 +990,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         'test_mask_t': test_mask_t,
         'auc_test_mask_t': test_mask_t,
         'test_mask': test_mask,
-        'x_j': x_j,
+        'x_j': None,
         'test_idx': test_idx,
         'train_idx': train_idx,
         'pre_train_idx': (
@@ -1015,7 +1000,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         ),
         'N': N,
         'J': J,
-        'embedding_dim': x_j.shape[1],
+        'embedding_dim': int(embedding_dim if raw_item_embeddings is not None else 1),
         'cross_revision_post_binary': bool(cross_revision_post_binary and pre_revision_norm != 'none'),
         'train_global_shared_indices': train_global_shared_indices,
         'support_values': y_oracle.detach().cpu().numpy(),
@@ -1027,12 +1012,14 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         'effective_pre_weight_sum': float(full_row_weights.sum()),
         'benchmark_weight_sums': weight_meta['benchmark_weight_sums'],
         'task_ids': [str(task_id) for task_id in task_ids],
+        'raw_item_embeddings': raw_item_embeddings,
+        'requested_embedding_type': str(embedding_type),
         'train_item_ids': train_item_ids,
         'test_item_ids': test_item_ids,
         'embedding_protocol': embedding_protocol,
         'embedding_fit_scope': embedding_fit_scope,
-        'embedding_cache_path': embedding_cache_path,
-        'embedding_fit_item_count': int(embedding_fit_item_count),
+        'embedding_cache_path': '',
+        'embedding_fit_item_count': 0,
     }
 
 
@@ -1115,15 +1102,58 @@ def build_cross_revision_support_targets(data, train_retention=1.0):
 
 
 def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-                                       x_j=None, y_auc_oracle=None, auc_mask_t=None, task_ids=None):
-    """Drop train columns with zero retained support while preserving evaluated test columns."""
+                                       raw_item_embeddings=None, embedding_type='raw', embedding_dim=48,
+                                       y_auc_oracle=None, auc_mask_t=None, task_ids=None):
+    """Drop unsupported train columns and build embeddings from the final active train-item set."""
     test_mask_t = test_mask_t if test_mask_t is not None else torch.from_numpy(np.asarray(test_mask, dtype=bool)).to(y_train.device)
     y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
     auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
 
+    def _build_active_embeddings(active_task_ids, active_train_mask_t, active_raw_embeddings):
+        fit_type = str(embedding_type).strip().lower()
+        protocol, fit_scope = embedding_metadata_for_type(fit_type)
+        train_item_idx = np.where(active_train_mask_t.any(dim=0).detach().cpu().numpy().astype(bool))[0]
+        if fit_type in {'ones', 'rasch_2pl', 'nonamortised_mirt'}:
+            embeddings = np.ones((active_train_mask_t.shape[1], 1), dtype=np.float32)
+            return {
+                'x_j': torch.tensor(embeddings, dtype=torch.float32).to(y_train.device),
+                'embedding_protocol': protocol,
+                'embedding_fit_scope': fit_scope,
+                'embedding_cache_path': '',
+                'embedding_fit_item_count': 0,
+            }
+        if active_raw_embeddings is None:
+            raise ValueError(f'Missing raw item embeddings for embedding type {fit_type}.')
+        if fit_type in {'pca', 'sae'}:
+            embeddings_np, fit_meta = fit_split_embeddings(
+                active_raw_embeddings,
+                active_task_ids,
+                train_item_idx,
+                fit_type,
+                embedding_dim,
+            )
+            return {
+                'x_j': torch.tensor(embeddings_np, dtype=torch.float32).to(y_train.device),
+                'embedding_protocol': protocol,
+                'embedding_fit_scope': fit_scope,
+                'embedding_cache_path': fit_meta['embedding_cache_path'],
+                'embedding_fit_item_count': int(fit_meta['embedding_fit_item_count']),
+            }
+        embeddings_np = normalize_embedding_matrix(active_raw_embeddings)
+        return {
+            'x_j': torch.tensor(embeddings_np, dtype=torch.float32).to(y_train.device),
+            'embedding_protocol': protocol,
+            'embedding_fit_scope': fit_scope,
+            'embedding_cache_path': '',
+            'embedding_fit_item_count': 0,
+        }
+
     active_mask_t = train_mask_current_t.any(dim=0) | test_mask_t.any(dim=0)
     active_mask = active_mask_t.detach().cpu().numpy().astype(bool)
     if active_mask.all():
+        task_ids_all = [str(task_id) for task_id in task_ids] if task_ids is not None else None
+        active_raw_embeddings = np.asarray(raw_item_embeddings, dtype=np.float32) if raw_item_embeddings is not None else None
+        embedding_payload = _build_active_embeddings(task_ids_all, train_mask_current_t, active_raw_embeddings)
         return {
             'N': int(y_train.shape[0]),
             'J': int(y_train.shape[1]),
@@ -1134,8 +1164,8 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
             'test_mask': np.asarray(test_mask, dtype=bool),
             'test_mask_t': test_mask_t,
             'auc_mask_t': auc_mask_t,
-            'x_j': x_j,
-            'task_ids': list(task_ids) if task_ids is not None else None,
+            **embedding_payload,
+            'task_ids': task_ids_all,
             'train_item_ids': [
                 str(task_ids[idx]) for idx in np.where(train_mask_current_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist()
             ] if task_ids is not None else None,
@@ -1152,7 +1182,7 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
     test_mask_pruned = np.asarray(test_mask, dtype=bool)[:, active_mask]
     test_mask_pruned_t = test_mask_t[:, active_mask_t]
     auc_mask_pruned_t = auc_mask_t[:, active_mask_t]
-    x_j_pruned = x_j[active_mask_t] if x_j is not None else None
+    active_raw_embeddings = np.asarray(raw_item_embeddings, dtype=np.float32)[active_mask] if raw_item_embeddings is not None else None
     task_ids_pruned = [str(task_ids[idx]) for idx in np.where(active_mask)[0].tolist()] if task_ids is not None else None
     train_item_ids = [
         str(task_ids[idx]) for idx in np.where(train_mask_current_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist() if active_mask[idx]
@@ -1160,6 +1190,7 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
     test_item_ids = [
         str(task_ids[idx]) for idx in np.where(test_mask_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist() if active_mask[idx]
     ] if task_ids is not None else None
+    embedding_payload = _build_active_embeddings(task_ids_pruned, train_mask_pruned_t, active_raw_embeddings)
 
     return {
         'N': int(y_train_pruned.shape[0]),
@@ -1171,7 +1202,7 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
         'test_mask': test_mask_pruned,
         'test_mask_t': test_mask_pruned_t,
         'auc_mask_t': auc_mask_pruned_t,
-        'x_j': x_j_pruned,
+        **embedding_payload,
         'task_ids': task_ids_pruned,
         'train_item_ids': train_item_ids,
         'test_item_ids': test_item_ids,
@@ -1992,9 +2023,8 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                              baseline_embedding_type=None, train_retention=1.0, knn_k=KNN_K,
                              baseline_profile=BASELINE_PROFILE_FULL, knn_k_grid=None):
     """Fetch baselines from cache, or compute and persist once per unique configuration."""
-    actual_embedding_type = normalize_baseline_embedding_type(embedding_type)
     baseline_embedding_type = normalize_baseline_embedding_type(
-        baseline_embedding_type if baseline_embedding_type is not None else actual_embedding_type
+        baseline_embedding_type if baseline_embedding_type is not None else embedding_type
     )
     baseline_key = {
         'seed': int(RANDOM_SEED),
@@ -2042,7 +2072,9 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
             data['y_oracle'],
             data['test_mask'],
             data['test_mask_t'],
-            x_j=data.get('x_j'),
+            raw_item_embeddings=data.get('raw_item_embeddings'),
+            embedding_type=baseline_embedding_type,
+            embedding_dim=data.get('embedding_dim', 48),
             y_auc_oracle=data['y_auc_oracle'],
             auc_mask_t=data['auc_test_mask_t'],
             task_ids=data.get('task_ids'),
@@ -2064,7 +2096,9 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
             data['y_oracle'],
             data['test_mask'],
             data['test_mask_t'],
-            x_j=data.get('x_j'),
+            raw_item_embeddings=data.get('raw_item_embeddings'),
+            embedding_type=baseline_embedding_type,
+            embedding_dim=data.get('embedding_dim', 48),
             y_auc_oracle=data['y_auc_oracle'],
             auc_mask_t=data['auc_test_mask_t'],
             task_ids=data.get('task_ids'),
@@ -2075,14 +2109,6 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         train_mask_current_t = run_view['train_mask_t']
 
     if non_mirt_metrics is None:
-        if baseline_embedding_type != actual_embedding_type:
-            raise RuntimeError(
-                f"Missing baseline cache row for {baseline_key}. "
-                f"Baseline computation requires embeddings '{baseline_embedding_type}', "
-                f"but this run loaded '{actual_embedding_type}'. "
-                f"Prime the cache first with --baseline-only --embedding-type {baseline_embedding_type} "
-                f"--baseline-embedding-type {baseline_embedding_type}."
-            )
         if baseline_profile in {BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY}:
             knn_result = compute_best_knn_metrics(
                 y_train, train_mask_current_t,
@@ -2200,7 +2226,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     y_oracle = data['y_oracle']
     test_mask = data['test_mask']
     test_mask_t = data['test_mask_t']
-    x_j = data['x_j']
+    x_j = None
     test_idx = data['test_idx']
     run_task_ids = list(data.get('task_ids', []))
     run_train_item_ids = list(data.get('train_item_ids', []))
@@ -2286,7 +2312,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 y_oracle,
                 test_mask,
                 test_mask_t,
-                x_j=x_j,
+                raw_item_embeddings=data.get('raw_item_embeddings'),
+                embedding_type=embedding_type,
+                embedding_dim=embedding_dim,
                 y_auc_oracle=data['y_auc_oracle'],
                 auc_mask_t=data['auc_test_mask_t'],
                 task_ids=data.get('task_ids'),
@@ -2351,7 +2379,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 y_oracle,
                 test_mask,
                 test_mask_t,
-                x_j=x_j,
+                raw_item_embeddings=data.get('raw_item_embeddings'),
+                embedding_type=embedding_type,
+                embedding_dim=embedding_dim,
                 y_auc_oracle=data['y_auc_oracle'],
                 auc_mask_t=data['auc_test_mask_t'],
                 task_ids=data.get('task_ids'),
@@ -2366,14 +2396,18 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 y_oracle,
                 test_mask,
                 test_mask_t,
-                x_j=x_j,
+                raw_item_embeddings=data.get('raw_item_embeddings'),
+                embedding_type=embedding_type,
+                embedding_dim=embedding_dim,
                 y_auc_oracle=data['y_auc_oracle'],
                 auc_mask_t=data['auc_test_mask_t'],
                 task_ids=data.get('task_ids'),
             )
             N_pre = pre_run_view['N']
+            J_pre = pre_run_view['J']
             y_train_pre = pre_run_view['y_train']
             train_mask_pre_t = pre_run_view['train_mask_t']
+            x_j_pre = pre_run_view['x_j']
             N = support_run_view['N']
             J = support_run_view['J']
             y_support = support_run_view['y_train']
@@ -2392,7 +2426,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 else train_mask_pre_t.sum().item()
             )
 
-            pre_model = AmortizedIRTModel(N_pre, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+            pre_model = AmortizedIRTModel(N_pre, J_pre, K_MODEL, embedding_dim, x_j_pre, dropout=0.5, no_tau=no_tau).to(device)
             _, pre_state = train_amortized_irt(
                 pre_model,
                 y_train_pre,
@@ -2448,7 +2482,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             y_oracle,
             test_mask,
             test_mask_t,
-            x_j=x_j,
+            raw_item_embeddings=data.get('raw_item_embeddings'),
+            embedding_type=embedding_type,
+            embedding_dim=embedding_dim,
             y_auc_oracle=data['y_auc_oracle'],
             auc_mask_t=data['auc_test_mask_t'],
             task_ids=data.get('task_ids'),
@@ -2498,7 +2534,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 y_oracle,
                 test_mask,
                 test_mask_t,
-                x_j=x_j,
+                raw_item_embeddings=data.get('raw_item_embeddings'),
+                embedding_type=embedding_type,
+                embedding_dim=embedding_dim,
                 y_auc_oracle=run_view['y_auc_oracle'] if 'run_view' in locals() else data['y_auc_oracle'],
                 auc_mask_t=run_view['auc_mask_t'] if 'run_view' in locals() else data['auc_test_mask_t'],
                 task_ids=run_task_ids,
@@ -2541,7 +2579,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                     y_oracle,
                     test_mask,
                     test_mask_t,
-                    x_j=x_j,
+                    raw_item_embeddings=data.get('raw_item_embeddings'),
+                    embedding_type=embedding_type,
+                    embedding_dim=embedding_dim,
                     y_auc_oracle=run_view['y_auc_oracle'] if 'run_view' in locals() else data['y_auc_oracle'],
                     auc_mask_t=run_view['auc_mask_t'] if 'run_view' in locals() else data['auc_test_mask_t'],
                     task_ids=run_task_ids,
@@ -2573,9 +2613,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
-        'embedding_protocol': data.get('embedding_protocol', embedding_metadata_for_type(embedding_type)[0]),
-        'embedding_fit_scope': data.get('embedding_fit_scope', embedding_metadata_for_type(embedding_type)[1]),
-        'embedding_fit_item_count': int(data.get('embedding_fit_item_count', 0)),
+        'embedding_protocol': run_view.get('embedding_protocol', data.get('embedding_protocol', embedding_metadata_for_type(embedding_type)[0])),
+        'embedding_fit_scope': run_view.get('embedding_fit_scope', data.get('embedding_fit_scope', embedding_metadata_for_type(embedding_type)[1])),
+        'embedding_fit_item_count': int(run_view.get('embedding_fit_item_count', data.get('embedding_fit_item_count', 0))),
         'task_ids': run_task_ids,
         'train_item_ids': run_train_item_ids,
         'test_item_ids': run_test_item_ids,
@@ -3443,7 +3483,6 @@ def run_single_config(config, args, n_values):
                                  user_count=args.user_count,
                                  binarize_oracle=(args.model_type == 'bernoulli' and args.pre_revision == 'none'))
     # Move tensors to the correct device
-    data['x_j'] = data['x_j'].to(local_device)
     data['y_oracle'] = data['y_oracle'].to(local_device)
     data['test_mask_t'] = data['test_mask_t'].to(local_device)
 
