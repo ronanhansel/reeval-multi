@@ -1106,6 +1106,8 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
                                        y_auc_oracle=None, auc_mask_t=None, task_ids=None):
     """Drop unsupported train columns and build embeddings from the final active train-item set."""
     test_mask_t = test_mask_t if test_mask_t is not None else torch.from_numpy(np.asarray(test_mask, dtype=bool)).to(y_train.device)
+    if test_mask_t.device != y_train.device:
+        test_mask_t = test_mask_t.to(y_train.device)
     y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
     auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
 
@@ -1175,13 +1177,20 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
             'test_idx': np.where(test_mask_t.any(dim=0).detach().cpu().numpy().astype(bool))[0],
         }
 
-    y_train_pruned = y_train[:, active_mask_t]
-    train_mask_pruned_t = train_mask_current_t[:, active_mask_t]
-    y_oracle_pruned = y_oracle[:, active_mask_t]
-    y_auc_oracle_pruned = y_auc_oracle[:, active_mask_t]
+    active_mask_y_train = active_mask_t.to(y_train.device)
+    active_mask_train = active_mask_t.to(train_mask_current_t.device)
+    active_mask_y_oracle = active_mask_t.to(y_oracle.device)
+    active_mask_y_auc = active_mask_t.to(y_auc_oracle.device)
+    active_mask_test = active_mask_t.to(test_mask_t.device)
+    active_mask_auc = active_mask_t.to(auc_mask_t.device)
+
+    y_train_pruned = y_train[:, active_mask_y_train]
+    train_mask_pruned_t = train_mask_current_t[:, active_mask_train]
+    y_oracle_pruned = y_oracle[:, active_mask_y_oracle]
+    y_auc_oracle_pruned = y_auc_oracle[:, active_mask_y_auc]
     test_mask_pruned = np.asarray(test_mask, dtype=bool)[:, active_mask]
-    test_mask_pruned_t = test_mask_t[:, active_mask_t]
-    auc_mask_pruned_t = auc_mask_t[:, active_mask_t]
+    test_mask_pruned_t = test_mask_t[:, active_mask_test]
+    auc_mask_pruned_t = auc_mask_t[:, active_mask_auc]
     active_raw_embeddings = np.asarray(raw_item_embeddings, dtype=np.float32)[active_mask] if raw_item_embeddings is not None else None
     task_ids_pruned = [str(task_ids[idx]) for idx in np.where(active_mask)[0].tolist()] if task_ids is not None else None
     train_item_ids = [
