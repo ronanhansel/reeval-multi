@@ -2336,6 +2336,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             test_mask = run_view['test_mask']
             test_mask_t = run_view['test_mask_t']
             x_j = run_view['x_j']
+            embedding_dim = int(x_j.shape[1])
             test_idx = run_view['test_idx']
             run_task_ids = run_view['task_ids'] or run_task_ids
             run_train_item_ids = run_view['train_item_ids'] or run_train_item_ids
@@ -2425,6 +2426,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             test_mask = support_run_view['test_mask']
             test_mask_t = support_run_view['test_mask_t']
             x_j = support_run_view['x_j']
+            embedding_dim = int(x_j.shape[1])
             test_idx = support_run_view['test_idx']
             run_task_ids = support_run_view['task_ids'] or run_task_ids
             run_train_item_ids = support_run_view['train_item_ids'] or run_train_item_ids
@@ -2435,7 +2437,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 else train_mask_pre_t.sum().item()
             )
 
-            pre_model = AmortizedIRTModel(N_pre, J_pre, K_MODEL, embedding_dim, x_j_pre, dropout=0.5, no_tau=no_tau).to(device)
+            pre_embedding_dim = int(x_j_pre.shape[1])
+            pre_model = AmortizedIRTModel(N_pre, J_pre, K_MODEL, pre_embedding_dim, x_j_pre, dropout=0.5, no_tau=no_tau).to(device)
             _, pre_state = train_amortized_irt(
                 pre_model,
                 y_train_pre,
@@ -2506,6 +2509,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         test_mask = run_view['test_mask']
         test_mask_t = run_view['test_mask_t']
         x_j = run_view['x_j']
+        embedding_dim = int(x_j.shape[1])
         test_idx = run_view['test_idx']
         run_task_ids = run_view['task_ids'] or run_task_ids
         run_train_item_ids = run_view['train_item_ids'] or run_train_item_ids
