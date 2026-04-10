@@ -176,90 +176,33 @@ def plot_stability_comparison():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_data_and_weights(weight_path, embedding_type='sae', pre_revision='none'):
-    resmat_dir = os.path.join(REPO_ROOT, 'item-editor', 'eval_response_matrix')
-    
-    if pre_revision != 'none':
-        pre_rev_dir = os.path.join(resmat_dir, 'pre-revision')
-        b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
-        combined_dfs = []
-        for b in b_names:
-            possible_files = ['raw_score.csv', 'benchmark.csv', 'success_rate.csv', 'written_score.csv']
-            df = None
-            for f in possible_files:
-                p = os.path.join(pre_rev_dir, b, f)
-                if os.path.exists(p):
-                    df = pd.read_csv(p, index_col=0)
-                    break
-            
-            if df is not None:
-                df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
-                combined_dfs.append(df)
-        if combined_dfs:
-            final_df = pd.concat(combined_dfs, axis=1, join='outer')
-            oracle_df = final_df.dropna(axis=1, how='all')
-        else:
-            print("Warning: No pre-revision data found.")
-            return None, None
-    else:
-        post_rev_dir = os.path.join(resmat_dir, 'post-revision')
-        b_names = ['colbench_backend_programming', 'corebench_hard', 'scicode', 'scienceagentbench']
-        combined_dfs = []
-        for b in b_names:
-            b_resmat_dir = os.path.join(post_rev_dir, b, 'resmat')
-            if os.path.exists(b_resmat_dir):
-                files = sorted([f for f in os.listdir(b_resmat_dir) if f.startswith('resmat')])
-                if files:
-                    df = pd.read_csv(os.path.join(b_resmat_dir, files[0]), index_col=0)
-                    
-                    # First, keep only columns that belong to this benchmark
-                    valid_cols = [c for c in df.columns if str(c).startswith(b)]
-                    if valid_cols:
-                        df = df[valid_cols]
-                        # Now rename properly (some might be pure ints, some might be "benchmark.id")
-                        df.columns = [f"{b}.{c}" if not str(c).startswith(b) and not str(c).startswith(b.replace('_hard','')) else c for c in df.columns]
-                        combined_dfs.append(df)
-        if combined_dfs:
-            oracle_df = pd.concat(combined_dfs, axis=1, join='outer')
-        else:
-            print("Warning: No post-revision data found.")
-            return None, None
-
-    # Load embeddings
-    emb_file = os.path.join(EMB_DIR, f'embeddings_{embedding_type}_48.pkl')
-    if not os.path.exists(emb_file):
-        print(f"Embedding file not found: {emb_file}")
-        return None, None
-        
-    emb_df = pd.read_pickle(emb_file)
-    id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
-    raw_embs_map = {str(r[id_col]): r['embedding'] for _, r in emb_df.iterrows()}
-
-    # Align embeddings
-    task_ids = oracle_df.columns.tolist()
-    embeddings = []
-    for tid in task_ids:
-        emb = raw_embs_map.get(str(tid))
-        if emb is None and tid.startswith('colbench.'):
-            emb = raw_embs_map.get(f'colbench_backend_programming.{tid.split(".")[-1]}')
-        if emb is None: emb = np.zeros(48)
-        embeddings.append(np.array(emb, dtype=np.float32))
-    
-    x_j = torch.tensor(np.stack(embeddings))
-    x_j = x_j / (torch.norm(x_j, dim=1, keepdim=True) + 1e-8)
-    
-    # Load weights
     if not os.path.exists(weight_path):
         print(f"Weights file not found: {weight_path}")
         return None, None
-        
-    state = torch.load(weight_path)
+
+    payload = torch.load(weight_path, map_location='cpu')
+    if isinstance(payload, dict) and 'state_dict' in payload:
+        state = payload['state_dict']
+        task_ids = [str(task_id) for task_id in payload.get('task_ids', [])]
+    else:
+        state = payload
+        task_ids = []
+
+    x_j = state.get('x_j') if isinstance(state, dict) else None
+    if x_j is None or not task_ids:
+        print(f"Weights at {weight_path} do not include split-refit embedding metadata.")
+        return None, None
+
+    if not isinstance(x_j, torch.Tensor):
+        x_j = torch.tensor(x_j, dtype=torch.float32)
+
     W = state['W']
     tau = torch.relu(state['tau_raw'])
-    
+
     # Calc loadings: A = tau * (x_j @ W_norm.T)
     W_norm = torch.nn.functional.normalize(W, dim=1)
     loadings = (x_j @ W_norm.T) * tau.unsqueeze(0)
-    
+
     return loadings.numpy(), task_ids
 
 def get_item_inputs(tids):
@@ -427,7 +370,8 @@ def plot_semantic_alignment():
         A, tids = load_data_and_weights(w_path, pre_revision=pre_rev)
         if A is None: continue
         
-        weights = torch.load(w_path)
+        weights_payload = torch.load(w_path, map_location='cpu')
+        weights = weights_payload['state_dict'] if isinstance(weights_payload, dict) and 'state_dict' in weights_payload else weights_payload
         tau = torch.relu(weights['tau_raw']).cpu().numpy()
         
         active = np.where(np.abs(A).max(axis=0) > 1e-6)[0]

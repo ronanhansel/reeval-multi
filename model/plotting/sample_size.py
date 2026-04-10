@@ -24,14 +24,13 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(MODEL_DIR)
 RESULT_DIR = os.path.join(MODEL_DIR, 'result', 'sample_size_study')
-BASELINE_PATH = os.path.join(RESULT_DIR, 'baselines', 'baseline_metrics.csv')
 FIGURE_DIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(FIGURE_DIR, exist_ok=True)
 PREFERRED_BASELINE_EMBEDDING = 'raw'
 
 # Beta setup only
-SIZES_BETA = ['4', '8', '16', '32', '64', 'max']
-X_VALS_BETA = [4, 8, 16, 32, 64, 143]
+SIZES_BETA = ['4', '8', '16', '32', 'max']
+X_VALS_BETA = [4, 8, 16, 32, 143]
 J_PCTS = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
 
 ARAF_VARIANTS = ['sae', 'pca', 'raw']
@@ -117,8 +116,8 @@ def _load_best_tau_subset(path):
     return df
 
 
-def load_baseline_cache():
-    df = load_baseline_store(BASELINE_PATH)
+def load_baseline_cache(path):
+    df = load_baseline_store(path)
 
     if df.empty:
         return df
@@ -162,26 +161,21 @@ def baseline_stats(df, metric_col, model_type='beta', n_samples=1, pre_revision=
 
 
 def load_beta_agent_metrics(model, size):
-    n_suffix = 'n_max'
-    options = [
-        os.path.join(RESULT_DIR, f'amortized_irt_{model}_beta_pre_{size}_{n_suffix}.csv'),
-        os.path.join(RESULT_DIR, f'amortized_irt_{model}_beta_n_max.csv'),
-    ]
-    for path in options:
-        metrics = _load_metrics_from_file(path)
-        if metrics is not None:
-            return metrics
-    return None
+    dir_path = os.path.join(RESULT_DIR, f'users_{size}')
+    if size == 'max':
+        filename = f'amortized_irt_{model}_beta_n_max.csv'
+    else:
+        filename = f'amortized_irt_{model}_beta_u{size}_n_max.csv'
+    return _load_metrics_from_file(os.path.join(dir_path, filename))
 
 
 def load_beta_item_metrics(model, j_pct):
-    # 100% uses the original non-subsampled file (no _j suffix).
+    dir_path = os.path.join(RESULT_DIR, 'items')
     if float(j_pct) >= 1.0:
-        filename = f'amortized_irt_{model}_beta_pre_32_n_max.csv'
+        filename = f'amortized_irt_{model}_beta_u32_n_max.csv'
     else:
-        filename = f'amortized_irt_{model}_beta_pre_32_n_max_j{j_pct}.csv'
-    path = os.path.join(RESULT_DIR, filename)
-    return _load_metrics_from_file(path)
+        filename = f'amortized_irt_{model}_beta_u32_n_max_j{j_pct}.csv'
+    return _load_metrics_from_file(os.path.join(dir_path, filename))
 
 
 def select_best_araf_point(metric, candidates):
@@ -219,9 +213,11 @@ def gather_beta_agent_data():
             'rmse': {b: [] for b in BASELINE_KEYS},
         },
     }
-    baseline_df = load_baseline_cache()
     for i, size in enumerate(SIZES_BETA):
         x = X_VALS_BETA[i]
+        baseline_df = load_baseline_cache(
+            os.path.join(RESULT_DIR, f'users_{size}', 'baselines', 'baseline_metrics.csv')
+        )
         candidate_metrics = {
             variant: load_beta_agent_metrics(variant, size)
             for variant in ARAF_VARIANTS
@@ -239,8 +235,8 @@ def gather_beta_agent_data():
                     baseline_df,
                     metric_col=f'{metric}_{b}',
                     model_type='beta',
-                    n_samples=1,
-                    pre_revision=size,
+                    n_samples=None,
+                    pre_revision='none',
                     j_percentage=1.0,
                 )
                 if mean_val is not None:
@@ -257,7 +253,9 @@ def gather_beta_item_data():
             'rmse': {b: [] for b in BASELINE_KEYS},
         },
     }
-    baseline_df = load_baseline_cache()
+    baseline_df = load_baseline_cache(
+        os.path.join(RESULT_DIR, 'items', 'baselines', 'baseline_metrics.csv')
+    )
     for j_pct in J_PCTS:
         x = int(round(j_pct * 100))
         candidate_metrics = {
@@ -277,8 +275,8 @@ def gather_beta_item_data():
                     baseline_df,
                     metric_col=f'{metric}_{b}',
                     model_type='beta',
-                    n_samples=1,
-                    pre_revision='32',
+                    n_samples=None,
+                    pre_revision='none',
                     j_percentage=j_pct,
                 )
                 if mean_val is not None:
@@ -416,8 +414,8 @@ def plot_combined_beta_quad():
         beta_items['baselines']['auc'],
         metric='auc',
         title='AUC',
-        x_ticks=[10, 30, 50, 70, 90],
-        x_ticklabels=['10', '30', '50', '70', '90'],
+        x_ticks=[10, 30, 50, 70, 90, 100],
+        x_ticklabels=['10', '30', '50', '70', '90', '100'],
         log2_x=False,
     )
 
@@ -427,8 +425,8 @@ def plot_combined_beta_quad():
         beta_items['baselines']['rmse'],
         metric='rmse',
         title='RMSE',
-        x_ticks=[10, 30, 50, 70, 90],
-        x_ticklabels=['10', '30', '50', '70', '90'],
+        x_ticks=[10, 30, 50, 70, 90, 100],
+        x_ticklabels=['10', '30', '50', '70', '90', '100'],
         log2_x=False,
     )
 

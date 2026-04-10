@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import ast
+import hashlib
 import json
 import os
 import re
@@ -46,6 +47,13 @@ from huggingface_hub import snapshot_download
 from filelock import FileLock, Timeout
 import multiprocessing as mp
 from functools import partial
+from sklearn.decomposition import PCA
+
+try:
+    from hypothesaes.quickstart import train_sae
+    HAS_SPLIT_SAE = True
+except ImportError:
+    HAS_SPLIT_SAE = False
 
 from model.utility.utils import compute_rmse, evaluate_auc
 import model.baseline_cache as bc
@@ -58,6 +66,11 @@ from model.utility.result_paths import configured_main_result_dir, ensure_main_r
 RESULT_DIR = str(configured_main_result_dir())
 ensure_main_result_dir()
 os.makedirs(RESULT_DIR, exist_ok=True)
+MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(MODEL_DIR)
+PROCESSED_EMBEDDING_DIR = os.path.join(MODEL_DIR, 'processed_embeddings')
+SPLIT_EMBEDDING_CACHE_DIR = os.path.join(PROCESSED_EMBEDDING_DIR, 'split_refit_v1')
+os.makedirs(SPLIT_EMBEDDING_CACHE_DIR, exist_ok=True)
 
 BASELINE_DIR = os.path.join(RESULT_DIR, 'baselines')
 os.makedirs(BASELINE_DIR, exist_ok=True)
@@ -75,10 +88,23 @@ MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_m
 BASELINE_PROFILE_FULL = 'full'
 BASELINE_PROFILE_KNN_MIRT = 'knn_mirt'
 BASELINE_PROFILE_KNN_ONLY = 'knn_only'
+PRE_POPULATION_MATCH_NONE = 'none'
+PRE_POPULATION_MATCH_TRANSPORT_BINARY_STRENGTH = 'transport_binary_strength'
+PRE_POPULATION_MATCH_VERSION = 1
 
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'train_retention', 'baseline_embedding_type']
 INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_knn_k', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
+BASELINE_AUX_COLS = [
+    'agent_batch_size',
+    'selected_knn_k',
+    'selected_mirt_dim',
+    'mirt_sweep_min',
+    'mirt_sweep_max',
+    'mirt_selection_version',
+    'pre_population_match',
+    'pre_population_match_version',
+    'effective_pre_weight_sum',
+]
 
 MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt', 'val_rmse_mirt', 'val_auc_mirt']
 MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
@@ -92,6 +118,13 @@ RANDOM_SEED = 42
 MIRT_SELECTION_VERSION = 2
 MIRT_VALIDATION_FRACTION = 0.15
 MIRT_VALIDATION_MIN_PAIRS = 12
+
+BENCHMARKS = [
+    'colbench_backend_programming',
+    'corebench_hard',
+    'scicode',
+    'scienceagentbench',
+]
 
 # Model architecture
 K_MODEL = 30
@@ -122,6 +155,17 @@ BETA_PHI = 10.0
 KNN_K = 10
 KNN_K_GRID = (5, 10, 20, 50)
 
+EMBEDDING_PROTOCOL_TRAIN_REFIT = 'train_items_only_refit_v1'
+EMBEDDING_PROTOCOL_FROZEN_RAW = 'external_raw_frozen_v1'
+EMBEDDING_PROTOCOL_CONSTANT = 'constant_features_v1'
+EMBEDDING_FIT_SCOPE_TRAIN_ITEMS = 'train_items_only'
+EMBEDDING_FIT_SCOPE_FROZEN = 'external_frozen'
+EMBEDDING_FIT_SCOPE_CONSTANT = 'constant'
+SPLIT_SAE_K_SPARSITY = 4
+SPLIT_SAE_EPOCHS = 100
+SPLIT_SAE_LR = 5e-4
+SPLIT_SAE_BATCH_SIZE = 512
+
 # CSV append operations for study sweeps can queue behind many workers.
 CSV_LOCK_TIMEOUT = 7200
 
@@ -136,8 +180,148 @@ else:
     device = torch.device('cpu')
 
 
+def masked_weighted_mean(values, weights):
+    weights = weights.to(values.dtype)
+    denom = weights.sum().clamp_min(1e-12)
+    return (values * weights).sum() / denom
+
+
+def normalize_embedding_matrix(embeddings):
+    arr = np.asarray(embeddings, dtype=np.float32)
+    norms = np.linalg.norm(arr, axis=1, keepdims=True) + 1e-8
+    return arr / norms
+
+
+def _load_raw_embedding_map(raw_emb_file, processed_emb_dir):
+    candidate_files = [raw_emb_file, os.path.join(processed_emb_dir, 'embeddings_raw.pkl')]
+    emb_file = next((path for path in candidate_files if os.path.exists(path)), None)
+    if emb_file is None:
+        raise FileNotFoundError(
+            f"No raw embedding source found. Checked: {candidate_files}"
+        )
+
+    print(f"Loading raw embedding source from {emb_file}...")
+    emb_df = pd.read_pickle(emb_file)
+    id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
+    raw_embs_map = {}
+    for _, row in emb_df.iterrows():
+        task_id = str(row[id_col])
+        raw_embs_map[task_id] = row['embedding']
+        if task_id.startswith('colbench_backend_programming'):
+            suffix = task_id.split('.')[-1]
+            raw_embs_map[f'colbench.{suffix}'] = row['embedding']
+    return raw_embs_map
+
+
+def align_raw_item_embeddings(task_ids, raw_embs_map):
+    embeddings = []
+    sample_emb = next(iter(raw_embs_map.values())) if raw_embs_map else [0.0]
+    fallback_dim = len(sample_emb) if hasattr(sample_emb, '__len__') else 4096
+    for task_id in task_ids:
+        emb = raw_embs_map.get(str(task_id))
+        if emb is None and str(task_id).startswith('colbench.'):
+            number = str(task_id).split('.')[-1]
+            emb = raw_embs_map.get(f'colbench_backend_programming.{number}')
+        if emb is None:
+            emb = np.zeros(fallback_dim, dtype=np.float32)
+        elif isinstance(emb, str):
+            emb = ast.literal_eval(emb)
+        embeddings.append(np.asarray(emb, dtype=np.float32))
+    return np.stack(embeddings)
+
+
+def embedding_metadata_for_type(embedding_type):
+    if embedding_type in {'pca', 'sae'}:
+        return EMBEDDING_PROTOCOL_TRAIN_REFIT, EMBEDDING_FIT_SCOPE_TRAIN_ITEMS
+    if embedding_type in {'ones', 'rasch_2pl', 'nonamortised_mirt'}:
+        return EMBEDDING_PROTOCOL_CONSTANT, EMBEDDING_FIT_SCOPE_CONSTANT
+    return EMBEDDING_PROTOCOL_FROZEN_RAW, EMBEDDING_FIT_SCOPE_FROZEN
+
+
+def _split_embedding_cache_path(embedding_type, embedding_dim, task_ids, train_item_ids):
+    payload = {
+        'protocol': EMBEDDING_PROTOCOL_TRAIN_REFIT,
+        'embedding_type': str(embedding_type),
+        'embedding_dim': int(embedding_dim),
+        'task_ids': [str(task_id) for task_id in task_ids],
+        'train_item_ids': [str(task_id) for task_id in train_item_ids],
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    ).hexdigest()[:24]
+    return os.path.join(
+        SPLIT_EMBEDDING_CACHE_DIR,
+        f'{embedding_type}_{int(embedding_dim)}_{digest}.pkl'
+    )
+
+
+def fit_split_embeddings(raw_embeddings, task_ids, train_idx, embedding_type, embedding_dim):
+    train_idx = np.asarray(train_idx, dtype=int)
+    train_item_ids = [str(task_ids[idx]) for idx in train_idx.tolist()]
+    cache_path = _split_embedding_cache_path(embedding_type, embedding_dim, task_ids, train_item_ids)
+    lock = FileLock(f"{cache_path}.lock", timeout=CSV_LOCK_TIMEOUT)
+    with lock:
+        if os.path.exists(cache_path):
+            payload = pd.read_pickle(cache_path)
+            return payload['embeddings'], {
+                'embedding_cache_path': cache_path,
+                'embedding_fit_item_count': int(payload['fit_item_count']),
+            }
+
+        raw_embeddings = np.asarray(raw_embeddings, dtype=np.float32)
+        raw_embeddings_norm = normalize_embedding_matrix(raw_embeddings)
+        fit_source = raw_embeddings_norm[train_idx]
+        fit_item_count = int(fit_source.shape[0])
+        if fit_item_count <= 0:
+            raise ValueError('Cannot fit split embeddings without train items.')
+
+        if embedding_type == 'pca':
+            n_components = min(int(embedding_dim), fit_source.shape[0], fit_source.shape[1])
+            if n_components < 1:
+                raise ValueError('PCA requires at least one train item and one feature.')
+            pca = PCA(n_components=n_components, random_state=RANDOM_SEED)
+            transformed = pca.fit(fit_source).transform(raw_embeddings_norm).astype(np.float32)
+            if transformed.shape[1] < int(embedding_dim):
+                padded = np.zeros((transformed.shape[0], int(embedding_dim)), dtype=np.float32)
+                padded[:, :transformed.shape[1]] = transformed
+                transformed = padded
+            embeddings = normalize_embedding_matrix(transformed)
+        elif embedding_type == 'sae':
+            if not HAS_SPLIT_SAE:
+                raise RuntimeError(
+                    'SAE split refits require the hypothesaes package in the active environment.'
+                )
+            checkpoint_dir = os.path.join('/tmp', f'amortized_irt_split_sae_{os.path.basename(cache_path).replace(".pkl", "")}')
+            sae = train_sae(
+                embeddings=fit_source,
+                M=int(embedding_dim),
+                K=SPLIT_SAE_K_SPARSITY,
+                batch_size=SPLIT_SAE_BATCH_SIZE,
+                n_epochs=SPLIT_SAE_EPOCHS,
+                learning_rate=SPLIT_SAE_LR,
+                checkpoint_dir=checkpoint_dir,
+            )
+            embeddings = normalize_embedding_matrix(sae.get_activations(raw_embeddings_norm).astype(np.float32))
+        else:
+            raise ValueError(f'Unsupported split-refit embedding type: {embedding_type}')
+
+        pd.to_pickle(
+            {
+                'embeddings': embeddings,
+                'fit_item_count': fit_item_count,
+                'task_ids': [str(task_id) for task_id in task_ids],
+                'train_item_ids': train_item_ids,
+            },
+            cache_path,
+        )
+        return embeddings, {
+            'embedding_cache_path': cache_path,
+            'embedding_fit_item_count': fit_item_count,
+        }
+
+
 def _load_pre_revision_response_matrix(pre_revision):
-    """Load the aggregated pre-revision matrix, optionally subsampling rows."""
+    """Load the aggregated pre-revision matrix."""
     pre_rev_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         'item-editor',
@@ -172,32 +356,6 @@ def _load_pre_revision_response_matrix(pre_revision):
         raise FileNotFoundError(f"No pre-revision data found in {pre_rev_dir}")
 
     final_df = pd.concat(combined_dfs, axis=1, join='outer')
-
-    if pre_revision != 'max':
-        try:
-            n_total = int(pre_revision)
-        except ValueError:
-            n_total = None
-        if n_total is not None:
-            sampled_agents = []
-            n_per_benchmark = n_total // 4
-            remainder = n_total % 4
-            np.random.seed(RANDOM_SEED)
-            for i, b_name in enumerate(b_names):
-                current_n = n_per_benchmark + (1 if i < remainder else 0)
-                if current_n == 0:
-                    continue
-                b_df_matches = [df for df in combined_dfs if any(str(c).startswith(b_name) for c in df.columns)]
-                if not b_df_matches:
-                    continue
-                b_df = b_df_matches[0]
-                b_agents = b_df.dropna(how='all').index.tolist()
-                if len(b_agents) > current_n:
-                    sampled = np.random.choice(b_agents, size=current_n, replace=False)
-                else:
-                    sampled = b_agents
-                sampled_agents.extend(sampled)
-            final_df = final_df.loc[sampled_agents]
 
     final_df = final_df.dropna(axis=1, how='all')
     return [final_df], sorted(list(final_df.index))
@@ -241,6 +399,145 @@ def _load_post_revision_response_matrices():
 
     global_shared_indices = sorted(list(set().union(*[df.index for df in all_dfs])))
     return all_dfs, global_shared_indices
+
+
+def row_group_from_index(row_id):
+    row_str = str(row_id)
+    for benchmark in BENCHMARKS:
+        aliases = {benchmark, benchmark.replace('_', '.')}
+        if benchmark == 'colbench_backend_programming':
+            aliases.add('colbench')
+        if benchmark == 'corebench_hard':
+            aliases.add('corebench')
+        for alias in aliases:
+            if row_str.startswith(f"{alias}.") or row_str.startswith(f"{alias}_"):
+                return benchmark
+    if '.' in row_str:
+        return row_str.split('.', 1)[0]
+    return row_str
+
+
+def row_group_ids(frame, group):
+    return [idx for idx in frame.index if row_group_from_index(idx) == group]
+
+
+def columns_for_benchmark(columns, benchmark):
+    return [col for col in columns if str(col).startswith(f"{benchmark}.")]
+
+
+def row_strength_within_benchmark(frame, benchmark):
+    cols = columns_for_benchmark(frame.columns, benchmark)
+    if not cols:
+        return pd.Series(np.nan, index=frame.index, dtype=float)
+    values = frame.loc[:, cols].to_numpy(dtype=float)
+    return pd.Series(np.nanmean(values, axis=1), index=frame.index, dtype=float)
+
+
+def effective_pre_population_match(pre_revision):
+    pre = normalize_pre_revision(pre_revision)
+    if pre in {'none', 'max'}:
+        return PRE_POPULATION_MATCH_NONE
+    try:
+        int(pre)
+    except Exception:
+        return PRE_POPULATION_MATCH_NONE
+    return PRE_POPULATION_MATCH_TRANSPORT_BINARY_STRENGTH
+
+
+def target_benchmark_counts(n_total):
+    n_total = int(n_total)
+    n_per_benchmark = n_total // len(BENCHMARKS)
+    remainder = n_total % len(BENCHMARKS)
+    return {
+        benchmark: n_per_benchmark + (1 if idx < remainder else 0)
+        for idx, benchmark in enumerate(BENCHMARKS)
+    }
+
+
+def compute_post_binary_oracle():
+    post_dfs, post_indices = _load_post_revision_response_matrices()
+    all_columns = sorted(list(set().union(*[df.columns for df in post_dfs])))
+    post_filtered = [df.reindex(index=post_indices, columns=all_columns) for df in post_dfs]
+    post_stack = np.array([df.values for df in post_filtered], dtype=float)
+    post_mean = np.nanmean(post_stack, axis=0)
+    return pd.DataFrame((post_mean > 0.5).astype(np.float32), index=post_indices, columns=all_columns)
+
+
+def deterministic_quantile_support(values, target_count):
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if target_count <= 0 or arr.size == 0:
+        return np.array([], dtype=float)
+    arr.sort()
+    if arr.size == target_count:
+        return arr.copy()
+    if target_count == 1:
+        return np.array([float(np.nanmedian(arr))], dtype=float)
+    qs = np.linspace(0.0, 1.0, target_count)
+    return np.quantile(arr, qs, method='linear')
+
+
+def compute_pre_revision_row_weights(pre_df, pre_revision, post_binary_df=None):
+    pre = normalize_pre_revision(pre_revision)
+    weights = pd.Series(1.0, index=pre_df.index, dtype=float)
+    benchmark_weight_sums = {benchmark: 0.0 for benchmark in BENCHMARKS}
+
+    if pre == 'none':
+        return {
+            'row_weights': weights,
+            'pre_population_match': PRE_POPULATION_MATCH_NONE,
+            'pre_population_match_version': np.nan,
+            'effective_pre_weight_sum': float(weights.sum()),
+            'benchmark_weight_sums': benchmark_weight_sums,
+        }
+    if pre == 'max':
+        for benchmark in BENCHMARKS:
+            benchmark_rows = row_group_ids(pre_df, benchmark)
+            benchmark_weight_sums[benchmark] = float(weights.loc[benchmark_rows].sum())
+        return {
+            'row_weights': weights,
+            'pre_population_match': PRE_POPULATION_MATCH_NONE,
+            'pre_population_match_version': np.nan,
+            'effective_pre_weight_sum': float(weights.sum()),
+            'benchmark_weight_sums': benchmark_weight_sums,
+        }
+
+    target_counts = target_benchmark_counts(int(pre))
+    weights = pd.Series(0.0, index=pre_df.index, dtype=float)
+    if post_binary_df is None:
+        post_binary_df = compute_post_binary_oracle()
+
+    for benchmark, target_count in target_counts.items():
+        if target_count <= 0:
+            continue
+        pre_rows = row_group_ids(pre_df, benchmark)
+        post_rows = row_group_ids(post_binary_df, benchmark)
+        if not pre_rows:
+            raise ValueError(f"No pre rows found for benchmark {benchmark}.")
+        if not post_rows:
+            raise ValueError(f"No post rows found for benchmark {benchmark}.")
+        pre_strength = row_strength_within_benchmark(pre_df.loc[pre_rows], benchmark).to_numpy(dtype=float)
+        post_strength = row_strength_within_benchmark(post_binary_df.loc[post_rows], benchmark).to_numpy(dtype=float)
+        target_support = deterministic_quantile_support(post_strength, target_count)
+        if target_support.size == 0:
+            continue
+        for target_value in target_support:
+            distances = np.abs(pre_strength - target_value)
+            distances[~np.isfinite(distances)] = np.inf
+            if np.isfinite(distances).any():
+                chosen_pos = int(np.argmin(distances))
+            else:
+                chosen_pos = 0
+            weights.loc[pre_rows[chosen_pos]] += 1.0
+        benchmark_weight_sums[benchmark] = float(weights.loc[pre_rows].sum())
+
+    return {
+        'row_weights': weights,
+        'pre_population_match': PRE_POPULATION_MATCH_TRANSPORT_BINARY_STRENGTH,
+        'pre_population_match_version': PRE_POPULATION_MATCH_VERSION,
+        'effective_pre_weight_sum': float(weights.sum()),
+        'benchmark_weight_sums': benchmark_weight_sums,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -322,7 +619,7 @@ class MIRTModel(nn.Module):
 # Training Functions
 # ══════════════════════════════════════════════════════════════════════════════
 
-def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
+def train_rasch(N, J, y_train, train_mask_t, row_weight_t=None, n_outer_iter=100):
     """Train a basic Rasch IRT model (baseline)."""
     theta = nn.Parameter(torch.randn(N, device=device) * 0.1)
     beta = nn.Parameter(torch.randn(J, device=device) * 0.1)
@@ -331,12 +628,15 @@ def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
         [theta, beta], lr=0.1, max_iter=20,
         history_size=10, line_search_fn="strong_wolfe"
     )
+    if row_weight_t is None:
+        row_weight_t = torch.ones(N, device=device)
 
     def closure():
         optimizer.zero_grad()
         probs = torch.sigmoid(theta.unsqueeze(1) - beta.unsqueeze(0))
         loss = F.binary_cross_entropy(probs, y_train, reduction='none')
-        total_loss = (loss * train_mask_t).sum() / train_mask_t.sum()
+        loss_weight = train_mask_t.float() * row_weight_t.unsqueeze(1)
+        total_loss = masked_weighted_mean(loss, loss_weight)
         total_loss.backward()
         return total_loss
 
@@ -349,7 +649,7 @@ def train_rasch(N, J, y_train, train_mask_t, n_outer_iter=100):
     return probs
 
 
-def train_2pl(N, J, y_train, train_mask_t, n_outer_iter=100):
+def train_2pl(N, J, y_train, train_mask_t, row_weight_t=None, n_outer_iter=100):
     """Train a 2-parameter logistic (2PL) IRT model (baseline)."""
     theta = nn.Parameter(torch.randn(N, device=device) * 0.1)
     beta = nn.Parameter(torch.randn(J, device=device) * 0.1)
@@ -359,12 +659,15 @@ def train_2pl(N, J, y_train, train_mask_t, n_outer_iter=100):
         [theta, beta, alpha], lr=0.1, max_iter=20,
         history_size=10, line_search_fn="strong_wolfe"
     )
+    if row_weight_t is None:
+        row_weight_t = torch.ones(N, device=device)
 
     def closure():
         optimizer.zero_grad()
         probs = torch.sigmoid(alpha.unsqueeze(0) * (theta.unsqueeze(1) - beta.unsqueeze(0)))
         loss = F.binary_cross_entropy(probs, y_train, reduction='none')
-        total_loss = (loss * train_mask_t).sum() / train_mask_t.sum()
+        loss_weight = train_mask_t.float() * row_weight_t.unsqueeze(1)
+        total_loss = masked_weighted_mean(loss, loss_weight)
         total_loss.backward()
         return total_loss
 
@@ -378,7 +681,8 @@ def train_2pl(N, J, y_train, train_mask_t, n_outer_iter=100):
 
 
 def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle,
-                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=False):
+                        model_type='beta', beta_phi=BETA_PHI, epochs=EPOCHS, lambda_tau=LAMBDA_TAU,
+                        quiet=False, row_weight_t=None):
     """Train amortized IRT model with ARD sparsity regularization.
 
     Args:
@@ -392,6 +696,8 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
         {'params': model.difficulty_proj.parameters(), 'lr': LR_GLOBAL}
     ])
     optimizer_tau = optim.SGD([model.tau_raw], lr=0.05)
+    if row_weight_t is None:
+        row_weight_t = torch.ones(y_train.shape[0], device=y_train.device)
 
     eps = 1e-6
 
@@ -400,6 +706,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
         optimizer.zero_grad()
         optimizer_tau.zero_grad()
         probs = model()
+        observed_row_weights = row_weight_t.unsqueeze(1).expand_as(y_train)[train_mask_t]
 
         # Reconstruction loss using torch.distributions
         p = probs[train_mask_t].clamp(eps, 1 - eps)
@@ -407,12 +714,12 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
             # Beta NLL: α = μφ, β = (1-μ)φ
             y = y_train[train_mask_t].clamp(eps, 1 - eps)
             dist = torch.distributions.Beta(p * beta_phi, (1 - p) * beta_phi)
-            loss_fit = -dist.log_prob(y).mean()
+            loss_fit = masked_weighted_mean(-dist.log_prob(y), observed_row_weights)
         else:
             # Bernoulli NLL
             y = y_train[train_mask_t]
             dist = torch.distributions.Bernoulli(probs=p)
-            loss_fit = -dist.log_prob(y).mean()
+            loss_fit = masked_weighted_mean(-dist.log_prob(y), observed_row_weights)
 
         # ARD sparsity schedule (warmup -> ramp -> full)
         if epoch < TAU_WARMUP:
@@ -468,7 +775,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
 
 
 def adapt_amortized_irt_users(model, y_support, support_mask_t, model_type='beta',
-                              beta_phi=BETA_PHI, epochs=None, quiet=False):
+                              beta_phi=BETA_PHI, epochs=None, quiet=False, row_weight_t=None):
     """Infer user latents for a new response matrix while keeping item parameters fixed."""
     for name, param in model.named_parameters():
         param.requires_grad = name in {'theta', 'theta_bias'}
@@ -481,20 +788,23 @@ def adapt_amortized_irt_users(model, y_support, support_mask_t, model_type='beta
     eps = 1e-6
     best_state = None
     best_loss = float('inf')
+    if row_weight_t is None:
+        row_weight_t = torch.ones(y_support.shape[0], device=y_support.device)
 
     for epoch in range(fit_epochs):
         model.train()
         optimizer.zero_grad()
         probs = model()
         p = probs[support_mask_t].clamp(eps, 1 - eps)
+        observed_row_weights = row_weight_t.unsqueeze(1).expand_as(y_support)[support_mask_t]
         if model_type == 'beta':
             y = y_support[support_mask_t].clamp(eps, 1 - eps)
             dist = torch.distributions.Beta(p * beta_phi, (1 - p) * beta_phi)
-            loss = -dist.log_prob(y).mean()
+            loss = masked_weighted_mean(-dist.log_prob(y), observed_row_weights)
         else:
             y = y_support[support_mask_t]
             dist = torch.distributions.Bernoulli(probs=p)
-            loss = -dist.log_prob(y).mean()
+            loss = masked_weighted_mean(-dist.log_prob(y), observed_row_weights)
         loss.backward()
         optimizer.step()
 
@@ -524,17 +834,17 @@ def adapt_amortized_irt_users(model, y_support, support_mask_t, model_type='beta
 
 def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     """
-    Load response matrices and pre-computed embeddings.
+    Load response matrices and the raw embedding source used by all protocols.
 
     Args:
         embedding_type: 'raw', 'pca', or 'sae'
-        embedding_dim: dimension for pca/sae embeddings (ignored for raw)
+        embedding_dim: dimension for pca/sae embeddings (ignored at load time)
         pre_revision: 'none', '8', or 'max' to override post-revision loading.
     """
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = REPO_ROOT
     resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
-    
-    processed_emb_dir = os.path.join(repo_root, 'model', 'processed_embeddings')
+
+    processed_emb_dir = PROCESSED_EMBEDDING_DIR
     raw_emb_file = os.path.join(resmat_dir, 'all_benchmarks_embeddings_4096_8B.pkl')
 
     if pre_revision != 'none':
@@ -543,44 +853,13 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     else:
         all_dfs, global_shared_indices = _load_post_revision_response_matrices()
 
-    # Load embeddings based on type
-    emb_file = None
-    if embedding_type == 'raw':
-        emb_file = raw_emb_file
-    elif embedding_type == 'pca':
-        emb_file = os.path.join(processed_emb_dir, f'embeddings_pca_{embedding_dim}.pkl')
-    elif embedding_type == 'sae':
-        emb_file = os.path.join(processed_emb_dir, f'embeddings_sae_{embedding_dim}.pkl')
-    elif embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
-        emb_file = None
-    else:
+    if embedding_type not in ['raw', 'pca', 'sae', 'ones', 'rasch_2pl', 'nonamortised_mirt']:
         raise ValueError(f"Unknown embedding type: {embedding_type}")
-
-    # Fall back to raw if processed embeddings don't exist
-    if emb_file is not None and not os.path.exists(emb_file):
-        print(f"Warning: {emb_file} not found. Falling back to raw embeddings.")
-        print("Run 'python model/utility/generate_embeddings.py' to generate processed embeddings.")
-        emb_file = raw_emb_file
-        embedding_type = 'raw'
 
     if embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
         raw_embs_map = {}
     else:
-        print(f"Loading {embedding_type} embeddings from {emb_file}...")
-        emb_df = pd.read_pickle(emb_file)
-    
-        # Build embedding map
-        raw_embs_map = {}
-        id_col = 'task_id' if 'task_id' in emb_df.columns else 'benchmark.task_id'
-    
-        for _, r in emb_df.iterrows():
-            task_id = str(r[id_col])
-            raw_embs_map[task_id] = r['embedding']
-    
-            # Handle colbench naming variations
-            if task_id.startswith('colbench_backend_programming'):
-                suffix = task_id.split('.')[-1]
-                raw_embs_map[f'colbench.{suffix}'] = r['embedding']
+        raw_embs_map = _load_raw_embedding_map(raw_emb_file, processed_emb_dir)
 
     return all_dfs, global_shared_indices, raw_embs_map, embedding_type
 
@@ -593,7 +872,9 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     print("PREPARING EXPERIMENT DATA")
     print("=" * 60)
 
-    if cross_revision_post_binary and str(pre_revision).strip().lower() != 'none':
+    pre_revision_norm = normalize_pre_revision(pre_revision)
+
+    if cross_revision_post_binary and pre_revision_norm != 'none':
         post_dfs, post_shared_indices = _load_post_revision_response_matrices()
         all_columns = sorted(list(set().union(*[df.columns for df in post_dfs])))
         oracle_dfs_filtered = [df.reindex(index=post_shared_indices, columns=all_columns) for df in post_dfs]
@@ -624,6 +905,13 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 
     N, J_full = oracle_df.shape
 
+    weight_meta = compute_pre_revision_row_weights(
+        all_dfs[0],
+        pre_revision_norm,
+        post_binary_df=(compute_post_binary_oracle() if pre_revision_norm not in {'none', 'max'} else None),
+    )
+    full_row_weights = weight_meta['row_weights'].reindex(train_global_shared_indices).fillna(0.0)
+
     if user_count is not None:
         user_count = int(user_count)
         if 0 < user_count < N:
@@ -635,6 +923,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
             oracle_df = oracle_df.iloc[sampled_user_indices]
             train_global_shared_indices = sampled_users
             train_all_dfs = [df.reindex(index=sampled_users) for df in train_all_dfs]
+            full_row_weights = full_row_weights.reindex(sampled_users).fillna(0.0)
             N, J_full = oracle_df.shape
             print(f"Sub-sampling Users: {len(global_shared_indices)} -> {user_count}")
 
@@ -665,7 +954,7 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
 
     oracle_values = oracle_df.values.copy()
     oracle_mask = ~np.isnan(oracle_values)
-    if (cross_revision_post_binary and str(pre_revision).strip().lower() != 'none') or binarize_oracle:
+    if (cross_revision_post_binary and pre_revision_norm != 'none') or binarize_oracle:
         oracle_values = (oracle_values > 0.5).astype(np.float32)
     oracle_values_clean = np.nan_to_num(oracle_values, nan=0.5)
     y_oracle = torch.from_numpy(oracle_values_clean.astype(np.float32)).to(device)
@@ -679,30 +968,32 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
     train_mask_t = torch.from_numpy(train_mask).to(device)
     test_mask_t = torch.from_numpy(test_mask).to(device)
 
-    # Align embeddings with oracle columns
     task_ids = oracle_df.columns.tolist()
+    embedding_protocol, embedding_fit_scope = embedding_metadata_for_type(embedding_type)
     if embedding_type in ['ones', 'rasch_2pl', 'nonamortised_mirt']:
         embeddings = np.ones((len(task_ids), 1), dtype=np.float32)
+        embedding_cache_path = ''
+        embedding_fit_item_count = 0
     else:
-        embeddings = []
-        for task_id in task_ids:
-            emb = raw_embs_map.get(str(task_id))
-            if emb is None and task_id.startswith('colbench.'):
-                number = task_id.split('.')[-1]
-                emb = raw_embs_map.get(f'colbench_backend_programming.{number}')
-            if emb is None:
-                # Use zeros for missing embeddings
-                sample_emb = next(iter(raw_embs_map.values())) if raw_embs_map else [0.0]
-                emb = np.zeros(len(sample_emb) if hasattr(sample_emb, '__len__') else 4096)
-            elif isinstance(emb, str):
-                emb = ast.literal_eval(emb)
-            embeddings.append(np.array(emb, dtype=np.float32))
-
-        embeddings = np.stack(embeddings)
-        # Normalize embeddings
-        embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
+        raw_embeddings = align_raw_item_embeddings(task_ids, raw_embs_map)
+        if embedding_type in {'pca', 'sae'}:
+            embeddings, fit_meta = fit_split_embeddings(
+                raw_embeddings,
+                task_ids,
+                train_idx,
+                embedding_type,
+                embedding_dim,
+            )
+            embedding_cache_path = fit_meta['embedding_cache_path']
+            embedding_fit_item_count = int(fit_meta['embedding_fit_item_count'])
+        else:
+            embeddings = normalize_embedding_matrix(raw_embeddings)
+            embedding_cache_path = ''
+            embedding_fit_item_count = 0
 
     x_j = torch.tensor(embeddings, dtype=torch.float32).to(device)
+    train_item_ids = [str(task_ids[idx]) for idx in train_idx.tolist()]
+    test_item_ids = [str(task_ids[idx]) for idx in test_idx.tolist()]
 
     print(f"Embeddings shape: {x_j.shape}")
 
@@ -719,17 +1010,29 @@ def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedd
         'train_idx': train_idx,
         'pre_train_idx': (
             np.arange(J, dtype=int)
-            if cross_revision_post_binary and str(pre_revision).strip().lower() != 'none'
+            if cross_revision_post_binary and pre_revision_norm != 'none'
             else train_idx
         ),
         'N': N,
         'J': J,
         'embedding_dim': x_j.shape[1],
-        'cross_revision_post_binary': bool(cross_revision_post_binary and str(pre_revision).strip().lower() != 'none'),
+        'cross_revision_post_binary': bool(cross_revision_post_binary and pre_revision_norm != 'none'),
         'train_global_shared_indices': train_global_shared_indices,
         'support_values': y_oracle.detach().cpu().numpy(),
         'support_mask': train_mask,
         'user_count': N,
+        'row_weights': full_row_weights.to_numpy(dtype=np.float32),
+        'pre_population_match': weight_meta['pre_population_match'],
+        'pre_population_match_version': weight_meta['pre_population_match_version'],
+        'effective_pre_weight_sum': float(full_row_weights.sum()),
+        'benchmark_weight_sums': weight_meta['benchmark_weight_sums'],
+        'task_ids': [str(task_id) for task_id in task_ids],
+        'train_item_ids': train_item_ids,
+        'test_item_ids': test_item_ids,
+        'embedding_protocol': embedding_protocol,
+        'embedding_fit_scope': embedding_fit_scope,
+        'embedding_cache_path': embedding_cache_path,
+        'embedding_fit_item_count': int(embedding_fit_item_count),
     }
 
 
@@ -781,8 +1084,12 @@ def build_training_targets(n_files, all_dfs, global_shared_indices, data, model_
             train_mask_current[kept_coords[:, 0], kept_coords[:, 1]] = True
 
     train_mask_current_t = torch.from_numpy(train_mask_current).to(device)
+    row_weights = np.asarray(data.get('row_weights', np.ones(N, dtype=np.float32)), dtype=np.float32)
+    if row_weights.shape[0] != N:
+        row_weights = np.ones(N, dtype=np.float32)
+    row_weight_t = torch.from_numpy(row_weights.astype(np.float32)).to(device)
 
-    return N, J, y_train, train_mask_current_t
+    return N, J, y_train, train_mask_current_t, row_weight_t
 
 
 def build_cross_revision_support_targets(data, train_retention=1.0):
@@ -807,13 +1114,81 @@ def build_cross_revision_support_targets(data, train_retention=1.0):
     return y_support, support_mask_current_t
 
 
-def compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K):
+def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
+                                       x_j=None, y_auc_oracle=None, auc_mask_t=None, task_ids=None):
+    """Drop train columns with zero retained support while preserving evaluated test columns."""
+    test_mask_t = test_mask_t if test_mask_t is not None else torch.from_numpy(np.asarray(test_mask, dtype=bool)).to(y_train.device)
+    y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
+    auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
+
+    active_mask_t = train_mask_current_t.any(dim=0) | test_mask_t.any(dim=0)
+    active_mask = active_mask_t.detach().cpu().numpy().astype(bool)
+    if active_mask.all():
+        return {
+            'N': int(y_train.shape[0]),
+            'J': int(y_train.shape[1]),
+            'y_train': y_train,
+            'train_mask_t': train_mask_current_t,
+            'y_oracle': y_oracle,
+            'y_auc_oracle': y_auc_oracle,
+            'test_mask': np.asarray(test_mask, dtype=bool),
+            'test_mask_t': test_mask_t,
+            'auc_mask_t': auc_mask_t,
+            'x_j': x_j,
+            'task_ids': list(task_ids) if task_ids is not None else None,
+            'train_item_ids': [
+                str(task_ids[idx]) for idx in np.where(train_mask_current_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist()
+            ] if task_ids is not None else None,
+            'test_item_ids': [
+                str(task_ids[idx]) for idx in np.where(test_mask_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist()
+            ] if task_ids is not None else None,
+            'test_idx': np.where(test_mask_t.any(dim=0).detach().cpu().numpy().astype(bool))[0],
+        }
+
+    y_train_pruned = y_train[:, active_mask_t]
+    train_mask_pruned_t = train_mask_current_t[:, active_mask_t]
+    y_oracle_pruned = y_oracle[:, active_mask_t]
+    y_auc_oracle_pruned = y_auc_oracle[:, active_mask_t]
+    test_mask_pruned = np.asarray(test_mask, dtype=bool)[:, active_mask]
+    test_mask_pruned_t = test_mask_t[:, active_mask_t]
+    auc_mask_pruned_t = auc_mask_t[:, active_mask_t]
+    x_j_pruned = x_j[active_mask_t] if x_j is not None else None
+    task_ids_pruned = [str(task_ids[idx]) for idx in np.where(active_mask)[0].tolist()] if task_ids is not None else None
+    train_item_ids = [
+        str(task_ids[idx]) for idx in np.where(train_mask_current_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist() if active_mask[idx]
+    ] if task_ids is not None else None
+    test_item_ids = [
+        str(task_ids[idx]) for idx in np.where(test_mask_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist() if active_mask[idx]
+    ] if task_ids is not None else None
+
+    return {
+        'N': int(y_train_pruned.shape[0]),
+        'J': int(y_train_pruned.shape[1]),
+        'y_train': y_train_pruned,
+        'train_mask_t': train_mask_pruned_t,
+        'y_oracle': y_oracle_pruned,
+        'y_auc_oracle': y_auc_oracle_pruned,
+        'test_mask': test_mask_pruned,
+        'test_mask_t': test_mask_pruned_t,
+        'auc_mask_t': auc_mask_pruned_t,
+        'x_j': x_j_pruned,
+        'task_ids': task_ids_pruned,
+        'train_item_ids': train_item_ids,
+        'test_item_ids': test_item_ids,
+        'test_idx': np.where(test_mask_pruned.any(axis=0))[0],
+    }
+
+
+def compute_knn_predictions(y_train, train_mask_current_t, x_j, test_mask, knn_k=KNN_K, row_weight_t=None):
     """Return kNN predictions plus per-pair neighborhood support diagnostics."""
     N, J = y_train.shape
+    if row_weight_t is None:
+        row_weight_t = torch.ones(N, device=y_train.device, dtype=torch.float32)
 
-    valid_counts = train_mask_current_t.sum(dim=0)
-    item_sums = (y_train * train_mask_current_t).sum(dim=0)
-    global_mean = y_train[train_mask_current_t].mean()
+    weighted_mask = train_mask_current_t.float() * row_weight_t.unsqueeze(1)
+    valid_counts = weighted_mask.sum(dim=0)
+    item_sums = (y_train * weighted_mask).sum(dim=0)
+    global_mean = masked_weighted_mean(y_train, weighted_mask)
     item_means = torch.where(valid_counts > 0, item_sums / valid_counts, global_mean)
     p_naive = item_means.unsqueeze(0).expand(N, J)
 
@@ -1282,7 +1657,8 @@ def append_neighbor_support_rows(path, rows):
 
 
 def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t, x_j,
-                             y_auc_oracle=None, auc_mask_t=None, knn_k=KNN_K, knn_k_values=None):
+                             y_auc_oracle=None, auc_mask_t=None, knn_k=KNN_K, knn_k_values=None,
+                             row_weight_t=None):
     """Evaluate one or more kNN neighbor counts and keep the best by AUC, then RMSE."""
     y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
     auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
@@ -1291,7 +1667,7 @@ def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask,
     best = None
     for curr_k in candidates:
         p_knn, support_diag = compute_knn_predictions(
-            y_train, train_mask_current_t, x_j, test_mask, knn_k=curr_k
+            y_train, train_mask_current_t, x_j, test_mask, knn_k=curr_k, row_weight_t=row_weight_t
         )
         curr = {
             'selected_knn_k': int(curr_k),
@@ -1315,12 +1691,16 @@ def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask,
 
 def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                       model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
-                                      y_auc_oracle=None, auc_mask_t=None, knn_k_values=None):
+                                      y_auc_oracle=None, auc_mask_t=None, knn_k_values=None,
+                                      row_weight_t=None):
     """Compute non-MIRT baselines for one configuration."""
+    if row_weight_t is None:
+        row_weight_t = torch.ones(N, device=y_train.device, dtype=torch.float32)
     # 1. Naive item-mean baseline
-    valid_counts = train_mask_current_t.sum(dim=0)
-    item_sums = (y_train * train_mask_current_t).sum(dim=0)
-    global_mean = y_train[train_mask_current_t].mean()
+    weighted_mask = train_mask_current_t.float() * row_weight_t.unsqueeze(1)
+    valid_counts = weighted_mask.sum(dim=0)
+    item_sums = (y_train * weighted_mask).sum(dim=0)
+    global_mean = masked_weighted_mean(y_train, weighted_mask)
     item_means = torch.where(valid_counts > 0, item_sums / valid_counts, global_mean)
     p_naive = item_means.unsqueeze(0).expand(N, J)
 
@@ -1331,12 +1711,12 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
     auc_naive = evaluate_auc(p_naive, y_auc_oracle, auc_mask_t)
 
     # 2. Rasch (1PL)
-    p_rasch = train_rasch(N, J, y_train, train_mask_current_t)
+    p_rasch = train_rasch(N, J, y_train, train_mask_current_t, row_weight_t=row_weight_t)
     rmse_rasch = compute_rmse(p_rasch.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
     auc_rasch = evaluate_auc(p_rasch, y_auc_oracle, auc_mask_t)
 
     # 3. Rasch (2PL)
-    p_2pl = train_2pl(N, J, y_train, train_mask_current_t)
+    p_2pl = train_2pl(N, J, y_train, train_mask_current_t, row_weight_t=row_weight_t)
     rmse_2pl = compute_rmse(p_2pl.cpu().numpy(), y_oracle.cpu().numpy(), test_mask)
     auc_2pl = evaluate_auc(p_2pl, y_auc_oracle, auc_mask_t)
 
@@ -1344,7 +1724,8 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
     # Uses item embeddings only and observed user responses on train items.
     knn_result = compute_best_knn_metrics(
         y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t, x_j,
-        y_auc_oracle=y_auc_oracle, auc_mask_t=auc_mask_t, knn_k=knn_k, knn_k_values=knn_k_values
+        y_auc_oracle=y_auc_oracle, auc_mask_t=auc_mask_t, knn_k=knn_k, knn_k_values=knn_k_values,
+        row_weight_t=row_weight_t,
     )
     rmse_knn = knn_result['rmse_knn']
     auc_knn = knn_result['auc_knn']
@@ -1426,8 +1807,10 @@ def build_mirt_validation_masks(y_train, train_mask_current_t, validation_fracti
 
 def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                 model_type='beta', beta_phi=BETA_PHI, mirt_dim=K_MODEL,
-                                y_auc_oracle=None, auc_mask_t=None):
+                                y_auc_oracle=None, auc_mask_t=None, row_weight_t=None):
     """Train one standalone MIRT baseline at a specific latent dimension."""
+    if row_weight_t is None:
+        row_weight_t = torch.ones(N, device=y_train.device, dtype=torch.float32)
     fit_mask_t, val_mask_t = build_mirt_validation_masks(y_train, train_mask_current_t)
     mirt_model = MIRTModel(N, J, mirt_dim).to(device)
     mirt_optimizer = optim.AdamW(mirt_model.parameters(), lr=0.01, weight_decay=0.1)
@@ -1447,14 +1830,15 @@ def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, t
         p_mirt = mirt_model()
         p_m_clamp = p_mirt[fit_mask_t].clamp(1e-6, 1 - 1e-6)
         y_m_clamp = y_train[fit_mask_t]
+        fit_weights = row_weight_t.unsqueeze(1).expand_as(y_train)[fit_mask_t]
 
         if model_type == 'beta':
             y_m_clamp = y_m_clamp.clamp(1e-6, 1 - 1e-6)
             dist = torch.distributions.Beta(p_m_clamp * beta_phi, (1 - p_m_clamp) * beta_phi)
-            loss = -dist.log_prob(y_m_clamp).mean()
+            loss = masked_weighted_mean(-dist.log_prob(y_m_clamp), fit_weights)
         else:
             dist = torch.distributions.Bernoulli(probs=p_m_clamp)
-            loss = -dist.log_prob(y_m_clamp).mean()
+            loss = masked_weighted_mean(-dist.log_prob(y_m_clamp), fit_weights)
 
         loss.backward()
         mirt_optimizer.step()
@@ -1508,16 +1892,16 @@ def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, t
 
 def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                              model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
-                             mirt_dim=K_MODEL):
+                             mirt_dim=K_MODEL, row_weight_t=None):
     """Compute naive + Rasch + 2PL + standalone MIRT baselines for one configuration."""
     results = compute_non_mirt_baseline_metrics(
         N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-        model_type=model_type, beta_phi=beta_phi, x_j=x_j, knn_k=knn_k
+        model_type=model_type, beta_phi=beta_phi, x_j=x_j, knn_k=knn_k, row_weight_t=row_weight_t
     )
     results.update(
         compute_single_mirt_metrics(
             N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-            model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim
+            model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim, row_weight_t=row_weight_t
         )
     )
     return results
@@ -1620,6 +2004,8 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         'j_percentage': normalize_j_percentage(j_percentage),
         'train_retention': normalize_train_retention(train_retention),
         'baseline_embedding_type': baseline_embedding_type,
+        'pre_population_match': data.get('pre_population_match', PRE_POPULATION_MATCH_NONE),
+        'pre_population_match_version': data.get('pre_population_match_version', np.nan),
     }
     knn_k_grid = parse_knn_k_grid(knn_k_grid)
 
@@ -1650,16 +2036,43 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
             data,
             train_retention=1.0,
         )
-        N = int(y_support.shape[0])
-        J = int(y_support.shape[1])
-        y_train = y_support
-        train_mask_current_t = support_mask_current_t
+        run_view = prune_embedding_only_train_columns(
+            y_support,
+            support_mask_current_t,
+            data['y_oracle'],
+            data['test_mask'],
+            data['test_mask_t'],
+            x_j=data.get('x_j'),
+            y_auc_oracle=data['y_auc_oracle'],
+            auc_mask_t=data['auc_test_mask_t'],
+            task_ids=data.get('task_ids'),
+        )
+        N = run_view['N']
+        J = run_view['J']
+        y_train = run_view['y_train']
+        train_mask_current_t = run_view['train_mask_t']
+        row_weight_t = torch.ones(N, device=device)
     else:
         train_indices = data.get('train_global_shared_indices', global_shared_indices)
-        N, J, y_train, train_mask_current_t = build_training_targets(
+        N, J, y_train, train_mask_current_t, row_weight_t = build_training_targets(
             n_files, all_dfs, train_indices, data, model_type=model_type, quiet=quiet,
             train_retention=train_retention
         )
+        run_view = prune_embedding_only_train_columns(
+            y_train,
+            train_mask_current_t,
+            data['y_oracle'],
+            data['test_mask'],
+            data['test_mask_t'],
+            x_j=data.get('x_j'),
+            y_auc_oracle=data['y_auc_oracle'],
+            auc_mask_t=data['auc_test_mask_t'],
+            task_ids=data.get('task_ids'),
+        )
+        N = run_view['N']
+        J = run_view['J']
+        y_train = run_view['y_train']
+        train_mask_current_t = run_view['train_mask_t']
 
     if non_mirt_metrics is None:
         if baseline_embedding_type != actual_embedding_type:
@@ -1673,10 +2086,11 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         if baseline_profile in {BASELINE_PROFILE_KNN_MIRT, BASELINE_PROFILE_KNN_ONLY}:
             knn_result = compute_best_knn_metrics(
                 y_train, train_mask_current_t,
-                data['y_oracle'], data['test_mask'], data['test_mask_t'], data.get('x_j'),
-                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t'],
+                run_view['y_oracle'], run_view['test_mask'], run_view['test_mask_t'], run_view.get('x_j'),
+                y_auc_oracle=run_view['y_auc_oracle'], auc_mask_t=run_view['auc_mask_t'],
                 knn_k=knn_k,
                 knn_k_values=[knn_k] if baseline_profile == BASELINE_PROFILE_KNN_ONLY else knn_k_grid,
+                row_weight_t=row_weight_t,
             )
             non_mirt_metrics = {
                 'rmse_naive': np.nan,
@@ -1692,10 +2106,10 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
         else:
             non_mirt_metrics = compute_non_mirt_baseline_metrics(
                 N, J, y_train, train_mask_current_t,
-                data['y_oracle'], data['test_mask'], data['test_mask_t'],
-                model_type=model_type, beta_phi=beta_phi, x_j=data.get('x_j'), knn_k=knn_k,
-                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t'],
-                knn_k_values=knn_k_grid,
+                run_view['y_oracle'], run_view['test_mask'], run_view['test_mask_t'],
+                model_type=model_type, beta_phi=beta_phi, x_j=run_view.get('x_j'), knn_k=knn_k,
+                y_auc_oracle=run_view['y_auc_oracle'], auc_mask_t=run_view['auc_mask_t'],
+                knn_k_values=knn_k_grid, row_weight_t=row_weight_t,
             )
 
     best_mirt = None
@@ -1711,9 +2125,10 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
 
             computed_mirt = compute_single_mirt_metrics(
                 N, J, y_train, train_mask_current_t,
-                data['y_oracle'], data['test_mask'], data['test_mask_t'],
+                run_view['y_oracle'], run_view['test_mask'], run_view['test_mask_t'],
                 model_type=model_type, beta_phi=beta_phi, mirt_dim=mirt_dim,
-                y_auc_oracle=data['y_auc_oracle'], auc_mask_t=data['auc_test_mask_t']
+                y_auc_oracle=run_view['y_auc_oracle'], auc_mask_t=run_view['auc_mask_t'],
+                row_weight_t=row_weight_t,
             )
             append_mirt_sweep_row(
                 mirt_sweep_output,
@@ -1733,6 +2148,9 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     baseline_row['agent_batch_size'] = compute_agent_batch_size(
         baseline_key['pre_revision'], baseline_key['n_samples']
     )
+    baseline_row['pre_population_match'] = data.get('pre_population_match', PRE_POPULATION_MATCH_NONE)
+    baseline_row['pre_population_match_version'] = data.get('pre_population_match_version', np.nan)
+    baseline_row['effective_pre_weight_sum'] = float(data.get('effective_pre_weight_sum', np.nan))
     for col, value in non_mirt_metrics.items():
         baseline_row[col] = float(value)
     if best_mirt is not None:
@@ -1784,6 +2202,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     test_mask_t = data['test_mask_t']
     x_j = data['x_j']
     test_idx = data['test_idx']
+    run_task_ids = list(data.get('task_ids', []))
+    run_train_item_ids = list(data.get('train_item_ids', []))
+    run_test_item_ids = list(data.get('test_item_ids', []))
     embedding_dim = data['embedding_dim']
 
     baselines, mirt_state = get_or_compute_baselines(
@@ -1821,6 +2242,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
+            'pre_population_match': data.get('pre_population_match', PRE_POPULATION_MATCH_NONE),
+            'pre_population_match_version': data.get('pre_population_match_version', np.nan),
+            'effective_pre_weight_sum': float(data.get('effective_pre_weight_sum', np.nan)),
             'rmse_amortized': rmse_2pl,
             'auc_amortized': auc_2pl,
             'active_dims': 0,
@@ -1837,6 +2261,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             'model_type': model_type,
             'seed': RANDOM_SEED,
             'lambda_tau': LAMBDA_TAU,
+            'pre_population_match': data.get('pre_population_match', PRE_POPULATION_MATCH_NONE),
+            'pre_population_match_version': data.get('pre_population_match_version', np.nan),
+            'effective_pre_weight_sum': float(data.get('effective_pre_weight_sum', np.nan)),
             'rmse_amortized': best_mirt_rmse,
             'auc_amortized': auc_mirt,
             'active_dims': selected_mirt_dim,
@@ -1853,6 +2280,29 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 data,
                 train_retention=train_retention,
             )
+            run_view = prune_embedding_only_train_columns(
+                y_support,
+                support_mask_current_t,
+                y_oracle,
+                test_mask,
+                test_mask_t,
+                x_j=x_j,
+                y_auc_oracle=data['y_auc_oracle'],
+                auc_mask_t=data['auc_test_mask_t'],
+                task_ids=data.get('task_ids'),
+            )
+            N = run_view['N']
+            J = run_view['J']
+            y_support = run_view['y_train']
+            support_mask_current_t = run_view['train_mask_t']
+            y_oracle = run_view['y_oracle']
+            test_mask = run_view['test_mask']
+            test_mask_t = run_view['test_mask_t']
+            x_j = run_view['x_j']
+            test_idx = run_view['test_idx']
+            run_task_ids = run_view['task_ids'] or run_task_ids
+            run_train_item_ids = run_view['train_item_ids'] or run_train_item_ids
+            run_test_item_ids = run_view['test_item_ids'] or run_test_item_ids
             observed_train_pairs = int(support_mask_current_t.sum().item())
 
             model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
@@ -1867,13 +2317,14 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 epochs=EPOCHS,
                 lambda_tau=LAMBDA_TAU,
                 quiet=quiet,
+                row_weight_t=torch.ones(N, device=device),
             )
 
             model.eval()
             with torch.no_grad():
                 model.load_state_dict({k: v.to(device) for k, v in final_state.items()})
                 p_amortized = model()
-                auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
+                auc_amortized = evaluate_auc(p_amortized, run_view['y_auc_oracle'], run_view['auc_mask_t'])
 
                 tau_val = model.get_tau()
                 active_mask = tau_val > TAU_THRESHOLD
@@ -1885,7 +2336,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             train_indices = data.get('train_global_shared_indices', global_shared_indices)
             support_retention = train_retention if mode == 'post_support_transfer' else 1.0
             pre_retention = 1.0 if mode == 'post_support_transfer' else train_retention
-            N_pre, _, y_train_pre, train_mask_pre_t = build_training_targets(
+            N_pre, _, y_train_pre, train_mask_pre_t, row_weight_pre_t = build_training_targets(
                 n_files,
                 all_dfs,
                 train_indices,
@@ -1894,10 +2345,47 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 quiet=quiet,
                 train_retention=pre_retention,
             )
+            pre_run_view = prune_embedding_only_train_columns(
+                y_train_pre,
+                train_mask_pre_t,
+                y_oracle,
+                test_mask,
+                test_mask_t,
+                x_j=x_j,
+                y_auc_oracle=data['y_auc_oracle'],
+                auc_mask_t=data['auc_test_mask_t'],
+                task_ids=data.get('task_ids'),
+            )
             y_support, support_mask_current_t = build_cross_revision_support_targets(
                 data,
                 train_retention=support_retention,
             )
+            support_run_view = prune_embedding_only_train_columns(
+                y_support,
+                support_mask_current_t,
+                y_oracle,
+                test_mask,
+                test_mask_t,
+                x_j=x_j,
+                y_auc_oracle=data['y_auc_oracle'],
+                auc_mask_t=data['auc_test_mask_t'],
+                task_ids=data.get('task_ids'),
+            )
+            N_pre = pre_run_view['N']
+            y_train_pre = pre_run_view['y_train']
+            train_mask_pre_t = pre_run_view['train_mask_t']
+            N = support_run_view['N']
+            J = support_run_view['J']
+            y_support = support_run_view['y_train']
+            support_mask_current_t = support_run_view['train_mask_t']
+            y_oracle = support_run_view['y_oracle']
+            test_mask = support_run_view['test_mask']
+            test_mask_t = support_run_view['test_mask_t']
+            x_j = support_run_view['x_j']
+            test_idx = support_run_view['test_idx']
+            run_task_ids = support_run_view['task_ids'] or run_task_ids
+            run_train_item_ids = support_run_view['train_item_ids'] or run_train_item_ids
+            run_test_item_ids = support_run_view['test_item_ids'] or run_test_item_ids
             observed_train_pairs = int(
                 support_mask_current_t.sum().item()
                 if mode == 'post_support_transfer'
@@ -1916,6 +2404,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 epochs=EPOCHS,
                 lambda_tau=LAMBDA_TAU,
                 quiet=quiet,
+                row_weight_t=row_weight_pre_t,
             )
 
             model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.0, no_tau=no_tau).to(device)
@@ -1933,13 +2422,14 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 model_type=model_type,
                 beta_phi=beta_phi,
                 quiet=quiet,
+                row_weight_t=torch.ones(N, device=device),
             )
             final_rmse = compute_rmse(
                 p_amortized.detach().cpu().numpy(),
                 y_oracle.detach().cpu().numpy(),
                 test_mask,
             )
-            auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
+            auc_amortized = evaluate_auc(p_amortized, support_run_view['y_auc_oracle'], support_run_view['auc_mask_t'])
             tau_val = model.get_tau()
             active_mask = tau_val > TAU_THRESHOLD
             active_dims = active_mask.sum().item()
@@ -1948,22 +2438,46 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 active_dim_indices = [active_dim_indices]
     else:
         train_indices = data.get('train_global_shared_indices', global_shared_indices)
-        _, _, y_train, train_mask_current_t = build_training_targets(
+        _, _, y_train, train_mask_current_t, train_row_weight_t = build_training_targets(
             n_files, all_dfs, train_indices, data, model_type=model_type, quiet=quiet,
             train_retention=train_retention
         )
+        run_view = prune_embedding_only_train_columns(
+            y_train,
+            train_mask_current_t,
+            y_oracle,
+            test_mask,
+            test_mask_t,
+            x_j=x_j,
+            y_auc_oracle=data['y_auc_oracle'],
+            auc_mask_t=data['auc_test_mask_t'],
+            task_ids=data.get('task_ids'),
+        )
+        N = run_view['N']
+        J = run_view['J']
+        y_train = run_view['y_train']
+        train_mask_current_t = run_view['train_mask_t']
+        y_oracle = run_view['y_oracle']
+        test_mask = run_view['test_mask']
+        test_mask_t = run_view['test_mask_t']
+        x_j = run_view['x_j']
+        test_idx = run_view['test_idx']
+        run_task_ids = run_view['task_ids'] or run_task_ids
+        run_train_item_ids = run_view['train_item_ids'] or run_train_item_ids
+        run_test_item_ids = run_view['test_item_ids'] or run_test_item_ids
         observed_train_pairs = int(train_mask_current_t.sum().item())
 
         model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
         final_rmse, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                          model_type=model_type, beta_phi=beta_phi,
-                                         epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet)
+                                         epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet,
+                                         row_weight_t=train_row_weight_t)
 
         model.eval()
         with torch.no_grad():
             model.load_state_dict({k: v.to(device) for k, v in final_state.items()})
             p_amortized = model()
-            auc_amortized = evaluate_auc(p_amortized, data['y_auc_oracle'], data['auc_test_mask_t'])
+            auc_amortized = evaluate_auc(p_amortized, run_view['y_auc_oracle'], run_view['auc_mask_t'])
 
             tau_val = model.get_tau()
             active_mask = tau_val > TAU_THRESHOLD
@@ -1978,10 +2492,25 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     if neighbor_support_output:
         if data.get('cross_revision_post_binary', False):
             y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=1.0)
+            knn_view = prune_embedding_only_train_columns(
+                y_knn,
+                knn_mask_t,
+                y_oracle,
+                test_mask,
+                test_mask_t,
+                x_j=x_j,
+                y_auc_oracle=run_view['y_auc_oracle'] if 'run_view' in locals() else data['y_auc_oracle'],
+                auc_mask_t=run_view['auc_mask_t'] if 'run_view' in locals() else data['auc_test_mask_t'],
+                task_ids=run_task_ids,
+            )
+            y_knn = knn_view['y_train']
+            knn_mask_t = knn_view['train_mask_t']
+            knn_row_weight_t = torch.ones(int(y_knn.shape[0]), device=device)
         else:
             y_knn, knn_mask_t = y_train, train_mask_current_t
+            knn_row_weight_t = train_row_weight_t
         p_knn, support_diag = compute_knn_predictions(
-            y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k
+            y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k, row_weight_t=knn_row_weight_t
         )
         neighbor_support_rows = build_neighbor_support_rows(
             n_files,
@@ -2006,9 +2535,24 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         if p_knn is None:
             if data.get('cross_revision_post_binary', False):
                 y_knn, knn_mask_t = build_cross_revision_support_targets(data, train_retention=1.0)
+                knn_view = prune_embedding_only_train_columns(
+                    y_knn,
+                    knn_mask_t,
+                    y_oracle,
+                    test_mask,
+                    test_mask_t,
+                    x_j=x_j,
+                    y_auc_oracle=run_view['y_auc_oracle'] if 'run_view' in locals() else data['y_auc_oracle'],
+                    auc_mask_t=run_view['auc_mask_t'] if 'run_view' in locals() else data['auc_test_mask_t'],
+                    task_ids=run_task_ids,
+                )
+                y_knn = knn_view['y_train']
+                knn_mask_t = knn_view['train_mask_t']
+                knn_row_weight_t = torch.ones(int(y_knn.shape[0]), device=device)
             else:
                 y_knn, knn_mask_t = y_train, train_mask_current_t
-            p_knn, _ = compute_knn_predictions(y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k)
+                knn_row_weight_t = train_row_weight_t
+            p_knn, _ = compute_knn_predictions(y_knn, knn_mask_t, x_j, test_mask, knn_k=knn_k, row_weight_t=knn_row_weight_t)
         outlier_robustness_rows = build_outlier_robustness_rows(
             n_files,
             model_type,
@@ -2029,6 +2573,15 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
+        'embedding_protocol': data.get('embedding_protocol', embedding_metadata_for_type(embedding_type)[0]),
+        'embedding_fit_scope': data.get('embedding_fit_scope', embedding_metadata_for_type(embedding_type)[1]),
+        'embedding_fit_item_count': int(data.get('embedding_fit_item_count', 0)),
+        'task_ids': run_task_ids,
+        'train_item_ids': run_train_item_ids,
+        'test_item_ids': run_test_item_ids,
+        'pre_population_match': data.get('pre_population_match', PRE_POPULATION_MATCH_NONE),
+        'pre_population_match_version': data.get('pre_population_match_version', np.nan),
+        'effective_pre_weight_sum': float(data.get('effective_pre_weight_sum', np.nan)),
         'observed_train_pairs': observed_train_pairs,
         'rmse_amortized': final_rmse,
         'auc_amortized': auc_amortized,
@@ -2149,6 +2702,22 @@ def normalize_baseline_embedding_type(value):
     return v if v and v != 'nan' else 'pca'
 
 
+def normalize_pre_population_match(value):
+    if value is None or pd.isna(value):
+        return PRE_POPULATION_MATCH_NONE
+    v = str(value).strip().lower()
+    return v if v else PRE_POPULATION_MATCH_NONE
+
+
+def normalize_pre_population_match_version(value, pre_population_match=None):
+    match = normalize_pre_population_match(pre_population_match)
+    if match == PRE_POPULATION_MATCH_NONE:
+        return np.nan
+    if value is None or pd.isna(value):
+        return int(PRE_POPULATION_MATCH_VERSION)
+    return int(value)
+
+
 def parse_knn_k_grid(values):
     """Normalize a kNN sweep specification into a sorted tuple of unique positive ints."""
     if values is None:
@@ -2189,10 +2758,17 @@ def _baseline_key_rel_dir(key):
     pre_revision = normalize_pre_revision(key['pre_revision'])
     j_percentage = normalize_j_percentage(key['j_percentage'])
     baseline_embedding_type = normalize_baseline_embedding_type(key['baseline_embedding_type'])
+    pre_population_match = normalize_pre_population_match(key.get('pre_population_match'))
+    pre_population_match_version = normalize_pre_population_match_version(
+        key.get('pre_population_match_version'),
+        pre_population_match=pre_population_match,
+    )
     return os.path.join(
         f"model_{str(key['model_type'])}",
         f"embed_{baseline_embedding_type}",
         f"pre_{pre_revision}",
+        f"match_{pre_population_match}",
+        f"matchv_{pre_population_match_version if not pd.isna(pre_population_match_version) else 'na'}",
         f"j_{j_percentage:.6f}",
         f"n_{int(key['n_samples'])}",
     )
@@ -2254,11 +2830,20 @@ def _normalize_key_payload(payload):
     out['j_percentage'] = normalize_j_percentage(out['j_percentage'])
     out['train_retention'] = normalize_train_retention(out.get('train_retention', 1.0))
     out['baseline_embedding_type'] = normalize_baseline_embedding_type(out['baseline_embedding_type'])
+    out['pre_population_match'] = normalize_pre_population_match(out.get('pre_population_match'))
+    out['pre_population_match_version'] = normalize_pre_population_match_version(
+        out.get('pre_population_match_version'),
+        pre_population_match=out['pre_population_match'],
+    )
     return out
 
 
 def write_non_mirt_cache(path, row):
-    key = _normalize_key_payload({k: row[k] for k in BASELINE_KEY_COLS})
+    key = _normalize_key_payload({
+        **{k: row[k] for k in BASELINE_KEY_COLS},
+        'pre_population_match': row.get('pre_population_match'),
+        'pre_population_match_version': row.get('pre_population_match_version'),
+    })
     payload = {
         **key,
         'agent_batch_size': row.get('agent_batch_size', compute_agent_batch_size(key['pre_revision'], key['n_samples'])),
@@ -2270,7 +2855,11 @@ def write_non_mirt_cache(path, row):
 
 
 def write_mirt_selected_cache(path, row):
-    key = _normalize_key_payload({k: row[k] for k in BASELINE_KEY_COLS})
+    key = _normalize_key_payload({
+        **{k: row[k] for k in BASELINE_KEY_COLS},
+        'pre_population_match': row.get('pre_population_match'),
+        'pre_population_match_version': row.get('pre_population_match_version'),
+    })
     payload = {**key}
     for col in MIRT_SUMMARY_COLS:
         if col not in row or pd.isna(row[col]):
@@ -2311,6 +2900,19 @@ def baseline_row_matches(df, key):
     n_samples_col = pd.to_numeric(df['n_samples'], errors='coerce')
     j_percentage_col = pd.to_numeric(df['j_percentage'], errors='coerce')
     train_retention_col = pd.to_numeric(df['train_retention'], errors='coerce')
+    if 'pre_population_match' in df.columns:
+        match_col = df['pre_population_match'].astype(str).map(normalize_pre_population_match)
+    else:
+        match_col = pd.Series(PRE_POPULATION_MATCH_NONE, index=df.index)
+    if 'pre_population_match_version' in df.columns:
+        match_version_col = pd.to_numeric(df['pre_population_match_version'], errors='coerce')
+    else:
+        match_version_col = pd.Series(np.nan, index=df.index)
+    key_match = normalize_pre_population_match(key.get('pre_population_match'))
+    key_match_version = normalize_pre_population_match_version(
+        key.get('pre_population_match_version'),
+        pre_population_match=key_match,
+    )
     j_match = pd.Series(
         np.isclose(j_percentage_col.to_numpy(dtype=float), float(key['j_percentage']), atol=1e-6, equal_nan=False),
         index=df.index,
@@ -2319,6 +2921,13 @@ def baseline_row_matches(df, key):
         np.isclose(train_retention_col.to_numpy(dtype=float), float(key['train_retention']), atol=1e-6, equal_nan=False),
         index=df.index,
     )
+    if pd.isna(key_match_version):
+        match_version_ok = pd.Series(match_version_col.isna().to_numpy(), index=df.index)
+    else:
+        match_version_ok = pd.Series(
+            np.isclose(match_version_col.to_numpy(dtype=float), float(key_match_version), atol=1e-6, equal_nan=False),
+            index=df.index,
+        )
     mask = (
         (seed_col == int(key['seed'])) &
         (df['model_type'].astype(str) == str(key['model_type'])) &
@@ -2326,6 +2935,8 @@ def baseline_row_matches(df, key):
         (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
         j_match &
         retention_match &
+        (match_col == key_match) &
+        match_version_ok &
         (
             df['baseline_embedding_type'].astype(str).map(normalize_baseline_embedding_type) ==
             str(key['baseline_embedding_type'])
@@ -2444,32 +3055,14 @@ def infer_completed_max_n_from_baseline_cache(path, seed, model_type, pre_revisi
         'j_percentage': normalize_j_percentage(j_percentage),
         'train_retention': normalize_train_retention(train_retention),
         'baseline_embedding_type': normalize_baseline_embedding_type(baseline_embedding_type),
+        'pre_population_match': effective_pre_population_match(pre_revision),
+        'pre_population_match_version': normalize_pre_population_match_version(
+            None,
+            pre_population_match=effective_pre_population_match(pre_revision),
+        ),
     }
 
-    seed_col = pd.to_numeric(df['seed'], errors='coerce')
-    j_percentage_col = pd.to_numeric(df['j_percentage'], errors='coerce')
-    train_retention_col = pd.to_numeric(df['train_retention'], errors='coerce')
-    n_samples_col = pd.to_numeric(df['n_samples'], errors='coerce')
-    j_match = pd.Series(
-        np.isclose(j_percentage_col.to_numpy(dtype=float), float(key['j_percentage']), atol=1e-6, equal_nan=False),
-        index=df.index,
-    )
-    retention_match = pd.Series(
-        np.isclose(train_retention_col.to_numpy(dtype=float), float(key['train_retention']), atol=1e-6, equal_nan=False),
-        index=df.index,
-    )
-    mask = (
-        (seed_col == int(key['seed'])) &
-        (df['model_type'].astype(str) == str(key['model_type'])) &
-        (df['pre_revision'].astype(str) == str(key['pre_revision'])) &
-        j_match &
-        retention_match &
-        (
-            df['baseline_embedding_type'].astype(str).map(normalize_baseline_embedding_type) ==
-            str(key['baseline_embedding_type'])
-        )
-    )
-    match = df[mask.fillna(False)]
+    match = baseline_row_matches(df, key)
     if match.empty:
         return None
 
@@ -2572,6 +3165,9 @@ def migrate_existing_baselines(source_dir, baseline_output, quiet=False):
         sub['pre_revision'] = pre_revision
         sub['j_percentage'] = j_percentage
         sub['baseline_embedding_type'] = baseline_embedding_type
+        sub['pre_population_match'] = PRE_POPULATION_MATCH_NONE
+        sub['pre_population_match_version'] = np.nan
+        sub['effective_pre_weight_sum'] = np.nan
         sub['agent_batch_size'] = [
             compute_agent_batch_size(pre_revision, ns)
             for ns in sub['n_samples'].tolist()
@@ -2666,7 +3262,7 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
                 j_percentage=j_percentage,
             )
             n_files = len(all_dfs)
-            _, _, _, train_mask_current_t = build_training_targets(
+            _, _, _, train_mask_current_t, _ = build_training_targets(
                 n_files,
                 all_dfs,
                 global_shared_indices,
@@ -2690,6 +3286,11 @@ def migrate_pair_efficiency_from_results(source_dir, pair_efficiency_output, bas
                 'pre_revision': pre_revision,
                 'j_percentage': j_percentage,
                 'baseline_embedding_type': 'raw',
+                'pre_population_match': effective_pre_population_match(pre_revision),
+                'pre_population_match_version': normalize_pre_population_match_version(
+                    None,
+                    pre_population_match=effective_pre_population_match(pre_revision),
+                ),
             }
             baseline_row = load_existing_baseline_row(baseline_output, baseline_key)
             if baseline_row is None:
@@ -2925,11 +3526,20 @@ def run_single_config(config, args, n_values):
             
             # Save model state to separate pkl if requested
             if args.save_weights:
+                weight_meta = {
+                    'embedding_type': actual_emb_type,
+                    'embedding_protocol': result.get('embedding_protocol', data.get('embedding_protocol')),
+                    'embedding_fit_scope': result.get('embedding_fit_scope', data.get('embedding_fit_scope')),
+                    'embedding_fit_item_count': int(result.get('embedding_fit_item_count', data.get('embedding_fit_item_count', 0))),
+                    'task_ids': result.get('task_ids', []),
+                    'train_item_ids': result.get('train_item_ids', []),
+                    'test_item_ids': result.get('test_item_ids', []),
+                }
                 weight_path = output_path.replace('.csv', f'_seed_{seed}_weights_best.pkl')
-                torch.save(result['model_state'], weight_path)
+                torch.save({'state_dict': result['model_state'], **weight_meta}, weight_path)
                 
                 final_weight_path = output_path.replace('.csv', f'_seed_{seed}_weights_final.pkl')
-                torch.save(result['final_state'], final_weight_path)
+                torch.save({'state_dict': result['final_state'], **weight_meta}, final_weight_path)
         finally:
             device = old_device
 
@@ -2944,6 +3554,9 @@ def run_single_config(config, args, n_values):
         r_copy = r.copy()
         if 'model_state' in r_copy: del r_copy['model_state']
         if 'final_state' in r_copy: del r_copy['final_state']
+        if 'task_ids' in r_copy: del r_copy['task_ids']
+        if 'train_item_ids' in r_copy: del r_copy['train_item_ids']
+        if 'test_item_ids' in r_copy: del r_copy['test_item_ids']
         save_results.append(r_copy)
     
     df_results = pd.DataFrame(save_results)
@@ -3196,6 +3809,11 @@ def main():
                     'train_retention': normalize_train_retention(args.train_retention),
                     'baseline_embedding_type': normalize_baseline_embedding_type(
                         args.baseline_embedding_type if args.baseline_embedding_type is not None else args.embedding_type
+                    ),
+                    'pre_population_match': effective_pre_population_match(args.pre_revision),
+                    'pre_population_match_version': normalize_pre_population_match_version(
+                        None,
+                        pre_population_match=effective_pre_population_match(args.pre_revision),
                     ),
                 }
                 cached = try_get_cached_baseline(

@@ -16,9 +16,20 @@ BASELINE_METRIC_COLS = [
 ]
 NON_MIRT_METRIC_COLS = [c for c in BASELINE_METRIC_COLS if c not in {'rmse_mirt', 'auc_mirt'}]
 BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_percentage', 'train_retention', 'baseline_embedding_type']
-BASELINE_AUX_COLS = ['agent_batch_size', 'selected_knn_k', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
+BASELINE_AUX_COLS = [
+    'agent_batch_size',
+    'selected_knn_k',
+    'selected_mirt_dim',
+    'mirt_sweep_min',
+    'mirt_sweep_max',
+    'mirt_selection_version',
+    'pre_population_match',
+    'pre_population_match_version',
+    'effective_pre_weight_sum',
+]
+BASELINE_GROUP_COLS = BASELINE_KEY_COLS + ['pre_population_match', 'pre_population_match_version']
 MIRT_SUMMARY_COLS = ['rmse_mirt', 'auc_mirt', 'selected_mirt_dim', 'mirt_sweep_min', 'mirt_sweep_max', 'mirt_selection_version']
-MIRT_SWEEP_KEY_COLS = BASELINE_KEY_COLS + ['mirt_dim']
+MIRT_SWEEP_KEY_COLS = BASELINE_GROUP_COLS + ['mirt_dim']
 MIRT_SWEEP_METRIC_COLS = ['rmse_mirt', 'auc_mirt', 'val_rmse_mirt', 'val_auc_mirt']
 BASELINE_METHOD_SPECS = {
     'naive': ('auc_naive', 'rmse_naive'),
@@ -27,7 +38,12 @@ BASELINE_METHOD_SPECS = {
     'mirt': ('auc_mirt', 'rmse_mirt'),
     'knn': ('auc_knn', 'rmse_knn'),
 }
+PRE_POPULATION_MATCH_NONE = 'none'
 GROUPED_BASELINE_RE = re.compile(
+    r"^baseline_(naive|rasch|irt_2pl|mirt|knn)_([^_]+)_(beta|bernoulli)_pre_([^_]+)"
+    r"_match_(.+?)_matchv_(.+?)_n_([^_]+)_j(.+?)(?:_ret_[^_]+)?\.csv$"
+)
+LEGACY_GROUPED_BASELINE_RE = re.compile(
     r"^baseline_(naive|rasch|irt_2pl|mirt|knn)_([^_]+)_(beta|bernoulli)_pre_([^_]+)_n_([^_]+)_j(.+?)(?:_ret_[^_]+)?\.csv$"
 )
 
@@ -61,6 +77,22 @@ def normalize_baseline_embedding_type(value):
     return v if v and v != 'nan' else 'pca'
 
 
+def normalize_pre_population_match(value):
+    if value is None or pd.isna(value):
+        return PRE_POPULATION_MATCH_NONE
+    v = str(value).strip().lower()
+    return v if v else PRE_POPULATION_MATCH_NONE
+
+
+def normalize_pre_population_match_version(value, pre_population_match=None):
+    match = normalize_pre_population_match(pre_population_match)
+    if match == PRE_POPULATION_MATCH_NONE:
+        return np.nan
+    if value is None or pd.isna(value):
+        return 1
+    return int(value)
+
+
 def compute_agent_batch_size(pre_revision, n_samples):
     pre = normalize_pre_revision(pre_revision)
     if pre == 'none':
@@ -82,6 +114,11 @@ def _normalize_key_payload(payload):
     out['j_percentage'] = normalize_j_percentage(out['j_percentage'])
     out['train_retention'] = normalize_train_retention(out.get('train_retention', 1.0))
     out['baseline_embedding_type'] = normalize_baseline_embedding_type(out['baseline_embedding_type'])
+    out['pre_population_match'] = normalize_pre_population_match(out.get('pre_population_match'))
+    out['pre_population_match_version'] = normalize_pre_population_match_version(
+        out.get('pre_population_match_version'),
+        pre_population_match=out['pre_population_match'],
+    )
     return out
 
 
@@ -98,7 +135,9 @@ def grouped_baseline_file(path, method_key, key):
         directory,
         (
             f"baseline_{method_key}_{key['baseline_embedding_type']}_{key['model_type']}"
-            f"_pre_{key['pre_revision']}_n_{key['n_samples']}_j{j_token}_ret_{retention_token}.csv"
+            f"_pre_{key['pre_revision']}_match_{key['pre_population_match']}"
+            f"_matchv_{key['pre_population_match_version'] if not pd.isna(key['pre_population_match_version']) else 'na'}"
+            f"_n_{key['n_samples']}_j{j_token}_ret_{retention_token}.csv"
         ),
     )
 
@@ -112,7 +151,9 @@ def grouped_mirt_sweep_file(path, key):
         directory,
         (
             f"baseline_mirt_sweep_{key['baseline_embedding_type']}_{key['model_type']}"
-            f"_pre_{key['pre_revision']}_n_{key['n_samples']}_j{j_token}_ret_{retention_token}.csv"
+            f"_pre_{key['pre_revision']}_match_{key['pre_population_match']}"
+            f"_matchv_{key['pre_population_match_version'] if not pd.isna(key['pre_population_match_version']) else 'na'}"
+            f"_n_{key['n_samples']}_j{j_token}_ret_{retention_token}.csv"
         ),
     )
 
@@ -133,11 +174,23 @@ def _append_grouped_row(path, row, key_cols):
 
 
 def write_grouped_baseline_files(path, row):
-    key = _normalize_key_payload({k: row[k] for k in BASELINE_KEY_COLS})
+    key = _normalize_key_payload({
+        **{k: row[k] for k in BASELINE_KEY_COLS},
+        'pre_population_match': row.get('pre_population_match'),
+        'pre_population_match_version': row.get('pre_population_match_version'),
+    })
     base_payload = {
         **key,
         'agent_batch_size': row.get('agent_batch_size', compute_agent_batch_size(key['pre_revision'], key['n_samples'])),
     }
+    for col in ['pre_population_match', 'pre_population_match_version', 'effective_pre_weight_sum']:
+        if col in row and not pd.isna(row[col]):
+            if col == 'pre_population_match':
+                base_payload[col] = str(row[col])
+            elif col == 'pre_population_match_version':
+                base_payload[col] = int(row[col])
+            else:
+                base_payload[col] = float(row[col])
     if 'selected_knn_k' in row and not pd.isna(row['selected_knn_k']):
         base_payload['selected_knn_k'] = int(row['selected_knn_k'])
     for method_key, (auc_col, rmse_col) in BASELINE_METHOD_SPECS.items():
@@ -164,8 +217,15 @@ def write_grouped_baseline_files(path, row):
 
 
 def write_grouped_mirt_sweep_file(path, row):
-    key = _normalize_key_payload({k: row[k] for k in BASELINE_KEY_COLS})
-    payload = {**key, 'mirt_dim': int(row['mirt_dim'])}
+    key = _normalize_key_payload({
+        **{k: row[k] for k in BASELINE_KEY_COLS},
+        'pre_population_match': row.get('pre_population_match'),
+        'pre_population_match_version': row.get('pre_population_match_version'),
+    })
+    payload = {
+        **key,
+        'mirt_dim': int(row['mirt_dim']),
+    }
     for col in MIRT_SWEEP_METRIC_COLS:
         if col in row and not pd.isna(row[col]):
             payload[col] = float(row[col])
@@ -179,8 +239,7 @@ def _load_grouped_baseline_files(path):
 
     grouped_files = []
     for filename in os.listdir(directory):
-        match = GROUPED_BASELINE_RE.match(filename)
-        if match:
+        if GROUPED_BASELINE_RE.match(filename) or LEGACY_GROUPED_BASELINE_RE.match(filename):
             grouped_files.append(os.path.join(directory, filename))
     if not grouped_files:
         return None
@@ -205,7 +264,7 @@ def _load_grouped_baseline_files(path):
     agg_map = {}
     for col in BASELINE_METRIC_COLS + BASELINE_AUX_COLS:
         agg_map[col] = _last_non_null
-    combined = combined.groupby(BASELINE_KEY_COLS, dropna=False, as_index=False).agg(agg_map)
+    combined = combined.groupby(BASELINE_GROUP_COLS, dropna=False, as_index=False).agg(agg_map)
     combined['baseline_embedding_type'] = combined['baseline_embedding_type'].map(normalize_baseline_embedding_type)
     combined['agent_batch_size'] = [
         compute_agent_batch_size(pr, ns)

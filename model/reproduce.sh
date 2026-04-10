@@ -20,12 +20,7 @@ MAIN_RESULT_DIR="${RESULT_ROOT}/main"
 RESULT_DIR="${MAIN_RESULT_DIR}"
 BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
 MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
-PAIR_RESULT_DIR="${RESULT_ROOT}/pair_efficiency_study"
-PAIR_BASELINE_CSV="${PAIR_RESULT_DIR}/baselines/baseline_metrics.csv"
-PAIR_MIRT_SWEEP_CSV="${PAIR_RESULT_DIR}/baselines/mirt_sweep.csv"
-SUPPORT_RESULT_DIR="${RESULT_ROOT}/neighbor_support_study"
 THIN_RESULT_DIR="${RESULT_ROOT}/support_thinning_study"
-OUTLIER_RESULT_DIR="${RESULT_ROOT}/outlier_robustness_study"
 SAMPLE_SIZE_RESULT_DIR="${RESULT_ROOT}/sample_size_study"
 RESTORE_COMMIT="${RESTORE_COMMIT:-1b3737c3ddca6e8554948f967cb21e7fab2ef8aa}"
 
@@ -39,20 +34,15 @@ PARALLEL=1
 CLEAN_RESULTS=false
 OVERRIDE_RESULTS=false
 QUIET=false
-PAIR_EFFICIENCY_STUDY=false
-NEIGHBOR_SUPPORT_STUDY=false
 SUPPORT_THINNING_STUDY=false
-OUTLIER_ROBUSTNESS_STUDY=false
 SAMPLE_SIZE_STUDY=false
 MIRT_DIM_MIN=2
 MIRT_DIM_MAX=30
-PAIR_PRE_LEVELS=("4" "8" "16" "32" "max")
-PAIR_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "1.0")
 THIN_RETENTIONS=("0.05" "0.1" "0.25" "0.5" "1.0")
 THIN_ARAF_EMBEDDINGS=("raw" "pca")
 THIN_KNN_EMBEDDINGS=("raw" "pca")
 THIN_K_VALUES=("5" "10" "20" "50")
-SAMPLE_USER_LEVELS=("4" "8" "16" "32")
+SAMPLE_USER_LEVELS=("4" "8" "16" "32" "max")
 SAMPLE_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "0.9")
 MAIN_KNN_GRID="${MAIN_KNN_GRID:-5,10,20,50}"
 
@@ -84,14 +74,6 @@ while [[ $# -gt 0 ]]; do
             QUIET=true
             shift
             ;;
-        --pair-efficiency-study)
-            PAIR_EFFICIENCY_STUDY=true
-            shift
-            ;;
-        --neighbor-support-study)
-            NEIGHBOR_SUPPORT_STUDY=true
-            shift
-            ;;
         --support-thinning-study)
             SUPPORT_THINNING_STUDY=true
             shift
@@ -100,30 +82,14 @@ while [[ $# -gt 0 ]]; do
             SAMPLE_SIZE_STUDY=true
             shift
             ;;
-        --outlier-robustness-study)
-            OUTLIER_ROBUSTNESS_STUDY=true
-            shift
-            ;;
         *)
             shift
             ;;
     esac
 done
-RUN_PAIR_EFFICIENCY_STUDY=false
-if $FULL_SWEEP || $PAIR_EFFICIENCY_STUDY; then
-    RUN_PAIR_EFFICIENCY_STUDY=true
-fi
-RUN_NEIGHBOR_SUPPORT_STUDY=false
-if $FULL_SWEEP || $NEIGHBOR_SUPPORT_STUDY; then
-    RUN_NEIGHBOR_SUPPORT_STUDY=true
-fi
 RUN_SUPPORT_THINNING_STUDY=false
 if $SUPPORT_THINNING_STUDY; then
     RUN_SUPPORT_THINNING_STUDY=true
-fi
-RUN_OUTLIER_ROBUSTNESS_STUDY=false
-if $OUTLIER_ROBUSTNESS_STUDY; then
-    RUN_OUTLIER_ROBUSTNESS_STUDY=true
 fi
 RUN_SAMPLE_SIZE_STUDY=false
 if $FULL_SWEEP || $SAMPLE_SIZE_STUDY; then
@@ -131,13 +97,31 @@ if $FULL_SWEEP || $SAMPLE_SIZE_STUDY; then
 fi
 
 RUN_MAIN_EXPERIMENTS=true
-if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY || $OUTLIER_ROBUSTNESS_STUDY || $SAMPLE_SIZE_STUDY; then
+if $SUPPORT_THINNING_STUDY || $SAMPLE_SIZE_STUDY; then
     RUN_MAIN_EXPERIMENTS=false
 fi
 
 THIN_ONLY_MODE=false
-if $SUPPORT_THINNING_STUDY && ! $PAIR_EFFICIENCY_STUDY && ! $NEIGHBOR_SUPPORT_STUDY && ! $OUTLIER_ROBUSTNESS_STUDY && ! $FULL_SWEEP; then
+if $SUPPORT_THINNING_STUDY && ! $FULL_SWEEP; then
     THIN_ONLY_MODE=true
+fi
+
+STUDY_ONLY_MODE=false
+if ! $RUN_MAIN_EXPERIMENTS; then
+    STUDY_ONLY_MODE=true
+fi
+
+ACTIVE_RESULT_DIRS=()
+if $RUN_MAIN_EXPERIMENTS; then
+    ACTIVE_RESULT_DIRS+=("${MAIN_RESULT_DIR}")
+fi
+if ! $RUN_MAIN_EXPERIMENTS; then
+    if $RUN_SUPPORT_THINNING_STUDY; then
+        ACTIVE_RESULT_DIRS+=("${THIN_RESULT_DIR}")
+    fi
+    if $RUN_SAMPLE_SIZE_STUDY; then
+        ACTIVE_RESULT_DIRS+=("${SAMPLE_SIZE_RESULT_DIR}")
+    fi
 fi
 
 if $FULL_SWEEP; then
@@ -236,9 +220,22 @@ if $ONLY_PLOT; then
     fi
     echo "[VERIFY] All required data files found."
 else
+    active_dirs_nonempty=false
+    for target_dir in "${ACTIVE_RESULT_DIRS[@]}"; do
+        if [ -d "${target_dir}" ] && [ "$(ls -A "${target_dir}" 2>/dev/null)" ]; then
+            active_dirs_nonempty=true
+            break
+        fi
+    done
+
+    if $FULL_SWEEP && ! $OVERRIDE_RESULTS; then
+        CLEAN_RESULTS=true
+        echo "[CLEAN] FULL sweep requested. Resetting active result directories: ${ACTIVE_RESULT_DIRS[*]}"
+    fi
+
     if ! $CLEAN_RESULTS && ! $OVERRIDE_RESULTS; then
-        if [ -d "${RESULT_ROOT}" ] && [ "$(ls -A ${RESULT_ROOT})" ]; then
-            read -p "[WARNING] Output directory (${RESULT_ROOT}) is not empty. Do you want to [o]verwrite, or [c]ontinue? (o/c): " choice
+        if $active_dirs_nonempty; then
+            read -p "[WARNING] Active output directories are not empty (${ACTIVE_RESULT_DIRS[*]}). Do you want to [o]verwrite, or [c]ontinue? (o/c): " choice
             case "$choice" in
               o|O|overwrite|Overwrite) CLEAN_RESULTS=true ;;
               c|C|continue|Continue) OVERRIDE_RESULTS=true ;;
@@ -248,32 +245,46 @@ else
     fi
 
     if $CLEAN_RESULTS; then
-        echo "[CLEAN] Removing previous results from ${RESULT_ROOT} ..."
-        rm -rf "${RESULT_ROOT}"
-        mkdir -p "${MAIN_RESULT_DIR}"
+        for target_dir in "${ACTIVE_RESULT_DIRS[@]}"; do
+            echo "[CLEAN] Removing previous results from ${target_dir} ..."
+            rm -rf "${target_dir}"
+            mkdir -p "${target_dir}"
+        done
     else
-        echo "[OVERRIDE] Keeping previous results. New results will be appended/overridden in ${RESULT_ROOT}."
-        mkdir -p "${MAIN_RESULT_DIR}"
+        echo "[OVERRIDE] Keeping previous results in active target dirs: ${ACTIVE_RESULT_DIRS[*]}"
+        for target_dir in "${ACTIVE_RESULT_DIRS[@]}"; do
+            mkdir -p "${target_dir}"
+        done
     fi
 
     echo "[CLEAN] Verifying integrity of existing CSVs..."
+    active_dirs_py=""
+    for target_dir in "${ACTIVE_RESULT_DIRS[@]}"; do
+        active_dirs_py+="r'''${target_dir}''',"
+    done
     python -c "
-import os, pandas as pd
-for f in os.listdir('${MAIN_RESULT_DIR}'):
-    if not f.endswith('.csv'):
+import os
+from pathlib import Path
+import pandas as pd
+
+targets = [Path(p) for p in [${active_dirs_py}]]
+if not targets:
+    targets = [Path('${MAIN_RESULT_DIR}')]
+for root in targets:
+    if not root.exists():
         continue
-    p = os.path.join('${MAIN_RESULT_DIR}', f)
-    try:
-        pd.read_csv(p)
-    except Exception:
-        print(f'   -> Removed corrupted file: {f}')
-        os.remove(p)
+    for p in root.rglob('*.csv'):
+        try:
+            pd.read_csv(p)
+        except Exception:
+            print(f'   -> Removed corrupted file: {p}')
+            p.unlink(missing_ok=True)
 "
 fi
 echo ""
 
-if $THIN_ONLY_MODE; then
-    echo "[BASELINE] Thinning-only mode: skipping global baseline migration."
+if $STUDY_ONLY_MODE; then
+    echo "[BASELINE] Study-only mode: skipping global main-result baseline migration."
 else
     echo "[BASELINE] Migrating existing CSVs to separated baseline schema..."
     baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${MAIN_RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
@@ -296,6 +307,10 @@ run_baseline() {
     local train_retention=${9:-1.0}
     local cross_revision_post_binary=${10:-false}
     local user_count=${11:-""}
+    local pre_match="none"
+    if [[ "$pre" != "false" && "$pre" != "max" ]]; then
+        pre_match="transport_binary_strength"
+    fi
 
     local seeds_csv=${seeds// /,}
     local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
@@ -322,7 +337,7 @@ run_baseline() {
         cmd="$cmd --quiet"
     fi
 
-    echo " -> Baseline cache: n=$n model=$model pre=$pre users=${user_count:-all} j=$j_pct retention=${train_retention} base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
+    echo " -> Baseline cache: n=$n model=$model pre=$pre match=${pre_match} eff_pre=${pre:-none} users=${user_count:-all} j=$j_pct retention=${train_retention} base_emb=${baseline_emb} k=${knn_k} profile=${baseline_profile} seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -349,6 +364,10 @@ run_exp() {
     local cross_revision_post_binary=${20:-false}
     local cross_revision_araf_mode=${21:-transfer}
     local user_count=${22:-""}
+    local pre_match="none"
+    if [[ "$pre" != "false" && "$pre" != "max" ]]; then
+        pre_match="transport_binary_strength"
+    fi
 
     # Precompute/reuse baselines for all amortized-style runs.
     if [[ "$emb" != "rasch_2pl" && "$emb" != "nonamortised_mirt" && "$precompute_baseline" == "true" ]]; then
@@ -424,7 +443,7 @@ run_exp() {
         cmd="$cmd --parallel $PARALLEL"
     fi
 
-    echo " -> Running: $emb (N=$n, users=${user_count:-all}, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}, cross_mode=${cross_revision_araf_mode}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+    echo " -> Running: $emb (N=$n, pre=$pre, match=${pre_match}, eff_pre=${pre:-none}, users=${user_count:-all}, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}, cross_mode=${cross_revision_araf_mode}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
     eval "$cmd"
 }
 
@@ -469,181 +488,13 @@ run_tau_sweep() {
     local base_tau=$4
     local pre=${5:-false}
     local j_pct=${6:-1.0}
-    local pair_efficiency_output=${7:-""}
 
     local taus="$base_tau"
     if $FULL_SWEEP; then
         taus="$SHARED_TAUS"
     fi
 
-    run_exp "$emb" "$n" "$model" "$taus" "$pre" "$SEEDS" "${RESULT_DIR}" false false "$j_pct" "$pair_efficiency_output"
-}
-
-run_pair_efficiency_study() {
-    local saved_result_dir="${RESULT_DIR}"
-    local saved_baseline_csv="${BASELINE_CSV}"
-    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
-    local source_result_dir="${saved_result_dir}"
-
-    RESULT_DIR="${PAIR_RESULT_DIR}"
-    BASELINE_CSV="${PAIR_BASELINE_CSV}"
-    MIRT_SWEEP_CSV="${PAIR_MIRT_SWEEP_CSV}"
-
-    mkdir -p "${RESULT_DIR}"
-
-    local pair_count=${#PAIR_PRE_LEVELS[@]}
-    echo " -> Running separate observed-pair efficiency study..."
-    echo " -> Using ${pair_count} targeted N x J checkpoints (low -> saturation)..."
-
-    run_pair_mode() {
-        local model="$1"
-        local n_samples="$2"
-        local pair_csv="${RESULT_DIR}/pair_efficiency_${model}_grid.csv"
-
-        echo " -> Seeding ${model} pair-efficiency study from matching main result CSVs when available..."
-        for ((idx=0; idx<pair_count; idx++)); do
-            local n="${PAIR_PRE_LEVELS[$idx]}"
-            local j="${PAIR_J_LEVELS[$idx]}"
-            for emb in sae pca raw; do
-                local suffix="_pre_${n}_n_${n_samples}"
-                local j_suffix=""
-                if [[ "$j" != "1.0" ]]; then
-                    j_suffix="_j${j}"
-                fi
-                local fname="amortized_irt_${emb}_${model}${suffix}${j_suffix}.csv"
-                if [[ -f "${source_result_dir}/${fname}" && ! -f "${RESULT_DIR}/${fname}" ]]; then
-                    cp "${source_result_dir}/${fname}" "${RESULT_DIR}/${fname}"
-                fi
-            done
-        done
-
-        echo " -> Priming separate baseline cache for selected ${model} checkpoints..."
-        for ((idx=0; idx<pair_count; idx++)); do
-            local n="${PAIR_PRE_LEVELS[$idx]}"
-            local j="${PAIR_J_LEVELS[$idx]}"
-            run_baseline "${n_samples}" "${model}" "$n" "$SEEDS" "$j"
-        done
-
-        if [[ ! -f "${pair_csv}" ]]; then
-            echo " -> Migrating pair-efficiency rows from seeded ${model} result CSVs..."
-            local migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV} --quiet"
-            if ! $QUIET; then
-                migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-pair-efficiency --migrate-model-type ${model} --migrate-source-dir ${RESULT_DIR} --pair-efficiency-output ${pair_csv} --baseline-output ${BASELINE_CSV}"
-            fi
-            eval "$migrate_cmd"
-        else
-            echo " -> Reusing existing ${model} pair-efficiency CSV; skipping migration backfill."
-        fi
-
-        echo " -> Running ${model} pair-efficiency sweep with full tau setup..."
-        for ((idx=0; idx<pair_count; idx++)); do
-            local n="${PAIR_PRE_LEVELS[$idx]}"
-            local j="${PAIR_J_LEVELS[$idx]}"
-            if [[ "${model}" == "beta" ]]; then
-                run_tau_sweep sae "${n_samples}" "${model}" 0.16 "$n" "$j" "$pair_csv"
-                run_tau_sweep pca "${n_samples}" "${model}" 0.054 "$n" "$j" "$pair_csv"
-                run_tau_sweep raw "${n_samples}" "${model}" 0.029 "$n" "$j" "$pair_csv"
-            else
-                run_tau_sweep sae "${n_samples}" "${model}" 0.0159 "$n" "$j" "$pair_csv"
-                run_tau_sweep pca "${n_samples}" "${model}" 0.0155 "$n" "$j" "$pair_csv"
-                run_tau_sweep raw "${n_samples}" "${model}" 0.0151 "$n" "$j" "$pair_csv"
-            fi
-        done
-    }
-
-    run_pair_mode beta max
-
-    local meta_csv="${RESULT_DIR}/pair_efficiency_checkpoints.csv"
-    cat > "${meta_csv}" <<EOF
-step,pre_revision,j_percentage
-1,${PAIR_PRE_LEVELS[0]},${PAIR_J_LEVELS[0]}
-2,${PAIR_PRE_LEVELS[1]},${PAIR_J_LEVELS[1]}
-3,${PAIR_PRE_LEVELS[2]},${PAIR_J_LEVELS[2]}
-4,${PAIR_PRE_LEVELS[3]},${PAIR_J_LEVELS[3]}
-5,${PAIR_PRE_LEVELS[4]},${PAIR_J_LEVELS[4]}
-EOF
-
-    RESULT_DIR="${saved_result_dir}"
-    BASELINE_CSV="${saved_baseline_csv}"
-    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
-}
-
-run_neighbor_support_study() {
-    local saved_result_dir="${RESULT_DIR}"
-    local saved_baseline_csv="${BASELINE_CSV}"
-    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
-    local pair_csv="${PAIR_RESULT_DIR}/pair_efficiency_beta_grid.csv"
-    local support_csv="${SUPPORT_RESULT_DIR}/neighbor_support_beta_grid.csv"
-    local config_csv="${SUPPORT_RESULT_DIR}/neighbor_support_beta_configs.csv"
-
-    mkdir -p "${SUPPORT_RESULT_DIR}"
-
-    if [[ ! -f "${pair_csv}" ]]; then
-        echo " -> Pair-efficiency beta CSV not found; running pair-efficiency study first..."
-        run_pair_efficiency_study
-    fi
-
-    if [[ ! -f "${pair_csv}" ]]; then
-        echo " -> Neighbor-support study skipped: missing ${pair_csv}"
-        return
-    fi
-
-    echo " -> Preparing beta neighbor-support study from pair-efficiency selections..."
-    python - <<PY
-import pandas as pd
-from pathlib import Path
-
-pair_csv = Path(r"""${pair_csv}""")
-config_csv = Path(r"""${config_csv}""")
-checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
-df = pd.read_csv(pair_csv, low_memory=False)
-df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
-rows = []
-for pre, j in checkpoints:
-    sub = df[(df['pre_key'] == str(pre).lower()) & (df['j_percentage'].round(3) == j)]
-    if sub.empty:
-        continue
-    grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
-        auc_araf=('auc_araf', 'mean'),
-        rmse_araf=('rmse_araf', 'mean')
-    )
-    auc_pick = grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
-    rmse_pick = grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
-    rows.append({
-        'selection_metric': 'auc',
-        'pre_revision': pre,
-        'j_percentage': j,
-        'embedding_type': auc_pick['embedding_type'],
-        'lambda_tau': auc_pick['lambda_tau'],
-    })
-    rows.append({
-        'selection_metric': 'rmse',
-        'pre_revision': pre,
-        'j_percentage': j,
-        'embedding_type': rmse_pick['embedding_type'],
-        'lambda_tau': rmse_pick['lambda_tau'],
-    })
-out = pd.DataFrame(rows).drop_duplicates()
-config_csv.parent.mkdir(parents=True, exist_ok=True)
-out.to_csv(config_csv, index=False)
-print(out.to_string(index=False))
-PY
-
-    RESULT_DIR="${SUPPORT_RESULT_DIR}"
-    BASELINE_CSV="${PAIR_BASELINE_CSV}"
-    MIRT_SWEEP_CSV="${PAIR_MIRT_SWEEP_CSV}"
-
-    echo " -> Running beta neighbor-support study for selected checkpoint configs..."
-    while IFS=, read -r selection_metric pre_revision j_percentage embedding_type lambda_tau; do
-        if [[ "${selection_metric}" == "selection_metric" ]]; then
-            continue
-        fi
-        run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${RESULT_DIR}" false false "${j_percentage}" "" "${support_csv}"
-    done < "${config_csv}"
-
-    RESULT_DIR="${saved_result_dir}"
-    BASELINE_CSV="${saved_baseline_csv}"
-    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
+    run_exp "$emb" "$n" "$model" "$taus" "$pre" "$SEEDS" "${RESULT_DIR}" false false "$j_pct"
 }
 
 run_support_thinning_study() {
@@ -737,34 +588,20 @@ run_sample_size_study() {
 
     mkdir -p "${SAMPLE_SIZE_RESULT_DIR}"
 
-    # Remove legacy scaling-law outputs from the root result dir so stale files
-    # do not contaminate analyses now that sample-size lives in its own folder.
-    python - <<PY
-import re
-from pathlib import Path
-
-root = Path(r"""${saved_result_dir}""")
-if root.is_dir():
-    pat = re.compile(r"^amortized_irt_(sae|pca|raw)_beta_pre_(4|8|16|32|64|max)_n_max(?:_j(?:0\.1|0\.3|0\.5|0\.7|0\.9))?(?:_braw_k10)?\.csv$")
-    removed = 0
-    for p in root.iterdir():
-        if p.is_file() and pat.match(p.name):
-            p.unlink(missing_ok=True)
-            removed += 1
-    if removed:
-        print(f" -> Removed {removed} deprecated root sample-size CSV(s).")
-PY
-
     echo " -> Running dedicated post-revision sample-size study into ${SAMPLE_SIZE_RESULT_DIR} ..."
     echo " -> Varying post user count N on the fixed revised oracle, then varying J at fixed N=32."
 
     local model_type
     local emb
-    for user_count in "${SAMPLE_USER_LEVELS[@]}"; do
-        RESULT_DIR="${SAMPLE_SIZE_RESULT_DIR}/users_${user_count}"
+    for user_level in "${SAMPLE_USER_LEVELS[@]}"; do
+        RESULT_DIR="${SAMPLE_SIZE_RESULT_DIR}/users_${user_level}"
         BASELINE_CSV="${RESULT_DIR}/baselines/baseline_metrics.csv"
         MIRT_SWEEP_CSV="${RESULT_DIR}/baselines/mirt_sweep.csv"
         mkdir -p "${RESULT_DIR}" "$(dirname "${BASELINE_CSV}")"
+        local run_user_count=""
+        if [[ "${user_level}" != "max" ]]; then
+            run_user_count="${user_level}"
+        fi
         for model_type in bernoulli beta; do
             for emb in sae pca raw; do
                 local tau="0.0159"
@@ -775,7 +612,7 @@ PY
                     if [[ "${emb}" == "pca" ]]; then tau="0.054"; fi
                     if [[ "${emb}" == "raw" ]]; then tau="0.029"; fi
                 fi
-                run_exp "${emb}" max "${model_type}" "${tau}" false "${SEEDS}" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "${emb}" "10" "full" "true" "false" "transfer" "${user_count}"
+                run_exp "${emb}" max "${model_type}" "${tau}" false "${SEEDS}" "${RESULT_DIR}" false false "1.0" "" "" "" "" "1.0" "${emb}" "10" "full" "true" "false" "transfer" "${run_user_count}"
             done
         done
     done
@@ -799,72 +636,6 @@ PY
             done
         done
     done
-
-    RESULT_DIR="${saved_result_dir}"
-    BASELINE_CSV="${saved_baseline_csv}"
-    MIRT_SWEEP_CSV="${saved_mirt_sweep_csv}"
-}
-
-run_outlier_robustness_study() {
-    local saved_result_dir="${RESULT_DIR}"
-    local saved_baseline_csv="${BASELINE_CSV}"
-    local saved_mirt_sweep_csv="${MIRT_SWEEP_CSV}"
-    local pair_csv="${PAIR_RESULT_DIR}/pair_efficiency_beta_grid.csv"
-    local robust_csv="${OUTLIER_RESULT_DIR}/outlier_robustness_beta_grid.csv"
-    local config_csv="${OUTLIER_RESULT_DIR}/outlier_robustness_beta_configs.csv"
-
-    mkdir -p "${OUTLIER_RESULT_DIR}"
-
-    if [[ ! -f "${pair_csv}" ]]; then
-        echo " -> Pair-efficiency beta CSV not found; running pair-efficiency study first..."
-        run_pair_efficiency_study
-    fi
-
-    if [[ ! -f "${pair_csv}" ]]; then
-        echo " -> Outlier-robustness study skipped: missing ${pair_csv}"
-        return
-    fi
-
-    echo " -> Preparing beta outlier-robustness study from pair-efficiency selections..."
-    python - <<PY
-import pandas as pd
-from pathlib import Path
-
-pair_csv = Path(r"""${pair_csv}""")
-config_csv = Path(r"""${config_csv}""")
-checkpoints = [('4', 0.1), ('8', 0.3), ('16', 0.5), ('32', 0.7), ('max', 1.0)]
-df = pd.read_csv(pair_csv, low_memory=False)
-df['pre_key'] = df['pre_revision'].astype(str).str.lower().str.strip()
-rows = []
-for pre, j in checkpoints:
-    sub = df[(df['pre_key'] == str(pre).lower()) & (df['j_percentage'].round(3) == j)]
-    if sub.empty:
-        continue
-    grouped = sub.groupby(['embedding_type', 'lambda_tau'], as_index=False).agg(
-        auc_araf=('auc_araf', 'mean'),
-        rmse_araf=('rmse_araf', 'mean')
-    )
-    auc_pick = grouped.sort_values(['auc_araf', 'rmse_araf'], ascending=[False, True]).iloc[0]
-    rmse_pick = grouped.sort_values(['rmse_araf', 'auc_araf'], ascending=[True, False]).iloc[0]
-    rows.append({'selection_metric': 'auc', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': auc_pick['embedding_type'], 'lambda_tau': auc_pick['lambda_tau']})
-    rows.append({'selection_metric': 'rmse', 'pre_revision': pre, 'j_percentage': j, 'embedding_type': rmse_pick['embedding_type'], 'lambda_tau': rmse_pick['lambda_tau']})
-out = pd.DataFrame(rows).drop_duplicates()
-config_csv.parent.mkdir(parents=True, exist_ok=True)
-out.to_csv(config_csv, index=False)
-print(out.to_string(index=False))
-PY
-
-    RESULT_DIR="${OUTLIER_RESULT_DIR}"
-    BASELINE_CSV="${PAIR_BASELINE_CSV}"
-    MIRT_SWEEP_CSV="${PAIR_MIRT_SWEEP_CSV}"
-
-    echo " -> Running beta outlier-item / robustness study..."
-    while IFS=, read -r selection_metric pre_revision j_percentage embedding_type lambda_tau; do
-        if [[ "${selection_metric}" == "selection_metric" ]]; then
-            continue
-        fi
-        run_exp "${embedding_type}" max beta "${lambda_tau}" "${pre_revision}" "${SEEDS}" "${RESULT_DIR}" false false "${j_percentage}" "" "" "" "${robust_csv}" "1.0"
-    done < "${config_csv}"
 
     RESULT_DIR="${saved_result_dir}"
     BASELINE_CSV="${saved_baseline_csv}"
@@ -990,39 +761,21 @@ if ! $ONLY_PLOT && $RUN_MAIN_EXPERIMENTS; then
         run_exp ones 1 bernoulli "1.0" 32 "$SEEDS" "${RESULT_DIR}" true
     fi
 
-    if $RUN_PAIR_EFFICIENCY_STUDY; then
-        run_pair_efficiency_study
-    fi
-    if $RUN_NEIGHBOR_SUPPORT_STUDY; then
-        run_neighbor_support_study
-    fi
     if $RUN_SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
     fi
     if $RUN_SAMPLE_SIZE_STUDY; then
         run_sample_size_study
     fi
-    if $RUN_OUTLIER_ROBUSTNESS_STUDY; then
-        run_outlier_robustness_study
-    fi
 fi
 
 if ! $ONLY_PLOT && ! $RUN_MAIN_EXPERIMENTS; then
     echo "[MODE] Running requested study only..."
-    if $PAIR_EFFICIENCY_STUDY; then
-        run_pair_efficiency_study
-    fi
-    if $NEIGHBOR_SUPPORT_STUDY; then
-        run_neighbor_support_study
-    fi
     if $SUPPORT_THINNING_STUDY; then
         run_support_thinning_study
     fi
     if $SAMPLE_SIZE_STUDY; then
         run_sample_size_study
-    fi
-    if $OUTLIER_ROBUSTNESS_STUDY; then
-        run_outlier_robustness_study
     fi
 fi
 
@@ -1032,21 +785,12 @@ echo "=========================================================="
 echo "  GENERATING PLOTS"
 echo "=========================================================="
 cd "${REPO_ROOT}"
-if $PAIR_EFFICIENCY_STUDY || $NEIGHBOR_SUPPORT_STUDY || $SUPPORT_THINNING_STUDY || $SAMPLE_SIZE_STUDY || $OUTLIER_ROBUSTNESS_STUDY; then
-    if $PAIR_EFFICIENCY_STUDY; then
-        PYTHONPATH=. python3 -m model.plotting.main --pair-efficiency-study
-    fi
-    if $NEIGHBOR_SUPPORT_STUDY; then
-        PYTHONPATH=. python3 -m model.plotting.main --neighbor-support-study
-    fi
+if $SUPPORT_THINNING_STUDY || $SAMPLE_SIZE_STUDY; then
     if $SUPPORT_THINNING_STUDY; then
         PYTHONPATH=. python3 -m model.plotting.main --support-thinning-study
     fi
     if $SAMPLE_SIZE_STUDY; then
         PYTHONPATH=. python3 -m model.plotting.main --sample-size
-    fi
-    if $OUTLIER_ROBUSTNESS_STUDY; then
-        PYTHONPATH=. python3 -m model.plotting.main --outlier-robustness-study
     fi
 else
     PYTHONPATH=. python3 -m model.plotting.main --all
