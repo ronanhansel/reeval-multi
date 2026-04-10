@@ -864,7 +864,7 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
     return all_dfs, global_shared_indices, raw_embs_map, embedding_type
 
 
-def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', j_percentage=1.0,
+def prepare_experiment_data(all_dfs, global_shared_indices, raw_embs_map, embedding_type='pca', embedding_dim=48, j_percentage=1.0,
                             pre_revision='none', cross_revision_post_binary=False, user_count=None,
                             binarize_oracle=False):
     """Prepare oracle ground truth, train/test splits, and embedding tensors."""
