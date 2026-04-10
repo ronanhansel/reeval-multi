@@ -15,6 +15,8 @@ echo "[ENV] conda env: hal (python: $(which python))"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
+AMORTIZED_IRT_CMD="PYTHONPATH=${REPO_ROOT} python -m model.amortized_irt"
+SUPPORT_THINNING_REBUILD_CMD="PYTHONPATH=${REPO_ROOT} python -m model.analysis.rebuild_support_thinning_summary"
 RESULT_ROOT="${SCRIPT_DIR}/result"
 MAIN_RESULT_DIR="${RESULT_ROOT}/main"
 RESULT_DIR="${MAIN_RESULT_DIR}"
@@ -91,14 +93,13 @@ RUN_SUPPORT_THINNING_STUDY=false
 if $SUPPORT_THINNING_STUDY; then
     RUN_SUPPORT_THINNING_STUDY=true
 fi
-RUN_SAMPLE_SIZE_STUDY=false
-if $FULL_SWEEP || $SAMPLE_SIZE_STUDY; then
-    RUN_SAMPLE_SIZE_STUDY=true
-fi
-
 RUN_MAIN_EXPERIMENTS=true
 if $SUPPORT_THINNING_STUDY || $SAMPLE_SIZE_STUDY; then
     RUN_MAIN_EXPERIMENTS=false
+fi
+RUN_SAMPLE_SIZE_STUDY=false
+if $SAMPLE_SIZE_STUDY || { $FULL_SWEEP && $RUN_MAIN_EXPERIMENTS; }; then
+    RUN_SAMPLE_SIZE_STUDY=true
 fi
 
 THIN_ONLY_MODE=false
@@ -287,7 +288,7 @@ if $STUDY_ONLY_MODE; then
     echo "[BASELINE] Study-only mode: skipping global main-result baseline migration."
 else
     echo "[BASELINE] Migrating existing CSVs to separated baseline schema..."
-    baseline_migrate_cmd="python ${SCRIPT_DIR}/amortized_irt.py --migrate-all-csvs --migrate-source-dir ${MAIN_RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
+    baseline_migrate_cmd="${AMORTIZED_IRT_CMD} --migrate-all-csvs --migrate-source-dir ${MAIN_RESULT_DIR} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV}"
     if $QUIET; then
         baseline_migrate_cmd="$baseline_migrate_cmd --quiet"
     fi
@@ -313,7 +314,7 @@ run_baseline() {
     fi
 
     local seeds_csv=${seeds// /,}
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="${AMORTIZED_IRT_CMD} --baseline-only --embedding-type ${baseline_emb} --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --seed $seeds_csv --lambda-tau 1.0 --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
 
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
@@ -377,7 +378,7 @@ run_exp() {
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="python ${SCRIPT_DIR}/amortized_irt.py --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="${AMORTIZED_IRT_CMD} --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi
@@ -570,7 +571,7 @@ run_support_thinning_study() {
     done
 
     echo " -> Rebuilding support-thinning summary from completed sweep files..."
-    local rebuild_cmd="python ${SCRIPT_DIR}/analysis/rebuild_support_thinning_summary.py"
+    local rebuild_cmd="${SUPPORT_THINNING_REBUILD_CMD}"
     if $QUIET; then
         rebuild_cmd="$rebuild_cmd"
     fi

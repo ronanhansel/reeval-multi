@@ -20,6 +20,7 @@ Correct embedding leakage in the amortized IRT rerun pipeline, remove stale affe
 - [x] Delete stale affected result outputs in `model/result/main`, `model/result/sample_size_study`, and `model/result/support_thinning_study` to force clean reruns.
 - [x] Move PCA/SAE fitting to the final post-thinning active train-item set so the learned transform is not influenced by items later dropped for that run.
 - [x] Re-verify caching and runtime stability after the deferred-fit refactor.
+- [x] Fix reproduce entrypoint/import handling and study selection so study-only full reruns execute from repo root without triggering unrelated studies.
 
 ## Leakage Notes
 
