@@ -188,8 +188,10 @@ def masked_weighted_mean(values, weights):
 
 def normalize_embedding_matrix(embeddings):
     arr = np.asarray(embeddings, dtype=np.float32)
+    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
     norms = np.linalg.norm(arr, axis=1, keepdims=True) + 1e-8
-    return arr / norms
+    normalized = arr / norms
+    return np.nan_to_num(normalized, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
 
 
 def _load_raw_embedding_map(raw_emb_file, processed_emb_dir):
@@ -263,10 +265,17 @@ def fit_split_embeddings(raw_embeddings, task_ids, train_idx, embedding_type, em
     with lock:
         if os.path.exists(cache_path):
             payload = pd.read_pickle(cache_path)
-            return payload['embeddings'], {
-                'embedding_cache_path': cache_path,
-                'embedding_fit_item_count': int(payload['fit_item_count']),
-            }
+            cached_embeddings = np.asarray(payload.get('embeddings'), dtype=np.float32)
+            expected_shape = (len(task_ids), int(embedding_dim))
+            if cached_embeddings.shape == expected_shape and np.isfinite(cached_embeddings).all():
+                return cached_embeddings, {
+                    'embedding_cache_path': cache_path,
+                    'embedding_fit_item_count': int(payload['fit_item_count']),
+                }
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
 
         raw_embeddings = np.asarray(raw_embeddings, dtype=np.float32)
         raw_embeddings_norm = normalize_embedding_matrix(raw_embeddings)
@@ -301,9 +310,15 @@ def fit_split_embeddings(raw_embeddings, task_ids, train_idx, embedding_type, em
                 learning_rate=SPLIT_SAE_LR,
                 checkpoint_dir=checkpoint_dir,
             )
-            embeddings = normalize_embedding_matrix(sae.get_activations(raw_embeddings_norm).astype(np.float32))
+            activations = sae.get_activations(raw_embeddings_norm).astype(np.float32)
+            embeddings = normalize_embedding_matrix(activations)
         else:
             raise ValueError(f'Unsupported split-refit embedding type: {embedding_type}')
+
+        if not np.isfinite(embeddings).all():
+            raise RuntimeError(
+                f"Non-finite values encountered in split-refit {embedding_type} embeddings for cache {cache_path}."
+            )
 
         pd.to_pickle(
             {

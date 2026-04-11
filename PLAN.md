@@ -21,6 +21,7 @@ Correct embedding leakage in the amortized IRT rerun pipeline, remove stale affe
 - [x] Move PCA/SAE fitting to the final post-thinning active train-item set so the learned transform is not influenced by items later dropped for that run.
 - [x] Re-verify caching and runtime stability after the deferred-fit refactor.
 - [x] Fix reproduce entrypoint/import handling and study selection so study-only full reruns execute from repo root without triggering unrelated studies.
+- [ ] Harden split-refit embedding generation and cache validation against non-finite PCA/SAE outputs observed during the sample-size rerun.
 
 ## Leakage Notes
 
