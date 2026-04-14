@@ -1,0 +1,32 @@
+# Comprehensive Model Comparison
+
+| Model Configuration           | AUC         | RMSE        |
+|:------------------------------|:------------|:------------|
+| Naive (Post-max Baseline)     | 0.500       | 0.297±0.001 |
+| Rasch IRT (Post-max Baseline) | 0.586±0.003 | 0.310±0.002 |
+| Naive (Post-1 Baseline)       | 0.500       | 0.413±0.002 |
+| Rasch IRT (Post-1 Baseline)   | 0.588±0.004 | 0.449±0.004 |
+| SAE Post (N=1)                | 0.630±0.001 | 0.408±0.000 |
+| SAE Post (N=max)              | 0.627±0.001 | 0.299±0.000 |
+| PCA Post (N=1)                | 0.653±0.001 | 0.404±0.000 |
+| PCA Post (N=max)              | 0.662±0.001 | 0.293±0.000 |
+| RAW Post (N=1)                | 0.642±0.001 | 0.411±0.000 |
+| RAW Post (N=max)              | 0.657±0.000 | 0.297±0.000 |
+| Naive-32 (Pre Baseline)       | 0.500       | 0.466±0.002 |
+| Rasch-32 (Pre Baseline)       | 0.511±0.003 | 0.469±0.001 |
+| SAE Pre-32 (N=1)              | 0.686±0.001 | 0.440±0.000 |
+| PCA Pre-32 (N=1)              | 0.697±0.000 | 0.437±0.000 |
+| RAW Pre-32 (N=1)              | 0.675±0.001 | 0.455±0.000 |
+| Naive Pre-max (Baseline)      | 0.500       | 0.449±0.001 |
+| Rasch Pre-max (Baseline)      | 0.648±0.004 | 0.436±0.002 |
+| SAE Pre-max (N=max)           | 0.713±0.001 | 0.442±0.000 |
+| PCA Pre-max (N=max)           | 0.724±0.001 | 0.432±0.000 |
+| RAW Pre-max (N=max)           | 0.722±0.001 | 0.436±0.000 |
+| SAE Post (N=1, No-TAU)        | 0.628±0.007 | 0.407±0.002 |
+| SAE Post (N=max, No-TAU)      | 0.630±0.005 | 0.298±0.002 |
+| PCA Post (N=max, No-TAU)      | 0.676±0.005 | 0.289±0.001 |
+| RAW Post (N=max, No-TAU)      | 0.650±0.004 | 0.298±0.002 |
+| ONES Post (N=1)               | 0.560±0.000 | 0.412±0.000 |
+| ONES Post (N=max)             | 0.516±0.001 | 0.319±0.000 |
+| ONES Pre-32 (N=1)             | 0.501±0.000 | 0.463±0.000 |
+| ONES Pre-max (N=max)          | 0.671±0.000 | 0.468±0.000 |
