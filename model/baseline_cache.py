@@ -19,6 +19,7 @@ BASELINE_KEY_COLS = ['seed', 'model_type', 'n_samples', 'pre_revision', 'j_perce
 BASELINE_AUX_COLS = [
     'agent_batch_size',
     'selected_knn_k',
+    'knn_selection_version',
     'selected_mirt_dim',
     'mirt_sweep_min',
     'mirt_sweep_max',
@@ -193,6 +194,8 @@ def write_grouped_baseline_files(path, row):
                 base_payload[col] = float(row[col])
     if 'selected_knn_k' in row and not pd.isna(row['selected_knn_k']):
         base_payload['selected_knn_k'] = int(row['selected_knn_k'])
+    if 'knn_selection_version' in row and not pd.isna(row['knn_selection_version']):
+        base_payload['knn_selection_version'] = int(row['knn_selection_version'])
     for method_key, (auc_col, rmse_col) in BASELINE_METHOD_SPECS.items():
         if method_key == 'mirt':
             payload = dict(base_payload)

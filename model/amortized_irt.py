@@ -97,6 +97,7 @@ INLINE_BASELINE_COLS = BASELINE_METRIC_COLS.copy()
 BASELINE_AUX_COLS = [
     'agent_batch_size',
     'selected_knn_k',
+    'knn_selection_version',
     'selected_mirt_dim',
     'mirt_sweep_min',
     'mirt_sweep_max',
@@ -115,6 +116,9 @@ HF_REPO_ID = "ronanhansel/data-reeval-multi"
 # Data split
 TEST_SIZE = 0.1
 RANDOM_SEED = 42
+KNN_SELECTION_VERSION = 2
+KNN_VALIDATION_FRACTION = 0.2
+KNN_VALIDATION_MIN_ITEMS = 4
 MIRT_SELECTION_VERSION = 2
 MIRT_VALIDATION_FRACTION = 0.15
 MIRT_VALIDATION_MIN_PAIRS = 12
@@ -1182,6 +1186,7 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
             'test_mask_t': test_mask_t,
             'auc_mask_t': auc_mask_t,
             **embedding_payload,
+            'raw_item_embeddings': active_raw_embeddings,
             'task_ids': task_ids_all,
             'train_item_ids': [
                 str(task_ids[idx]) for idx in np.where(train_mask_current_t.any(dim=0).detach().cpu().numpy().astype(bool))[0].tolist()
@@ -1227,6 +1232,7 @@ def prune_embedding_only_train_columns(y_train, train_mask_current_t, y_oracle, 
         'test_mask_t': test_mask_pruned_t,
         'auc_mask_t': auc_mask_pruned_t,
         **embedding_payload,
+        'raw_item_embeddings': active_raw_embeddings,
         'task_ids': task_ids_pruned,
         'train_item_ids': train_item_ids,
         'test_item_ids': test_item_ids,
@@ -1713,21 +1719,49 @@ def append_neighbor_support_rows(path, rows):
 
 def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t, x_j,
                              y_auc_oracle=None, auc_mask_t=None, knn_k=KNN_K, knn_k_values=None,
-                             row_weight_t=None):
-    """Evaluate one or more kNN neighbor counts and keep the best by AUC, then RMSE."""
+                             row_weight_t=None, raw_item_embeddings=None, task_ids=None,
+                             embedding_type='raw', embedding_dim=None):
+    """Evaluate kNN neighbor counts, select k on validation items, then score once on test items."""
     y_auc_oracle = y_oracle if y_auc_oracle is None else y_auc_oracle
     auc_mask_t = test_mask_t if auc_mask_t is None else auc_mask_t
 
     candidates = parse_knn_k_grid(knn_k_values if knn_k_values is not None else [knn_k])
+    fit_mask_t, val_mask_t = build_knn_validation_masks(train_mask_current_t)
+    selection_x_j = build_knn_selection_embeddings(
+        fit_mask_t,
+        x_j,
+        raw_item_embeddings=raw_item_embeddings,
+        task_ids=task_ids,
+        embedding_type=embedding_type,
+        embedding_dim=embedding_dim,
+    )
+    if val_mask_t is None and len(candidates) > 1:
+        candidates = (int(knn_k),) if int(knn_k) in candidates else (int(candidates[0]),)
+
+    y_train_np = y_train.detach().cpu().numpy()
+    val_mask_np = val_mask_t.detach().cpu().numpy() if val_mask_t is not None else None
     best = None
     for curr_k in candidates:
+        if val_mask_t is not None:
+            p_val, _ = compute_knn_predictions(
+                y_train, fit_mask_t, selection_x_j, val_mask_np, knn_k=curr_k, row_weight_t=row_weight_t
+            )
+            val_rmse_knn = compute_rmse(p_val.cpu().numpy(), y_train_np, val_mask_np)
+            val_auc_knn = evaluate_auc(p_val, y_train, val_mask_t)
+        else:
+            val_rmse_knn = np.nan
+            val_auc_knn = np.nan
+
         p_knn, support_diag = compute_knn_predictions(
             y_train, train_mask_current_t, x_j, test_mask, knn_k=curr_k, row_weight_t=row_weight_t
         )
         curr = {
             'selected_knn_k': int(curr_k),
+            'knn_selection_version': int(KNN_SELECTION_VERSION),
             'p_knn': p_knn,
             'support_diag': support_diag,
+            'val_rmse_knn': float(val_rmse_knn) if np.isfinite(val_rmse_knn) else np.nan,
+            'val_auc_knn': float(val_auc_knn) if np.isfinite(val_auc_knn) else np.nan,
             'rmse_knn': compute_rmse(p_knn.cpu().numpy(), y_oracle.cpu().numpy(), test_mask),
             'auc_knn': evaluate_auc(p_knn, y_auc_oracle, auc_mask_t),
         }
@@ -1735,9 +1769,18 @@ def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask,
             best = curr
             continue
 
+        curr_select_auc = curr['val_auc_knn'] if np.isfinite(curr['val_auc_knn']) else float('-inf')
+        best_select_auc = best['val_auc_knn'] if np.isfinite(best['val_auc_knn']) else float('-inf')
+        curr_select_rmse = curr['val_rmse_knn'] if np.isfinite(curr['val_rmse_knn']) else float('inf')
+        best_select_rmse = best['val_rmse_knn'] if np.isfinite(best['val_rmse_knn']) else float('inf')
         if (
-            curr['auc_knn'] > best['auc_knn'] or
-            (np.isclose(curr['auc_knn'], best['auc_knn']) and curr['rmse_knn'] < best['rmse_knn'])
+            curr_select_auc > best_select_auc or
+            (np.isclose(curr_select_auc, best_select_auc) and curr_select_rmse < best_select_rmse) or
+            (
+                np.isclose(curr_select_auc, best_select_auc) and
+                np.isclose(curr_select_rmse, best_select_rmse) and
+                curr['selected_knn_k'] < best['selected_knn_k']
+            )
         ):
             best = curr
 
@@ -1747,7 +1790,8 @@ def compute_best_knn_metrics(y_train, train_mask_current_t, y_oracle, test_mask,
 def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                                       model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
                                       y_auc_oracle=None, auc_mask_t=None, knn_k_values=None,
-                                      row_weight_t=None):
+                                      row_weight_t=None, raw_item_embeddings=None,
+                                      task_ids=None, embedding_type='raw', embedding_dim=None):
     """Compute non-MIRT baselines for one configuration."""
     if row_weight_t is None:
         row_weight_t = torch.ones(N, device=y_train.device, dtype=torch.float32)
@@ -1780,7 +1824,8 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
     knn_result = compute_best_knn_metrics(
         y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t, x_j,
         y_auc_oracle=y_auc_oracle, auc_mask_t=auc_mask_t, knn_k=knn_k, knn_k_values=knn_k_values,
-        row_weight_t=row_weight_t,
+        row_weight_t=row_weight_t, raw_item_embeddings=raw_item_embeddings,
+        task_ids=task_ids, embedding_type=embedding_type, embedding_dim=embedding_dim,
     )
     rmse_knn = knn_result['rmse_knn']
     auc_knn = knn_result['auc_knn']
@@ -1795,7 +1840,61 @@ def compute_non_mirt_baseline_metrics(N, J, y_train, train_mask_current_t, y_ora
         'rmse_knn': rmse_knn,
         'auc_knn': auc_knn,
         'selected_knn_k': int(knn_result['selected_knn_k']),
+        'knn_selection_version': int(knn_result['knn_selection_version']),
     }
+
+
+def build_knn_validation_masks(train_mask_current_t, validation_fraction=KNN_VALIDATION_FRACTION,
+                               min_items=KNN_VALIDATION_MIN_ITEMS):
+    """Split observed training items into fit/validation item sets for kNN selection."""
+    train_item_idx = torch.where(train_mask_current_t.any(dim=0))[0]
+    n_train_items = int(train_item_idx.numel())
+    if n_train_items < 3:
+        return train_mask_current_t.clone(), None
+
+    n_val_items = max(int(round(n_train_items * validation_fraction)), int(min_items))
+    n_val_items = min(n_val_items, n_train_items - 1)
+    if n_val_items < 1:
+        return train_mask_current_t.clone(), None
+
+    rng = np.random.default_rng(RANDOM_SEED + 2028)
+    chosen_pos = np.sort(rng.choice(n_train_items, size=n_val_items, replace=False))
+    val_item_idx = train_item_idx[torch.as_tensor(chosen_pos, device=train_item_idx.device, dtype=torch.long)]
+
+    val_mask_t = torch.zeros_like(train_mask_current_t, dtype=torch.bool)
+    val_mask_t[:, val_item_idx] = train_mask_current_t[:, val_item_idx]
+
+    fit_mask_t = train_mask_current_t.clone()
+    fit_mask_t[:, val_item_idx] = False
+    if not fit_mask_t.any():
+        return train_mask_current_t.clone(), None
+    return fit_mask_t, val_mask_t
+
+
+def build_knn_selection_embeddings(train_mask_current_t, x_j, raw_item_embeddings=None, task_ids=None,
+                                   embedding_type='raw', embedding_dim=None):
+    """Build item embeddings for kNN validation selection without using validation items in PCA/SAE fits."""
+    fit_type = str(embedding_type).strip().lower()
+    if x_j is None:
+        return None
+    if fit_type not in {'pca', 'sae'}:
+        return x_j
+    if raw_item_embeddings is None or task_ids is None:
+        return x_j
+
+    train_idx = np.where(train_mask_current_t.any(dim=0).detach().cpu().numpy().astype(bool))[0]
+    if train_idx.size == 0:
+        return x_j
+
+    effective_dim = int(embedding_dim if embedding_dim is not None else x_j.shape[1])
+    embeddings_np, _ = fit_split_embeddings(
+        raw_item_embeddings,
+        task_ids,
+        train_idx,
+        fit_type,
+        effective_dim,
+    )
+    return torch.tensor(embeddings_np, dtype=torch.float32, device=x_j.device)
 
 
 def build_mirt_validation_masks(y_train, train_mask_current_t, validation_fraction=MIRT_VALIDATION_FRACTION,
@@ -1947,11 +2046,14 @@ def compute_single_mirt_metrics(N, J, y_train, train_mask_current_t, y_oracle, t
 
 def compute_baseline_metrics(N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
                              model_type='beta', beta_phi=BETA_PHI, x_j=None, knn_k=KNN_K,
-                             mirt_dim=K_MODEL, row_weight_t=None):
+                             mirt_dim=K_MODEL, row_weight_t=None, raw_item_embeddings=None,
+                             task_ids=None, embedding_type='raw', embedding_dim=None):
     """Compute naive + Rasch + 2PL + standalone MIRT baselines for one configuration."""
     results = compute_non_mirt_baseline_metrics(
         N, J, y_train, train_mask_current_t, y_oracle, test_mask, test_mask_t,
-        model_type=model_type, beta_phi=beta_phi, x_j=x_j, knn_k=knn_k, row_weight_t=row_weight_t
+        model_type=model_type, beta_phi=beta_phi, x_j=x_j, knn_k=knn_k, row_weight_t=row_weight_t,
+        raw_item_embeddings=raw_item_embeddings, task_ids=task_ids,
+        embedding_type=embedding_type, embedding_dim=embedding_dim,
     )
     results.update(
         compute_single_mirt_metrics(
@@ -1994,6 +2096,8 @@ def required_baseline_metric_cols(baseline_profile=BASELINE_PROFILE_FULL):
 def _baseline_row_matches_mirt_request(row, mirt_dim_min, mirt_dim_max, baseline_profile=BASELINE_PROFILE_FULL):
     if not _row_has_complete_metrics(row, required_baseline_metric_cols(baseline_profile)):
         return False
+    if _optional_int(row.get('knn_selection_version')) != KNN_SELECTION_VERSION:
+        return False
     if baseline_profile == BASELINE_PROFILE_KNN_ONLY:
         return True
     if _optional_int(row.get('mirt_selection_version')) != MIRT_SELECTION_VERSION:
@@ -2021,6 +2125,7 @@ def _baseline_payload_from_row(row):
     selected_knn_k = _optional_int(row.get('selected_knn_k'))
     if selected_knn_k is not None:
         payload['selected_knn_k'] = selected_knn_k
+    payload['knn_selection_version'] = _optional_int(row.get('knn_selection_version'))
     selected_dim = _optional_int(row.get('selected_mirt_dim'))
     if selected_dim is not None:
         payload['selected_mirt_dim'] = selected_dim
@@ -2141,6 +2246,10 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 knn_k=knn_k,
                 knn_k_values=[knn_k] if baseline_profile == BASELINE_PROFILE_KNN_ONLY else knn_k_grid,
                 row_weight_t=row_weight_t,
+                raw_item_embeddings=run_view.get('raw_item_embeddings'),
+                task_ids=run_view.get('task_ids'),
+                embedding_type=baseline_embedding_type,
+                embedding_dim=data.get('embedding_dim', 48),
             )
             non_mirt_metrics = {
                 'rmse_naive': np.nan,
@@ -2152,6 +2261,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 'rmse_knn': knn_result['rmse_knn'],
                 'auc_knn': knn_result['auc_knn'],
                 'selected_knn_k': int(knn_result['selected_knn_k']),
+                'knn_selection_version': int(knn_result['knn_selection_version']),
             }
         else:
             non_mirt_metrics = compute_non_mirt_baseline_metrics(
@@ -2160,6 +2270,10 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
                 model_type=model_type, beta_phi=beta_phi, x_j=run_view.get('x_j'), knn_k=knn_k,
                 y_auc_oracle=run_view['y_auc_oracle'], auc_mask_t=run_view['auc_mask_t'],
                 knn_k_values=knn_k_grid, row_weight_t=row_weight_t,
+                raw_item_embeddings=run_view.get('raw_item_embeddings'),
+                task_ids=run_view.get('task_ids'),
+                embedding_type=baseline_embedding_type,
+                embedding_dim=data.get('embedding_dim', 48),
             )
 
     best_mirt = None
@@ -2202,7 +2316,7 @@ def get_or_compute_baselines(n_files, all_dfs, global_shared_indices, data, mode
     baseline_row['pre_population_match_version'] = data.get('pre_population_match_version', np.nan)
     baseline_row['effective_pre_weight_sum'] = float(data.get('effective_pre_weight_sum', np.nan))
     for col, value in non_mirt_metrics.items():
-        baseline_row[col] = float(value)
+        baseline_row[col] = int(value) if col in {'selected_knn_k', 'knn_selection_version'} else float(value)
     if best_mirt is not None:
         baseline_row['rmse_mirt'] = float(best_mirt['rmse_mirt'])
         baseline_row['auc_mirt'] = float(best_mirt['auc_mirt'])
