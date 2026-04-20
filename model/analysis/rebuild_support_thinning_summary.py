@@ -166,33 +166,39 @@ def scan_result_file(path: Path, meta: dict):
 
 def build_knn_lookup(result_dir: Path):
     lookup = {}
-    combo_re = re.compile(r"knn_(?:(?P<model_type>beta|bernoulli)_)?(?P<emb>raw|pca)_k(?P<k>\d+)")
+    baseline_dirs = {
+        p for p in result_dir.rglob("shared_baselines") if p.is_dir()
+    }
+    baseline_dirs.update(
+        p for p in result_dir.rglob("baselines") if p.is_dir()
+    )
 
-    for baselines_dir in result_dir.rglob("baselines"):
-        combo_match = combo_re.search(str(baselines_dir.parent))
-        if combo_match is None:
-            continue
-        baseline_store = load_baseline_store(str(baselines_dir / "baseline_metrics.csv"))
+    for baseline_dir in sorted(baseline_dirs):
+        baseline_store = load_baseline_store(str(baseline_dir / "baseline_metrics.csv"))
         if baseline_store.empty:
             continue
         retention = 1.0
-        for part in baselines_dir.parts:
+        for part in baseline_dir.parts:
             if part.startswith("retain_"):
                 retention = float(part.split("_", 1)[1])
                 break
         for _, record in baseline_store.iterrows():
             try:
                 seed = int(float(record["seed"]))
-                model_type = combo_match.group("model_type") or str(record.get("model_type", "")).strip().lower()
+                model_type = str(record.get("model_type", "")).strip().lower()
                 pre_revision = str(record.get("pre_revision", "none")).strip().lower()
                 j_percentage = float(record.get("j_percentage", "1.0") or "1.0")
+                baseline_embedding_type = str(record.get("baseline_embedding_type", "")).strip().lower()
+                knn_k = record.get("selected_knn_k")
                 auc_knn = record.get("auc_knn")
                 rmse_knn = record.get("rmse_knn")
-                if auc_knn == "" or rmse_knn == "":
+                if auc_knn == "" or rmse_knn == "" or knn_k in ("", None):
                     continue
                 if auc_knn is None or rmse_knn is None:
                     continue
                 if model_type not in MODEL_TYPES:
+                    continue
+                if baseline_embedding_type not in KNN_EMBEDDINGS:
                     continue
                 lookup[
                     (
@@ -201,8 +207,8 @@ def build_knn_lookup(result_dir: Path):
                         pre_revision,
                         round(j_percentage, 3),
                         round(retention, 3),
-                        combo_match.group("emb"),
-                        int(combo_match.group("k")),
+                        baseline_embedding_type,
+                        int(float(knn_k)),
                     )
                 ] = {
                     "auc_knn": float(auc_knn),

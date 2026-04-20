@@ -44,3 +44,18 @@ Correct embedding leakage in the amortized IRT rerun pipeline, remove stale affe
 - [x] Patch `model/amortized_irt.py` so `kNN` selects `k` on a validation split carved from observed training support rather than the held-out test fold.
 - [x] Identify and delete cached/result files affected by the old test-tuned `kNN` baseline so reruns regenerate them cleanly.
 - [x] Verify the updated pipeline paths and summarize which reruns are now required.
+
+## Result Recheck
+
+- [x] Recheck the latest pulled rerun outputs and compare updated `kNN` versus `ARAF` behavior after the validation-only `k` selection fix.
+
+## Summary Repair
+
+- [x] Restore or regenerate the missing support-thinning summary outputs from the latest pulled results.
+- [x] Patch the main summary/export layer so `kNN` appears in `comprehensive_results` alongside the amortized models and baselines.
+- [x] Verify the repaired summaries against the underlying raw result CSVs.
+
+## Reproduce Resume
+
+- [x] Patch `model/reproduce.sh` so a continued full rerun auto-detects incomplete pulled support-thinning results and backfills the missing outputs.
+- [x] Verify the updated resume detection logic matches the current missing-artifact pattern.

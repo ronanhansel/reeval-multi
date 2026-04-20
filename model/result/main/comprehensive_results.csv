@@ -1,8 +1,10 @@
 Model Configuration,AUC,RMSE
 Naive (Post-max Baseline),0.500,0.297±0.001
 Rasch IRT (Post-max Baseline),0.586±0.003,0.310±0.002
+kNN (Post-max Baseline),0.709±0.004,0.280±0.001
 Naive (Post-1 Baseline),0.500,0.413±0.002
 Rasch IRT (Post-1 Baseline),0.588±0.004,0.449±0.004
+kNN (Post-1 Baseline),0.625±0.007,0.408±0.002
 SAE Post (N=1),0.630±0.001,0.408±0.000
 SAE Post (N=max),0.627±0.001,0.299±0.000
 PCA Post (N=1),0.653±0.001,0.404±0.000
@@ -11,11 +13,13 @@ RAW Post (N=1),0.642±0.001,0.411±0.000
 RAW Post (N=max),0.657±0.000,0.297±0.000
 Naive-32 (Pre Baseline),0.500,0.466±0.002
 Rasch-32 (Pre Baseline),0.511±0.003,0.469±0.001
+kNN-32 (Pre Baseline),0.699±0.004,0.416±0.002
 SAE Pre-32 (N=1),0.686±0.001,0.440±0.000
 PCA Pre-32 (N=1),0.697±0.000,0.437±0.000
 RAW Pre-32 (N=1),0.675±0.001,0.455±0.000
 Naive Pre-max (Baseline),0.500,0.449±0.001
 Rasch Pre-max (Baseline),0.648±0.004,0.436±0.002
+kNN Pre-max (Baseline),0.721±0.005,0.408±0.002
 SAE Pre-max (N=max),0.713±0.001,0.442±0.000
 PCA Pre-max (N=max),0.724±0.001,0.432±0.000
 RAW Pre-max (N=max),0.722±0.001,0.436±0.000

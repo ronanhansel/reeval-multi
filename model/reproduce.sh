@@ -102,6 +102,42 @@ if $SAMPLE_SIZE_STUDY || { $FULL_SWEEP && $RUN_MAIN_EXPERIMENTS; }; then
     RUN_SAMPLE_SIZE_STUDY=true
 fi
 
+support_thinning_results_complete() {
+    python3 - <<'PY'
+from pathlib import Path
+
+root = Path(r'''${THIN_RESULT_DIR}''')
+if not root.exists():
+    raise SystemExit(1)
+
+retentions = ["retain_0.050", "retain_0.100", "retain_0.250", "retain_0.500", "retain_1.000"]
+expected_araf = 6
+expected_knn = 24
+
+summary_csv = root / "support_thinning_grid.csv"
+if not summary_csv.exists():
+    raise SystemExit(1)
+
+for ret in retentions:
+    ret_dir = root / ret
+    if not ret_dir.exists():
+        raise SystemExit(1)
+    araf_count = len(list((ret_dir / "araf_sweeps").glob("amortized_irt_*.csv")))
+    knn_count = len(list(ret_dir.glob("**/baseline_knn_*.csv")))
+    if araf_count < expected_araf or knn_count < expected_knn:
+        raise SystemExit(1)
+
+raise SystemExit(0)
+PY
+}
+
+if $OVERRIDE_RESULTS && $FULL_SWEEP && $RUN_MAIN_EXPERIMENTS && ! $SUPPORT_THINNING_STUDY; then
+    if [[ -d "${THIN_RESULT_DIR}" ]] && ! support_thinning_results_complete; then
+        echo "[RESUME] Detected incomplete support-thinning study outputs. Enabling support-thinning backfill for this continued full run."
+        RUN_SUPPORT_THINNING_STUDY=true
+    fi
+fi
+
 THIN_ONLY_MODE=false
 if $SUPPORT_THINNING_STUDY && ! $FULL_SWEEP; then
     THIN_ONLY_MODE=true

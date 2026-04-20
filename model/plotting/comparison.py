@@ -99,6 +99,22 @@ def lookup_baseline_stats(baseline_df, model_type, n_samples, pre_revision, metr
         return np.nan, np.nan
     return float(vals.mean()), float(vals.sem() if len(vals) > 1 else 0.0)
 
+
+def summarize_table_baseline(baseline_df, df, model_type, pre_revision, metric_prefix):
+    n_samples = resolve_n_samples_from_df(df)
+    auc_col = f'auc_{metric_prefix}'
+    rmse_col = f'rmse_{metric_prefix}'
+    auc_m, auc_se = lookup_baseline_stats(baseline_df, model_type, n_samples, pre_revision, auc_col)
+    rmse_m, rmse_se = lookup_baseline_stats(baseline_df, model_type, n_samples, pre_revision, rmse_col)
+
+    if np.isnan(auc_m):
+        auc_m = df[auc_col].mean() if auc_col in df.columns else 0.0
+        auc_se = df[auc_col].std() / np.sqrt(len(df)) if auc_col in df.columns and len(df) > 1 else 0.0
+    if np.isnan(rmse_m):
+        rmse_m = df[rmse_col].mean() if rmse_col in df.columns else 0.0
+        rmse_se = df[rmse_col].std() / np.sqrt(len(df)) if rmse_col in df.columns and len(df) > 1 else 0.0
+    return auc_m, auc_se, rmse_m, rmse_se
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Data Loading & Aggregation
 # ══════════════════════════════════════════════════════════════════════════════
@@ -283,8 +299,10 @@ def generate_comprehensive_table():
         # --- Post-Revision (Standard) ---
         ('Naive (Post-max Baseline)', 'sae', 'max', 'beta', ''),
         ('Rasch IRT (Post-max Baseline)', 'sae', 'max', 'beta', ''),
+        ('kNN (Post-max Baseline)', 'sae', 'max', 'beta', ''),
         ('Naive (Post-1 Baseline)', 'sae', '1', 'bernoulli', ''),
         ('Rasch IRT (Post-1 Baseline)', 'sae', '1', 'bernoulli', ''),
+        ('kNN (Post-1 Baseline)', 'sae', '1', 'bernoulli', ''),
         ('SAE Post (N=1)', 'sae', '1', 'bernoulli', ''),
         ('SAE Post (N=max)', 'sae', 'max', 'beta', ''),
         ('PCA Post (N=1)', 'pca', '1', 'bernoulli', ''),
@@ -295,12 +313,14 @@ def generate_comprehensive_table():
         # --- Pre-Revision (Baseline Phase) ---
         ('Naive-32 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_32'),
         ('Rasch-32 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_32'),
+        ('kNN-32 (Pre Baseline)', 'sae', '1', 'bernoulli', 'pre_32'),
         ('SAE Pre-32 (N=1)', 'sae', '1', 'bernoulli', 'pre_32'),
         ('PCA Pre-32 (N=1)', 'pca', '1', 'bernoulli', 'pre_32'),
         ('RAW Pre-32 (N=1)', 'raw', '1', 'bernoulli', 'pre_32'),
         
         ('Naive Pre-max (Baseline)', 'sae', 'max', 'beta', 'pre_max'),
         ('Rasch Pre-max (Baseline)', 'sae', 'max', 'beta', 'pre_max'),
+        ('kNN Pre-max (Baseline)', 'sae', 'max', 'beta', 'pre_max'),
         ('SAE Pre-max (N=max)', 'sae', 'max', 'beta', 'pre_max'),
         ('PCA Pre-max (N=max)', 'pca', 'max', 'beta', 'pre_max'),
         ('RAW Pre-max (N=max)', 'raw', 'max', 'beta', 'pre_max'),
@@ -338,20 +358,16 @@ def generate_comprehensive_table():
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
         if 'Baseline' in label:
-            metric_prefix = 'auc_naive' if 'Naive' in label else 'auc_rasch'
-            rmse_prefix = 'rmse_naive' if 'Naive' in label else 'rmse_rasch'
-            n_samples = resolve_n_samples_from_df(df)
             pre_revision = pre if pre else 'none'
-            
-            auc_m, auc_se = lookup_baseline_stats(baseline_df, mtype, n_samples, pre_revision, metric_prefix)
-            rmse_m, rmse_se = lookup_baseline_stats(baseline_df, mtype, n_samples, pre_revision, rmse_prefix)
-
-            if np.isnan(auc_m):
-                auc_m = df[metric_prefix].mean() if metric_prefix in df.columns else 0.0
-                auc_se = df[metric_prefix].std() / np.sqrt(len(df)) if metric_prefix in df.columns and len(df) > 1 else 0.0
-            if np.isnan(rmse_m):
-                rmse_m = df[rmse_prefix].mean() if rmse_prefix in df.columns else 0.0
-                rmse_se = df[rmse_prefix].std() / np.sqrt(len(df)) if rmse_prefix in df.columns and len(df) > 1 else 0.0
+            if 'Naive' in label:
+                metric_prefix = 'naive'
+            elif 'kNN' in label:
+                metric_prefix = 'knn'
+            else:
+                metric_prefix = 'rasch'
+            auc_m, auc_se, rmse_m, rmse_se = summarize_table_baseline(
+                baseline_df, df, mtype, pre_revision, metric_prefix
+            )
         else:
             auc_m = df['auc_amortized'].mean()
             auc_se = df['auc_amortized'].std() / np.sqrt(len(df)) if len(df) > 1 else 0.0
