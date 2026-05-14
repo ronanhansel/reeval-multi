@@ -851,7 +851,8 @@ def adapt_amortized_irt_users(model, y_support, support_mask_t, model_type='beta
 # Data Loading
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
+def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none',
+              data_source='local', mdb_corpus_path=None, mdb_raw_embeddings_path=None):
     """
     Load response matrices and the raw embedding source used by all protocols.
 
@@ -860,6 +861,30 @@ def load_data(embedding_type='pca', embedding_dim=48, pre_revision='none'):
         embedding_dim: dimension for pca/sae embeddings (ignored at load time)
         pre_revision: 'none', '8', or 'max' to override post-revision loading.
     """
+    data_source = str(data_source).strip().lower()
+    if data_source == 'measurement_db_raw':
+        if not mdb_corpus_path:
+            raise ValueError('--mdb-corpus-path is required when --data-source measurement_db_raw.')
+        if embedding_type != 'raw':
+            raise ValueError('measurement_db_raw currently supports --embedding-type raw only.')
+        if not mdb_raw_embeddings_path:
+            raise ValueError('--mdb-raw-embeddings-path is required when --data-source measurement_db_raw.')
+
+        print(f"Loading measurement-db RAW corpus from {mdb_corpus_path}...")
+        corpus_df = pd.read_parquet(mdb_corpus_path)
+        corpus_df.index = corpus_df.index.astype(str)
+        corpus_df.columns = corpus_df.columns.astype(str)
+        corpus_df = corpus_df.dropna(axis=0, how='all').dropna(axis=1, how='all')
+        if corpus_df.empty:
+            raise ValueError(f"measurement-db corpus is empty: {mdb_corpus_path}")
+
+        print(f"Loading measurement-db RAW embeddings from {mdb_raw_embeddings_path}...")
+        raw_embs_map = _load_raw_embedding_map(mdb_raw_embeddings_path, PROCESSED_EMBEDDING_DIR)
+        return [corpus_df], sorted(list(corpus_df.index.astype(str))), raw_embs_map, 'raw'
+
+    if data_source != 'local':
+        raise ValueError(f"Unknown data source: {data_source}")
+
     repo_root = REPO_ROOT
     resmat_dir = os.path.join(repo_root, 'item-editor', 'eval_response_matrix')
 
@@ -2765,6 +2790,10 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'pre_population_match_version': data.get('pre_population_match_version', np.nan),
         'effective_pre_weight_sum': float(data.get('effective_pre_weight_sum', np.nan)),
         'observed_train_pairs': observed_train_pairs,
+        'train_item_count': int(len(run_train_item_ids)),
+        'test_item_count': int(len(run_test_item_ids)),
+        'train_observed_count': int(observed_train_pairs),
+        'test_observed_count': int(test_mask_t.sum().item()),
         'rmse_amortized': final_rmse,
         'auc_amortized': auc_amortized,
         'active_dims': active_dims,
@@ -3555,7 +3584,10 @@ def ensure_worker_data(args):
         _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE = load_data(
             embedding_type=args.embedding_type,
             embedding_dim=args.embedding_dim,
-            pre_revision=args.pre_revision
+            pre_revision=args.pre_revision,
+            data_source=args.data_source,
+            mdb_corpus_path=args.mdb_corpus_path,
+            mdb_raw_embeddings_path=args.mdb_raw_embeddings_path,
         )
     return _WORKER_DFS, _WORKER_INDICES, _WORKER_EMBS_MAP, _WORKER_EMB_TYPE
 
@@ -3773,6 +3805,19 @@ def main():
         help='Type of embeddings to use (default: pca)'
     )
     parser.add_argument(
+        '--data-source', type=str, default='local',
+        choices=['local', 'measurement_db_raw'],
+        help='Data source: local repo matrices or a prepared measurement-db RAW corpus.'
+    )
+    parser.add_argument(
+        '--mdb-corpus-path', type=str, default=None,
+        help='Prepared measurement-db corpus parquet path for --data-source measurement_db_raw.'
+    )
+    parser.add_argument(
+        '--mdb-raw-embeddings-path', type=str, default=None,
+        help='Prepared measurement-db raw embedding pickle path for --data-source measurement_db_raw.'
+    )
+    parser.add_argument(
         '--embedding-dim', type=int, default=48,
         help='Embedding dimension for pca/sae (default: 48)'
     )
@@ -3970,7 +4015,10 @@ def main():
         all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
             embedding_type=args.embedding_type,
             embedding_dim=args.embedding_dim,
-            pre_revision=args.pre_revision
+            pre_revision=args.pre_revision,
+            data_source=args.data_source,
+            mdb_corpus_path=args.mdb_corpus_path,
+            mdb_raw_embeddings_path=args.mdb_raw_embeddings_path,
         )
         total_files = len(all_dfs)
         n_values = parse_n_samples(args.n_samples, total_files)
@@ -4048,7 +4096,10 @@ def main():
         all_dfs, global_shared_indices, raw_embs_map, actual_emb_type = load_data(
             embedding_type=args.embedding_type,
             embedding_dim=args.embedding_dim,
-            pre_revision=args.pre_revision
+            pre_revision=args.pre_revision,
+            data_source=args.data_source,
+            mdb_corpus_path=args.mdb_corpus_path,
+            mdb_raw_embeddings_path=args.mdb_raw_embeddings_path,
         )
 
     print(f"\nDiscovered {len(configs)} configurations to execute across {args.parallel} Python generic workers.\n")

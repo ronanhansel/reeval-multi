@@ -1,0 +1,17 @@
+dataset,included,skip_reason,subjects,items,responses,density,response_type,response_min,response_max,categorical,modality,domain
+afrimedqa,True,,30,6910,110930,0.5351181862035697,binary,0.0,1.0,True,text,medicine|multilingual
+agentdojo,True,,29,1081,23092,0.7366104181951577,binary,0.0,1.0,True,text,tool_use|safety
+ai2d_test,True,,254,3088,770916,0.9828699359471258,binary,0.0,1.0,True,text|image,science
+androidworld,False,subjects_below_min_3,3,116,348,1.0,binary,0.0,1.0,True,text|gui_screenshot,gui_agent
+bfcl,True,,93,4133,383722,0.9983167216919159,binary,0.0,1.0,True,text,tool_use
+cybench,False,items_below_min_40,8,40,320,1.0,fraction,0.0,1.0,False,text,cybersecurity
+hle,True,,19,1792,13339,0.3917704417293233,binary,0.0,1.0,True,text,general|reasoning
+livecodebench,True,,72,1055,67477,0.8883228014744602,binary,0.0,1.0,True,text,software_engineering
+matharena,True,,97,448,13802,0.3176086156111929,mixed,0.0,1.0,False,text,mathematics
+mathvista_mini,True,,263,874,229862,1.0,binary,0.0,1.0,True,text|image,mathematics
+mmbench_v11,True,,251,3579,869590,0.9680083800033172,binary,0.0,1.0,True,text|image,general
+mmlupro,True,,48,13542,556862,0.8566896814847634,binary,0.0,1.0,True,text,general|reasoning
+mtbench,False,outside_0_1_range_1_10,0,0,0,,likert_10,,,True,text,preference
+rewardbench,True,,118,2733,322494,1.0,binary,0.0,1.0,True,text,reward_modeling
+swebench,True,,134,500,67000,1.0,binary,0.0,1.0,True,text,software_engineering
+ultrafeedback,False,outside_0_1_range_1_5,0,0,0,,likert_5,,,True,text,preference

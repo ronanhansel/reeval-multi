@@ -1,0 +1,18 @@
+{
+  "batch_size": 1,
+  "chunk_size": 128,
+  "corpus_path": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/corpus_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.parquet",
+  "corpus_slug": "src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1",
+  "device": "cuda",
+  "embedding_count": 39735,
+  "embedding_dim": 4096,
+  "embedding_model": "Qwen/Qwen3-Embedding-8B",
+  "embedding_path": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/embeddings/rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1.pkl",
+  "embedding_slug": "rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1",
+  "embedding_version": "mdb-raw-embedding-v1",
+  "item_content_path": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/item_contents_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.csv",
+  "kind": "measurement_db_raw_embeddings",
+  "max_chars": 20000,
+  "part_count": 311,
+  "part_dir": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/embeddings/rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1.pkl.parts"
+}

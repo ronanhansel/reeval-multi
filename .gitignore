@@ -65,3 +65,5 @@ colm-26/
 support_thinning_beta_grid.csv
 support_thinning_bernoulli_grid.csv
 support_thinning_*.csv
+
+.opencode/
