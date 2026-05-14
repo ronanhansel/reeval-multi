@@ -560,6 +560,8 @@ def aggregate_results(result_root: Path) -> dict[str, Path]:
                     **common_metric_payload(row_cfg, path, "araf"),
                     "lambda_tau": row.get("lambda_tau", cfg.get("lambda_tau", np.nan)),
                     "epochs": cfg.get("epochs", np.nan),
+                    "araf_latent_dim": row.get("araf_latent_dim", cfg.get("araf_latent_dim", np.nan)),
+                    "araf_dropout": row.get("araf_dropout", cfg.get("araf_dropout", np.nan)),
                     "knn_k_grid": "",
                     "selected_knn_k": np.nan,
                     "val_auc": np.nan,
@@ -621,6 +623,8 @@ def aggregate_results(result_root: Path) -> dict[str, Path]:
                     **common_metric_payload(row_cfg, path, "knn"),
                     "lambda_tau": np.nan,
                     "epochs": np.nan,
+                    "araf_latent_dim": np.nan,
+                    "araf_dropout": np.nan,
                     "knn_k_grid": cfg.get("knn_k_grid", ""),
                     "selected_knn_k": row.get("selected_knn_k", np.nan),
                     "val_auc": row.get("val_auc_knn", np.nan),
@@ -646,7 +650,7 @@ def aggregate_results(result_root: Path) -> dict[str, Path]:
             "result_manifest_path": manifest_path,
         }
 
-    metrics_long = metrics_long.sort_values(["method", "model_type", "seed", "lambda_tau"], na_position="last")
+    metrics_long = metrics_long.sort_values(["method", "model_type", "seed", "araf_latent_dim", "araf_dropout", "lambda_tau"], na_position="last")
     metrics_long.to_csv(metrics_long_path, index=False)
     metrics_long.to_csv(manifest_path, index=False)
 
@@ -665,11 +669,11 @@ def aggregate_results(result_root: Path) -> dict[str, Path]:
     wide_parts = []
     for method, sub in metrics_long.groupby("method"):
         if method == "araf":
-            # Select best tau per unique corpus/seed configuration
+            # Select best ARAF setup per unique corpus/seed configuration across tau/K/dropout.
             best_idx = sub.groupby(["corpus_slug", "seed"])["test_auc"].idxmax()
             sub = sub.loc[best_idx]
         
-        keep = join_cols + ["test_auc", "test_rmse", "selected_knn_k", "lambda_tau", "epochs", "artifact_path"]
+        keep = join_cols + ["test_auc", "test_rmse", "selected_knn_k", "lambda_tau", "epochs", "araf_latent_dim", "araf_dropout", "artifact_path"]
         renamed = sub[[col for col in keep if col in sub.columns]].copy()
         renamed = renamed.rename(
             columns={

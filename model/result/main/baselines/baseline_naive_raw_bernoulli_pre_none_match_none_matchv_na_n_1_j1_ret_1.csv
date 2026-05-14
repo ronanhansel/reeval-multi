@@ -46,6 +46,6 @@ seed,model_type,n_samples,pre_revision,j_percentage,train_retention,baseline_emb
 45,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4276585969034732
 25,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,20.0,2.0,0.5,0.4322203113846815
 33,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4220242589479562
-0,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4277304383536561
 1,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4279554135604247
 2,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4086271210385246
+0,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4277304383536561

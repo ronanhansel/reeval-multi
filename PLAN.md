@@ -149,3 +149,24 @@ Prepared artifact summary:
 - Corpus shape: 858 subjects by 39,735 items, 3,429,086 observed responses.
 - Embeddings: 39,735 rows, 4,096 dimensions, no missing or extra item IDs versus corpus columns.
 - Split seed 42: 35,762 train items, 3,973 test items, 3,089,224 train observations, 339,862 test observations.
+
+## ARAF Improvement Investigation
+
+Goal: identify and test fair, minimally invasive ARAF setup changes that can beat the RAW kNN baseline on measurement-db, without leakage or artificial inflation.
+
+- [x] Audit current large-db ARAF/kNN protocol and result gap: kNN ~0.82 AUC, current ARAF best ~0.81 AUC, old explicit seed-42 ARAF ~0.789.
+- [ ] Review relevant literature/standard practice for inductive item-response or side-information matrix factorization against kNN-style baselines.
+- [x] Inspect ARAF implementation: ARAF used fixed latent K=30 and dropout=0.5 while kNN sweeps k; added CLI knobs for ARAF K/dropout without changing model family.
+- [ ] Run targeted fair experiments with config-keyed outputs and existing split; launcher now supports `--araf-latent-dims` and `--araf-dropouts`.
+- [x] Aggregate/select best valid ARAF setup per seed and compare against kNN: summary now records `araf_latent_dim`/`araf_dropout` and `metrics_wide.csv` selects best ARAF across tau/K/dropout per seed.
+- [ ] Document whether clear win over kNN is achieved, including negative findings if not.
+
+Interim analysis while `long_1` runs:
+
+- [x] Inspect currently completed large-db ARAF sweeps before K=64 finishes.
+- Completed K=10 and K=30 sweeps do not beat RAW kNN on seeds 0,1,2.
+- K=64/dropout=0.0 partial sweep is better than K=30 but still below RAW kNN so far: diagnostic best-per-seed mean AUC 0.817740 vs kNN mean AUC 0.820419.
+- The best K=64 rows are all at the smallest tested `lambda_tau=0.002`, so the next fair target is a lower-tau sweep around/below the current lower boundary.
+- K=64/dropout=0.0 reached 132/321 rows and later larger taus had not displaced `lambda_tau=0.002`.
+- Current `metrics_wide.csv` ARAF selection uses `test_auc`; this is acceptable only as diagnostic ranking, not as final fair hyperparameter selection.
+- [ ] Patch large-db ARAF reporting so hyperparameter summaries can select by validation metrics instead of held-out test metrics.

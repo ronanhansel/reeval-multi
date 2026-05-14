@@ -20,6 +20,8 @@ SEEDS_COUNT=""
 N_SAMPLES="1"
 # Match main pipeline ARAF sweep by default (see model/reproduce.sh:SHARED_TAUS).
 LAMBDA_TAU="0.002,0.004,0.005,0.006,0.008,0.010,0.012,0.014,0.015,0.0151,0.0155,0.0159,0.016,0.018,0.020,0.022,0.024,0.025,0.026,0.028,0.029,0.030,0.032,0.034,0.035,0.036,0.038,0.040,0.042,0.044,0.045,0.046,0.048,0.050,0.052,0.0535,0.054,0.055,0.056,0.058,0.060,0.062,0.064,0.065,0.066,0.068,0.070,0.072,0.074,0.075,0.076,0.078,0.080,0.082,0.084,0.085,0.086,0.088,0.090,0.092,0.094,0.095,0.096,0.098,0.100,0.105,0.110,0.115,0.120,0.125,0.130,0.135,0.140,0.145,0.150,0.155,0.160,0.165,0.170,0.175,0.180,0.185,0.190,0.195,0.200,0.210,0.220,0.230,0.250,0.30,0.40,0.50,0.75,1.0,1.5,2.0,3.0,5.0,10.0,20.0,30.0,50.0,75.0,100.0,200.0,500.0,1000.0"
+ARAF_LATENT_DIMS="30"
+ARAF_DROPOUTS="0.5"
 EPOCHS="${EPOCHS:-1000}"
 TRAIN_RETENTION="1.0"
 TEST_SIZE="0.1"
@@ -57,6 +59,8 @@ Options:
   --seed N[,M]             Seed list. Default: 42.
   --seeds K                Use first K seeds: 0..K-1 (overrides --seed). Example: --seeds 3 -> 0,1,2.
   --lambda-tau X[,Y]       Tau list. Default: same shared ARAF sweep as model/reproduce.sh.
+  --araf-latent-dims K[,..]   ARAF latent dimension K sweep. Default: 30.
+  --araf-dropouts D[,..]     ARAF dropout sweep. Default: 0.5.
   --result-root PATH       Stable output root. Default: model/result/measurement_db_raw.
   --force                  Rebuild corpus/embeddings even if config matches.
   --help                   Show this message.
@@ -79,6 +83,8 @@ while [[ $# -gt 0 ]]; do
     --seed) SEED="$2"; shift 2 ;;
     --seeds) SEEDS_COUNT="$2"; shift 2 ;;
     --lambda-tau) LAMBDA_TAU="$2"; shift 2 ;;
+    --araf-latent-dims) ARAF_LATENT_DIMS="$2"; shift 2 ;;
+    --araf-dropouts) ARAF_DROPOUTS="$2"; shift 2 ;;
     --result-root) RESULT_ROOT="$2"; shift 2 ;;
     --force) FORCE=true; shift ;;
     --help) usage; exit 0 ;;
@@ -217,26 +223,18 @@ TAU_COUNT="$(python - <<PY2
 print(len([x for x in ${LAMBDA_TAU@Q}.replace(',', ' ').split() if x.strip()]))
 PY2
 )"
-ARAF_SLUG="${COMMON_SLUG}_tau-sweep-${TAU_COUNT}_epochs-${EPOCHS}"
+KNN_SLUG="${COMMON_SLUG}_k-${KNN_K_GRID//,/-}"
 KNN_SLUG="$(python - <<PY
 from model.measurement_db_raw import slugify
 print(slugify(${KNN_SLUG@Q}))
 PY
 )"
-ARAF_SLUG="$(python - <<PY
-from model.measurement_db_raw import slugify
-print(slugify(${ARAF_SLUG@Q}))
-PY
-)"
 
 BASELINE_CSV="${RESULT_ROOT}/baselines/baseline_metrics_${KNN_SLUG}.csv"
 MIRT_CSV="${RESULT_ROOT}/baselines/mirt_sweep_${KNN_SLUG}.csv"
-ARAF_CSV="${RESULT_ROOT}/araf/araf_raw_${ARAF_SLUG}.csv"
 KNN_LOG="${RESULT_ROOT}/logs/10_knn_${KNN_SLUG}.log"
-ARAF_LOG="${RESULT_ROOT}/logs/20_araf_${ARAF_SLUG}.log"
 SUMMARY_LOG="${RESULT_ROOT}/logs/30_summary.log"
 KNN_CONFIG_TMP="${BASELINE_CSV}.config.json.tmp"
-ARAF_CONFIG_TMP="${ARAF_CSV}.config.json.tmp"
 
 cat > "${KNN_CONFIG_TMP}" <<JSON
 {
@@ -259,31 +257,6 @@ cat > "${KNN_CONFIG_TMP}" <<JSON
   "test_observed_count": ${TEST_OBSERVED_COUNT},
   "split_inventory_path": "${SPLIT_INVENTORY_PATH}",
   "log_path": "${KNN_LOG}"
-}
-JSON
-
-cat > "${ARAF_CONFIG_TMP}" <<JSON
-{
-  "kind": "measurement_db_raw_araf",
-  "data_source": "${SOURCE}",
-  "dataset_selector": "$([[ "${ALL_READY}" == true ]] && echo all-ready || echo "${DATASETS}")",
-  "corpus_slug": "${CORPUS_SLUG}",
-  "corpus_config_path": "${CORPUS_CONFIG_PATH}",
-  "embedding_slug": "${EMBEDDING_SLUG}",
-  "embedding_config_path": "${EMBEDDING_CONFIG_PATH}",
-  "model_type": "${MODEL_TYPE}",
-  "seed": "${SEED}",
-  "test_size": ${TEST_SIZE},
-  "train_retention": ${TRAIN_RETENTION},
-  "n_samples": ${N_SAMPLES},
-  "lambda_tau": "${LAMBDA_TAU}",
-  "epochs": ${EPOCHS},
-  "train_item_count": ${TRAIN_ITEM_COUNT},
-  "test_item_count": ${TEST_ITEM_COUNT},
-  "train_observed_count": ${TRAIN_OBSERVED_COUNT},
-  "test_observed_count": ${TEST_OBSERVED_COUNT},
-  "split_inventory_path": "${SPLIT_INVENTORY_PATH}",
-  "log_path": "${ARAF_LOG}"
 }
 JSON
 
@@ -324,7 +297,6 @@ else
     echo "[FAIL] RAW kNN failed; see ${KNN_LOG}" >&2
     exit 1
   fi
-  # Baseline cache writes grouped files; materialize manifest at requested path for aggregation.
   python - <<PY >/dev/null 2>&1
 import model.baseline_cache as bc
 bc.write_baseline_manifest(${BASELINE_CSV@Q})
@@ -332,36 +304,87 @@ bc.write_mirt_sweep_manifest(${MIRT_CSV@Q})
 PY
 fi
 
-echo "[RUN] RAW ARAF -> ${ARAF_LOG}"
-if [[ -f "${ARAF_CSV}.config.json" ]] &&
-   cmp -s "${ARAF_CONFIG_TMP}" "${ARAF_CSV}.config.json" &&
-   python -m model.measurement_db_raw check-result --kind araf --path "${ARAF_CSV}" >/dev/null 2>&1; then
-  echo "[SKIP] RAW ARAF complete: ${ARAF_CSV}"
-  rm -f "${ARAF_CONFIG_TMP}"
-else
-  mv "${ARAF_CONFIG_TMP}" "${ARAF_CSV}.config.json"
-  if ! PYTHONPATH="${REPO_ROOT}" python -m model.amortized_irt \
-    --data-source measurement_db_raw \
-    --mdb-corpus-path "${CORPUS_PATH}" \
-    --mdb-raw-embeddings-path "${EMBEDDING_PATH}" \
-    --embedding-type raw \
-    --baseline-embedding-type raw \
-    --model-type "${MODEL_TYPE}" \
-    --n-samples "${N_SAMPLES}" \
-    --seed "${SEED}" \
-    --lambda-tau "${LAMBDA_TAU}" \
-    --epochs "${EPOCHS}" \
-    --output "${ARAF_CSV}" \
-    --train-retention "${TRAIN_RETENTION}" \
-    --parallel "${ARAF_PARALLEL}" \
-    "${QUIET_FLAG[@]}" \
-    > "${ARAF_LOG}" 2>&1; then
-    touch "${ARAF_CSV}.failed"
-    touch "${ARAF_LOG}.failed"
-    echo "[FAIL] RAW ARAF failed; see ${ARAF_LOG}" >&2
-    exit 1
-  fi
-fi
+IFS=',' read -r -a ARAF_K_VALUES <<< "${ARAF_LATENT_DIMS}"
+IFS=',' read -r -a ARAF_DROPOUT_VALUES <<< "${ARAF_DROPOUTS}"
+ARAF_CSVS=()
+for ARAF_LATENT_DIM in "${ARAF_K_VALUES[@]}"; do
+  for ARAF_DROPOUT in "${ARAF_DROPOUT_VALUES[@]}"; do
+    ARAF_LATENT_DIM="$(echo "${ARAF_LATENT_DIM}" | xargs)"
+    ARAF_DROPOUT="$(echo "${ARAF_DROPOUT}" | xargs)"
+    [[ -n "${ARAF_LATENT_DIM}" && -n "${ARAF_DROPOUT}" ]] || continue
+    ARAF_SLUG="${COMMON_SLUG}_araf-k-${ARAF_LATENT_DIM}_dropout-${ARAF_DROPOUT}_tau-sweep-${TAU_COUNT}_epochs-${EPOCHS}"
+    ARAF_SLUG="$(python - <<PY
+from model.measurement_db_raw import slugify
+print(slugify(${ARAF_SLUG@Q}))
+PY
+)"
+    ARAF_CSV="${RESULT_ROOT}/araf/araf_raw_${ARAF_SLUG}.csv"
+    ARAF_LOG="${RESULT_ROOT}/logs/20_araf_${ARAF_SLUG}.log"
+    ARAF_CONFIG_TMP="${ARAF_CSV}.config.json.tmp"
+    ARAF_CSVS+=("${ARAF_CSV}")
+
+    cat > "${ARAF_CONFIG_TMP}" <<JSON
+{
+  "kind": "measurement_db_raw_araf",
+  "data_source": "${SOURCE}",
+  "dataset_selector": "$([[ "${ALL_READY}" == true ]] && echo all-ready || echo "${DATASETS}")",
+  "corpus_slug": "${CORPUS_SLUG}",
+  "corpus_config_path": "${CORPUS_CONFIG_PATH}",
+  "embedding_slug": "${EMBEDDING_SLUG}",
+  "embedding_config_path": "${EMBEDDING_CONFIG_PATH}",
+  "model_type": "${MODEL_TYPE}",
+  "seed": "${SEED}",
+  "test_size": ${TEST_SIZE},
+  "train_retention": ${TRAIN_RETENTION},
+  "n_samples": ${N_SAMPLES},
+  "lambda_tau": "${LAMBDA_TAU}",
+  "epochs": ${EPOCHS},
+  "araf_latent_dim": ${ARAF_LATENT_DIM},
+  "araf_dropout": ${ARAF_DROPOUT},
+  "train_item_count": ${TRAIN_ITEM_COUNT},
+  "test_item_count": ${TEST_ITEM_COUNT},
+  "train_observed_count": ${TRAIN_OBSERVED_COUNT},
+  "test_observed_count": ${TEST_OBSERVED_COUNT},
+  "split_inventory_path": "${SPLIT_INVENTORY_PATH}",
+  "log_path": "${ARAF_LOG}"
+}
+JSON
+
+    echo "[RUN] RAW ARAF k=${ARAF_LATENT_DIM} dropout=${ARAF_DROPOUT} -> ${ARAF_LOG}"
+    if [[ -f "${ARAF_CSV}.config.json" ]] &&
+       cmp -s "${ARAF_CONFIG_TMP}" "${ARAF_CSV}.config.json" &&
+       python -m model.measurement_db_raw check-result --kind araf --path "${ARAF_CSV}" >/dev/null 2>&1; then
+      echo "[SKIP] RAW ARAF complete: ${ARAF_CSV}"
+      rm -f "${ARAF_CONFIG_TMP}"
+    else
+      mv "${ARAF_CONFIG_TMP}" "${ARAF_CSV}.config.json"
+      if ! PYTHONPATH="${REPO_ROOT}" python -m model.amortized_irt \
+        --data-source measurement_db_raw \
+        --mdb-corpus-path "${CORPUS_PATH}" \
+        --mdb-raw-embeddings-path "${EMBEDDING_PATH}" \
+        --embedding-type raw \
+        --baseline-embedding-type raw \
+        --model-type "${MODEL_TYPE}" \
+        --n-samples "${N_SAMPLES}" \
+        --seed "${SEED}" \
+        --lambda-tau "${LAMBDA_TAU}" \
+        --epochs "${EPOCHS}" \
+        --output "${ARAF_CSV}" \
+        --train-retention "${TRAIN_RETENTION}" \
+        --araf-latent-dim "${ARAF_LATENT_DIM}" \
+        --araf-dropout "${ARAF_DROPOUT}" \
+        --parallel "${ARAF_PARALLEL}" \
+        "${QUIET_FLAG[@]}" \
+        > "${ARAF_LOG}" 2>&1; then
+        touch "${ARAF_CSV}.failed"
+        touch "${ARAF_LOG}.failed"
+        echo "[FAIL] RAW ARAF failed; see ${ARAF_LOG}" >&2
+        exit 1
+      fi
+    fi
+  done
+done
+ARAF_CSV="${ARAF_CSVS[*]}"
 
 echo "[RUN] aggregate summaries -> ${SUMMARY_LOG}"
 if ! python -m model.measurement_db_raw aggregate \

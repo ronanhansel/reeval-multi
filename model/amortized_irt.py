@@ -761,7 +761,7 @@ def train_amortized_irt(model, y_train, train_mask_t, y_oracle, test_mask_oracle
         if epoch > TAU_WARMUP + 50 and epoch % 10 == 0:
             with torch.no_grad():
                 active_mask = model.get_tau() > SNAPPING_THRESHOLD
-                for k in range(K_MODEL):
+                for k in range(active_mask.numel()):
                     if not active_mask[k]:
                         model.tau_raw[k] = DEAD_ZONE_VALUE
 
@@ -2373,7 +2373,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                    allow_compute_baselines=True, mirt_dim_min=K_MODEL, mirt_dim_max=K_MODEL,
                    mirt_sweep_output=DEFAULT_MIRT_SWEEP_OUTPUT,
                    cross_revision_araf_mode='transfer',
-                   baseline_profile=BASELINE_PROFILE_FULL):
+                   baseline_profile=BASELINE_PROFILE_FULL,
+                   araf_latent_dim=None,
+                   araf_dropout=None):
     """Run experiment for a specific number of sample files.
 
     Args:
@@ -2383,6 +2385,9 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
     """
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
+
+    araf_k = int(araf_latent_dim) if araf_latent_dim is not None else K_MODEL
+    araf_dropout_value = float(araf_dropout) if araf_dropout is not None else 0.5
 
     N = data['N']
     J = data['J']
@@ -2497,7 +2502,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             run_test_item_ids = run_view['test_item_ids'] or run_test_item_ids
             observed_train_pairs = int(support_mask_current_t.sum().item())
 
-            model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+            model = AmortizedIRTModel(N, J, araf_k, embedding_dim, x_j, dropout=araf_dropout_value, no_tau=no_tau).to(device)
             final_rmse, final_state = train_amortized_irt(
                 model,
                 y_support,
@@ -2592,7 +2597,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
             )
 
             pre_embedding_dim = int(x_j_pre.shape[1])
-            pre_model = AmortizedIRTModel(N_pre, J_pre, K_MODEL, pre_embedding_dim, x_j_pre, dropout=0.5, no_tau=no_tau).to(device)
+            pre_model = AmortizedIRTModel(N_pre, J_pre, araf_k, pre_embedding_dim, x_j_pre, dropout=araf_dropout_value, no_tau=no_tau).to(device)
             _, pre_state = train_amortized_irt(
                 pre_model,
                 y_train_pre,
@@ -2607,7 +2612,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
                 row_weight_t=row_weight_pre_t,
             )
 
-            model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.0, no_tau=no_tau).to(device)
+            model = AmortizedIRTModel(N, J, araf_k, embedding_dim, x_j, dropout=0.0, no_tau=no_tau).to(device)
             state_dict = model.state_dict()
             for key, value in pre_state.items():
                 if key in {'theta', 'theta_bias'}:
@@ -2670,7 +2675,7 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         run_test_item_ids = run_view['test_item_ids'] or run_test_item_ids
         observed_train_pairs = int(train_mask_current_t.sum().item())
 
-        model = AmortizedIRTModel(N, J, K_MODEL, embedding_dim, x_j, dropout=0.5, no_tau=no_tau).to(device)
+        model = AmortizedIRTModel(N, J, araf_k, embedding_dim, x_j, dropout=araf_dropout_value, no_tau=no_tau).to(device)
         final_rmse, final_state = train_amortized_irt(model, y_train, train_mask_current_t, y_oracle, test_mask,
                                          model_type=model_type, beta_phi=beta_phi,
                                          epochs=EPOCHS, lambda_tau=LAMBDA_TAU, quiet=quiet,
@@ -2780,6 +2785,8 @@ def run_experiment(n_files, all_dfs, global_shared_indices, data, model_type='be
         'model_type': model_type,
         'seed': RANDOM_SEED,
         'lambda_tau': LAMBDA_TAU,
+        'araf_latent_dim': araf_k,
+        'araf_dropout': araf_dropout_value,
         'embedding_protocol': run_view.get('embedding_protocol', data.get('embedding_protocol', embedding_metadata_for_type(embedding_type)[0])),
         'embedding_fit_scope': run_view.get('embedding_fit_scope', data.get('embedding_fit_scope', embedding_metadata_for_type(embedding_type)[1])),
         'embedding_fit_item_count': int(run_view.get('embedding_fit_item_count', data.get('embedding_fit_item_count', 0))),
@@ -3716,7 +3723,9 @@ def run_single_config(config, args, n_values):
                                     mirt_dim_max=args.mirt_dim_max,
                                     mirt_sweep_output=args.mirt_sweep_output,
                                     cross_revision_araf_mode=args.cross_revision_araf_mode,
-                                    baseline_profile=args.baseline_profile)
+                                    baseline_profile=args.baseline_profile,
+                                    araf_latent_dim=args.araf_latent_dim,
+                                    araf_dropout=args.araf_dropout)
 
             pair_efficiency_rows = result.pop('pair_efficiency_rows', [])
             neighbor_support_rows = result.pop('neighbor_support_rows', [])
@@ -3897,6 +3906,10 @@ def main():
     parser.add_argument('--cross-revision-araf-mode', type=str, default='transfer',
                         choices=['transfer', 'post', 'post_support_transfer'],
                         help='Cross-revision ARAF mode: transfer uses the current pre-train/post-eval path; post trains directly on post support; post_support_transfer matches the original post-support-thinning transfer setup.')
+    parser.add_argument("--araf-latent-dim", type=int, default=None,
+                        help="ARAF latent dimension K override (default: K_MODEL=30).")
+    parser.add_argument("--araf-dropout", type=float, default=None,
+                        help="ARAF dropout override (default: 0.5).")
     args = parser.parse_args()
 
     import sys, os
