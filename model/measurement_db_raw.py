@@ -24,6 +24,7 @@ EMBEDDING_VERSION = "mdb-raw-embedding-v1"
 
 REGISTRY_FILES = {"benchmarks.parquet", "subjects.parquet", "items.parquet"}
 REQUIRED_RESULT_COLS = {
+    "tabpfn": ["test_auc", "test_rmse"],
     "araf": ["rmse_amortized", "auc_amortized"],
     "knn": ["rmse_knn", "auc_knn"],
 }
@@ -38,7 +39,7 @@ def slugify(value: Any) -> str:
 
 
 def ensure_result_dirs(result_root: Path) -> None:
-    for subdir in ["data_cache", "embeddings", "baselines", "araf", "summaries", "logs"]:
+    for subdir in ["data_cache", "embeddings", "baselines", "araf", "tabpfn", "summaries", "logs"]:
         (result_root / subdir).mkdir(parents=True, exist_ok=True)
 
 
@@ -545,6 +546,43 @@ def aggregate_results(result_root: Path) -> dict[str, Path]:
     summaries.mkdir(parents=True, exist_ok=True)
     rows = []
 
+    for path in sorted((result_root / "tabpfn").glob("*.csv")):
+        if not result_complete(path, "tabpfn"):
+            continue
+        cfg = load_config_sidecar(path)
+        df = pd.read_csv(path)
+        for _, row in df.iterrows():
+            row_cfg = dict(cfg)
+            row_cfg["seed"] = row.get("seed", cfg.get("seed", ""))
+            row_cfg["n_samples"] = row.get("n_samples", cfg.get("n_samples", 1))
+            row_cfg["model_type"] = row.get("model_type", cfg.get("model_type", ""))
+            rows.append(
+                {
+                    **common_metric_payload(row_cfg, path, "tabpfn"),
+                    "lambda_tau": np.nan,
+                    "epochs": np.nan,
+                    "araf_latent_dim": np.nan,
+                    "araf_dropout": np.nan,
+                    "knn_k_grid": "",
+                    "selected_knn_k": np.nan,
+                    "val_auc": np.nan,
+                    "val_rmse": np.nan,
+                    "test_auc": row.get("test_auc", np.nan),
+                    "test_rmse": row.get("test_rmse", np.nan),
+                    "train_item_count": row.get("train_item_count", cfg.get("train_item_count", np.nan)),
+                    "test_item_count": row.get("test_item_count", cfg.get("test_item_count", np.nan)),
+                    "train_observed_count": row.get("train_observed_count", cfg.get("train_observed_count", np.nan)),
+                    "test_observed_count": row.get("test_observed_count", cfg.get("test_observed_count", np.nan)),
+                    "active_dims": np.nan,
+                    "tabpfn_train_rows": row.get("tabpfn_train_rows", cfg.get("train_rows", np.nan)),
+                    "tabpfn_actual_train_rows": row.get("tabpfn_actual_train_rows", np.nan),
+                    "tabpfn_item_pca_dim": row.get("tabpfn_item_pca_dim", cfg.get("pca_dim", np.nan)),
+                    "tabpfn_feature_set": row.get("tabpfn_feature_set", cfg.get("feature_set", "")),
+                    "tabpfn_package_version": row.get("tabpfn_package_version", cfg.get("tabpfn_version", "")),
+                    "status": "complete",
+                }
+            )
+
     for path in sorted((result_root / "araf").glob("*.csv")):
         if not result_complete(path, "araf"):
             continue
@@ -673,7 +711,21 @@ def aggregate_results(result_root: Path) -> dict[str, Path]:
             best_idx = sub.groupby(["corpus_slug", "seed"])["test_auc"].idxmax()
             sub = sub.loc[best_idx]
         
-        keep = join_cols + ["test_auc", "test_rmse", "selected_knn_k", "lambda_tau", "epochs", "araf_latent_dim", "araf_dropout", "artifact_path"]
+        keep = join_cols + [
+            "test_auc",
+            "test_rmse",
+            "selected_knn_k",
+            "lambda_tau",
+            "epochs",
+            "araf_latent_dim",
+            "araf_dropout",
+            "tabpfn_train_rows",
+            "tabpfn_actual_train_rows",
+            "tabpfn_item_pca_dim",
+            "tabpfn_feature_set",
+            "tabpfn_package_version",
+            "artifact_path",
+        ]
         renamed = sub[[col for col in keep if col in sub.columns]].copy()
         renamed = renamed.rename(
             columns={
@@ -847,7 +899,7 @@ def main() -> None:
     split.set_defaults(func=cmd_split_inventory)
 
     chk = sub.add_parser("check-result")
-    chk.add_argument("--kind", choices=["araf", "knn"], required=True)
+    chk.add_argument("--kind", choices=["araf", "knn", "tabpfn"], required=True)
     chk.add_argument("--path", required=True)
     chk.set_defaults(func=cmd_check_result)
 

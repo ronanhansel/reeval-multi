@@ -1,0 +1,22 @@
+{
+  "auc": 0.6865925763342803,
+  "corpus_config_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/corpus_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.parquet.config.json",
+  "corpus_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/corpus_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.parquet",
+  "corpus_slug": "src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1",
+  "data_source": "hf",
+  "dataset_selector": "all-ready",
+  "elapsed": 164.94007635116577,
+  "embedding_config_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/embeddings/rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1.pkl.config.json",
+  "embedding_slug": "rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1",
+  "embeddings_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/embeddings/rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1.pkl",
+  "feature_set": "user_stats3_item_pca_item_train_stats3_v1",
+  "kind": "measurement_db_raw_tabpfn",
+  "log_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/logs/tabpfn_corpus-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1-seed-2.log",
+  "model_type": "bernoulli",
+  "pca_dim": 64,
+  "rmse": 0.45967281198688537,
+  "seed": 2,
+  "split_inventory_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/summaries/split_inventory_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_seed2_test0-1.csv",
+  "tabpfn_version": "2.2.1",
+  "train_rows": 1000
+}

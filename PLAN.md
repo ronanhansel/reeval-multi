@@ -156,6 +156,8 @@ Goal: identify and test fair, minimally invasive ARAF setup changes that can bea
 
 - [x] Audit current large-db ARAF/kNN protocol and result gap: kNN ~0.82 AUC, current ARAF best ~0.81 AUC, old explicit seed-42 ARAF ~0.789.
 - [ ] Review relevant literature/standard practice for inductive item-response or side-information matrix factorization against kNN-style baselines.
+  - [ ] Search arXiv/recent ML literature for 2023-2025 work on inductive matrix completion, side-information factorization, neural CF, cold-start IRT, and embedding-based knowledge tracing.
+  - [ ] Extract 3-5 most actionable papers, architecture ideas, available code, and reported gains where available.
 - [x] Inspect ARAF implementation: ARAF used fixed latent K=30 and dropout=0.5 while kNN sweeps k; added CLI knobs for ARAF K/dropout without changing model family.
 - [ ] Run targeted fair experiments with config-keyed outputs and existing split; launcher now supports `--araf-latent-dims` and `--araf-dropouts`.
 - [x] Aggregate/select best valid ARAF setup per seed and compare against kNN: summary now records `araf_latent_dim`/`araf_dropout` and `metrics_wide.csv` selects best ARAF across tau/K/dropout per seed.
@@ -302,3 +304,59 @@ The 20-seed result is significant overall (paired t p=0.0175), but out-of-select
 - [x] Launch seeds 20-29 with fixed K=128/dropout=0/tau=0 in `long_1`.
 - [ ] Wait for completion and compute 30-seed plus out-of-selection 3-29 paired stats.
 - [ ] Update final analysis artifacts with N=30 result.
+
+## Literature Research: Side-Information ARAF Improvements
+
+Goal: research 2023-2025 state-of-the-art methods for improving latent factorization models with side information, especially cold-start IRT / inductive matrix completion.
+
+- [x] Create research log and scope target search areas.
+- [ ] Search recent arXiv/ML literature for inductive matrix completion, cold-start IRT, factorization machines, neural CF with side information, and knowledge tracing embeddings.
+- [ ] Extract top 3-5 relevant papers, architectural ideas, code/frameworks, and reported gains.
+- [ ] Summarize concrete ARAF architecture changes with expected risks and implementation priority.
+
+Search completed 2026-05-15 via arXiv API and PDF extraction. Key findings:
+
+- Cold-start IRT specifically remains sparse; adjacent work appears in LLM-augmented cognitive diagnosis (KCD, LLM4CD, SMART) and strict cold-start recommendation (Firzen, IGCCF, CL4SR).
+- Factorization Machines for Knowledge Tracing (KTMs, DeepFM-KT) show FM can encompass IRT/MIRT as special cases with side information, but these are 2018-era works; modern extensions have largely moved to LLM-based semantic encoders.
+- The most actionable architectural ideas for ARAF come from (1) frozen heterogeneous/homogeneous graph propagation over embeddings, (2) LLM-generated semantic alignment with behavioral spaces, and (3) contrastive learning between semantic and collaborative representations.
+
+- [x] Search recent arXiv/ML literature for inductive matrix completion, cold-start IRT, factorization machines, neural CF with side information, and knowledge tracing embeddings.
+- [ ] Extract top 3-5 relevant papers, architectural ideas, code/frameworks, and reported gains.
+- [ ] Summarize concrete ARAF architecture changes with expected risks and implementation priority.
+
+Top candidate papers and implementation directions were distilled for final response:
+
+- Firzen (ICDE 2024 / arXiv 2410.07654): frozen heterogeneous and homogeneous graph propagation for strict cold-start item recommendation; code at `https://github.com/PKU-ICST-MIPL/Firzen`.
+- KCD (AAAI 2025 / arXiv 2502.05556): LLM diagnosis plus contrastive/masked semantic-behavioral alignment for cognitive diagnosis; code at `https://github.com/PlayerDza/KCD`.
+- LLM4CD (2025 / arXiv 2505.13492): LLM semantic encoders replacing or augmenting ID embeddings for open-world cognitive diagnosis; code at `https://github.com/yevzh/LLM4CD-Release`.
+- SMART (EMNLP 2025 / arXiv 2507.05129): IRT-aligned simulated students for cold-start item difficulty prediction.
+- IGCCF (2023 / arXiv 2303.15946): item-graph convolution for inductive recommendation.
+
+Recommended ARAF priorities:
+
+1. Frozen item-item graph propagation over RAW embeddings before the `W` projection.
+2. Contrastive semantic-behavioral alignment between RAW embeddings and learned item factors.
+3. LLM-augmented item features or synthetic IRT priors only after graph/contrastive ablations.
+4. FM/DeepFM-style feature crosses as lower-priority fallback due higher overfit risk.
+
+- [x] Extract top 3-5 relevant papers, architectural ideas, code/frameworks, and reported gains.
+- [x] Summarize concrete ARAF architecture changes with expected risks and implementation priority.
+
+## TabPFN Comparator Planning
+
+Goal: document a handoff-ready plan for another agent to add TabPFN as a standalone measurement-db RAW comparator.
+
+- [x] Record the agreed TabPFN framing: pairwise supervised rows, local OSS TabPFN, 50k training-pair cap, 64-dim train-fit PCA item features.
+- [x] Create repo-root `TABPFN.md` with implementation instructions, leakage constraints, integration points, and test plan.
+
+## TabPFN Comparator Implementation
+
+Goal: implement `TABPFN.md` and run a first 3-seed evaluation against the existing measurement-db RAW kNN/ARAF baselines.
+
+- [ ] Install or verify local OSS `tabpfn` in the `hal` environment.
+- [ ] Add split-safe pairwise TabPFN feature construction and fitting.
+- [ ] Write TabPFN artifacts under `model/result/measurement_db_raw/tabpfn/` with config sidecars and logs.
+- [ ] Integrate TabPFN rows into measurement-db aggregation outputs.
+- [ ] Add optional TabPFN launcher flags to `model/reproduce_large_db.sh`.
+- [ ] Run smoke/static checks.
+- [ ] Run TabPFN for seeds 0,1,2 and compare against existing baselines.

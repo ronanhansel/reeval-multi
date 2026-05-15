@@ -1,5 +1,5 @@
 {
-  "kind": "measurement_db_raw_knn",
+  "kind": "measurement_db_raw_araf",
   "data_source": "hf",
   "dataset_selector": "all-ready",
   "corpus_slug": "src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1",
@@ -7,15 +7,18 @@
   "embedding_slug": "rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1",
   "embedding_config_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/embeddings/rawemb-src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_model-qwen3-8b_maxchars20000_mdb-raw-embedding-v1.pkl.config.json",
   "model_type": "bernoulli",
-  "seed": "42",
+  "seed": "0",
   "test_size": 0.1,
   "train_retention": 1.0,
   "n_samples": 1,
-  "knn_k_grid": "5,10,20,50",
+  "lambda_tau": "0.002",
+  "epochs": 1,
+  "araf_latent_dim": 10,
+  "araf_dropout": 0.5,
   "train_item_count": 35762,
   "test_item_count": 3973,
-  "train_observed_count": 3089224,
-  "test_observed_count": 339862,
-  "split_inventory_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/summaries/split_inventory_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_seed42_test0-1.csv",
-  "log_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/logs/10_knn_corpus-src-hf-all-ready-mins4-mini50-bounded01-mdb-raw-matrix-v1-emb-raw-qwen3-embedding-8b-mc20000-model-bernoulli-seed-42-test-0-1-ret-1-0-n-1-k-5-10-20-50.log"
+  "train_observed_count": 3080086,
+  "test_observed_count": 349000,
+  "split_inventory_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/summaries/split_inventory_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1_seed0_test0-1.csv",
+  "log_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/logs/20_araf_corpus-src-hf-all-ready-mins4-mini50-bounded01-mdb-raw-matrix-v1-emb-raw-qwen3-embedding-8b-mc20000-model-bernoulli-seed-0-test-0-1-ret-1-0-n-1-araf-k-10-dropout-0-5-tau-sweep-1-epochs-1.log"
 }

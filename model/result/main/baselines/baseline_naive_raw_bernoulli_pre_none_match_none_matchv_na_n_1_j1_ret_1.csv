@@ -4,7 +4,6 @@ seed,model_type,n_samples,pre_revision,j_percentage,train_retention,baseline_emb
 34,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4055063520573704
 46,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4174168945449468
 30,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,10.0,2.0,0.5,0.4007845731601174
-42,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4127503783953831
 39,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4219335409449664
 31,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.3978347332802858
 35,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4156629831841215
@@ -19,9 +18,6 @@ seed,model_type,n_samples,pre_revision,j_percentage,train_retention,baseline_emb
 41,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,20.0,2.0,0.5,0.3895875505569321
 45,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4276585969034732
 33,bernoulli,1,none,1.0,1.0,raw,none,,1,32.0,50.0,2.0,0.5,0.4220242589479562
-0,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4277304383536561
-1,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4279554135604247
-2,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4086271210385246
 3,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4093871580749986
 5,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4155122101983082
 4,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4147203186375721
@@ -49,3 +45,7 @@ seed,model_type,n_samples,pre_revision,j_percentage,train_retention,baseline_emb
 25,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4322203113846815
 28,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4365038942062825
 29,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.412462941585845
+42,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4127503783953831
+0,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4277304383536561
+1,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4279554135604247
+2,bernoulli,1,none,1.0,1.0,raw,none,,1,858.0,,,0.5,0.4086271210385246

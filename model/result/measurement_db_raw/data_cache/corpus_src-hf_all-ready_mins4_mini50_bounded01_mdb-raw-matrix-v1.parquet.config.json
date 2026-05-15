@@ -1,8 +1,8 @@
 {
   "all_ready": true,
-  "corpus_path": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/corpus_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.parquet",
+  "corpus_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/corpus_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.parquet",
   "corpus_slug": "src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1",
-  "dataset_inventory_path": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/summaries/dataset_inventory_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.csv",
+  "dataset_inventory_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/summaries/dataset_inventory_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.csv",
   "dataset_names": [
     "afrimedqa",
     "agentdojo",
@@ -20,7 +20,7 @@
   "density": 0.10058144531530715,
   "hf_repo": "aims-foundations/measurement-db",
   "included_dataset_count": 12,
-  "item_content_path": "/Data/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/item_contents_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.csv",
+  "item_content_path": "/home/v-qizhengli/workspace/reeval-multi/model/result/measurement_db_raw/data_cache/item_contents_src-hf_all-ready_mins4_mini50_bounded01_mdb-raw-matrix-v1.csv",
   "item_count": 39735,
   "kind": "measurement_db_raw_corpus",
   "matrix_version": "mdb-raw-matrix-v1",

@@ -35,10 +35,6 @@ MAX_CHARS="${MAX_CHARS:-20000}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 CHUNK_SIZE="${CHUNK_SIZE:-128}"
 MEASUREMENT_DB_GIT="${MEASUREMENT_DB_GIT:-https://github.com/aims-foundations/measurement-db.git}"
-RUN_TABPFN=false
-TABPFN_TRAIN_ROWS="${TABPFN_TRAIN_ROWS:-50000}"
-TABPFN_ITEM_PCA_DIM="${TABPFN_ITEM_PCA_DIM:-64}"
-TABPFN_SEEDS=""
 
 usage() {
   cat <<'EOF'
@@ -67,10 +63,6 @@ Options:
   --araf-dropouts D[,..]     ARAF dropout sweep. Default: 0.5.
   --result-root PATH       Stable output root. Default: model/result/measurement_db_raw.
   --force                  Rebuild corpus/embeddings even if config matches.
-  --tabpfn                 Run TabPFN comparator after kNN/ARAF.
-  --tabpfn-train-rows N    TabPFN train row cap per seed. Default: 50000.
-  --tabpfn-item-pca-dim N  TabPFN item embedding PCA dim. Default: 64.
-  --tabpfn-seeds S[,..]    Optional TabPFN seed list; defaults to --seed.
   --help                   Show this message.
 EOF
 }
@@ -94,10 +86,6 @@ while [[ $# -gt 0 ]]; do
     --araf-latent-dims) ARAF_LATENT_DIMS="$2"; shift 2 ;;
     --araf-dropouts) ARAF_DROPOUTS="$2"; shift 2 ;;
     --result-root) RESULT_ROOT="$2"; shift 2 ;;
-    --tabpfn) RUN_TABPFN=true; shift ;;
-    --tabpfn-train-rows) TABPFN_TRAIN_ROWS="$2"; shift 2 ;;
-    --tabpfn-item-pca-dim) TABPFN_ITEM_PCA_DIM="$2"; shift 2 ;;
-    --tabpfn-seeds) TABPFN_SEEDS="$2"; shift 2 ;;
     --force) FORCE=true; shift ;;
     --help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -135,7 +123,6 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
-export SCIPY_ARRAY_API=1
 
 mkdir -p \
   "${RESULT_ROOT}/data_cache" \
@@ -149,7 +136,6 @@ echo "[ENV] repo=${REPO_ROOT}"
 echo "[ENV] result_root=${RESULT_ROOT}"
 echo "[ENV] source=${SOURCE}"
 echo "[ENV] parallel=${PARALLEL}"
-echo "[ENV] run_tabpfn=${RUN_TABPFN}"
 echo "[ENV] araf_parallel=${ARAF_PARALLEL}"
 echo "[ENV] quiet=${QUIET}"
 echo "[ENV] python=$(which python)"
@@ -399,48 +385,6 @@ JSON
   done
 done
 ARAF_CSV="${ARAF_CSVS[*]}"
-
-if [[ "${RUN_TABPFN}" == true ]]; then
-  TABPFN_SEED_LIST="${TABPFN_SEEDS:-${SEED}}"
-  IFS=',' read -r -a TABPFN_SEED_ARR <<< "${TABPFN_SEED_LIST}"
-  for TABPFN_SEED in "${TABPFN_SEED_ARR[@]}"; do
-    TABPFN_SEED="$(echo "${TABPFN_SEED}" | xargs)"
-    [[ -n "${TABPFN_SEED}" ]] || continue
-    TABPFN_SPLIT_ENV="${RESULT_ROOT}/summaries/latest_split_paths_seed${TABPFN_SEED}.env"
-    TABPFN_SPLIT_LOG="${RESULT_ROOT}/logs/05_split_inventory_seed${TABPFN_SEED}.log"
-    if ! python -m model.measurement_db_raw split-inventory \
-      --result-root "${RESULT_ROOT}" \
-      --corpus-path "${CORPUS_PATH}" \
-      --item-content-path "${ITEM_CONTENT_PATH}" \
-      --corpus-slug "${CORPUS_SLUG}" \
-      --seed "${TABPFN_SEED}" \
-      --test-size "${TEST_SIZE}" \
-      > "${TABPFN_SPLIT_ENV}" 2> "${TABPFN_SPLIT_LOG}"; then
-      touch "${TABPFN_SPLIT_LOG}.failed"
-      echo "[FAIL] split inventory failed for TabPFN seed ${TABPFN_SEED}; see ${TABPFN_SPLIT_LOG}" >&2
-      exit 1
-    fi
-    # shellcheck disable=SC1090
-    source "${TABPFN_SPLIT_ENV}"
-    TABPFN_LOG="${RESULT_ROOT}/logs/25_tabpfn_seed${TABPFN_SEED}.log"
-    echo "[RUN] TabPFN seed=${TABPFN_SEED} -> ${TABPFN_LOG}"
-    if ! PYTHONPATH="${REPO_ROOT}" python -m model.measurement_db_tabpfn \
-      --corpus-path "${CORPUS_PATH}" \
-      --embeddings-path "${EMBEDDING_PATH}" \
-      --split-inventory-path "${SPLIT_INVENTORY_PATH}" \
-      --result-root "${RESULT_ROOT}" \
-      --seed "${TABPFN_SEED}" \
-      --train-rows "${TABPFN_TRAIN_ROWS}" \
-      --pca-dim "${TABPFN_ITEM_PCA_DIM}" \
-      --model-type "${MODEL_TYPE}" \
-      "${FORCE_FLAG[@]}" \
-      > "${TABPFN_LOG}" 2>&1; then
-      touch "${TABPFN_LOG}.failed"
-      echo "[FAIL] TabPFN failed for seed ${TABPFN_SEED}; see ${TABPFN_LOG}" >&2
-      exit 1
-    fi
-  done
-fi
 
 echo "[RUN] aggregate summaries -> ${SUMMARY_LOG}"
 if ! python -m model.measurement_db_raw aggregate \

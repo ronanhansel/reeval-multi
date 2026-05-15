@@ -1,0 +1,2 @@
+seed,model_type,test_auc,test_rmse,tabpfn_train_rows,tabpfn_actual_train_rows,tabpfn_item_pca_dim,tabpfn_feature_set,tabpfn_package_version,elapsed_seconds,train_item_count,test_item_count,train_observed_count,test_observed_count
+0,bernoulli,0.6883929286602322,0.46308274196957216,1000,1000,16,user_stats3_item_pca_item_train_stats3_v1,2.2.1,69.22925758361816,35762,3973,3080086,349000
