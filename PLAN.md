@@ -170,3 +170,135 @@ Interim analysis while `long_1` runs:
 - K=64/dropout=0.0 reached 132/321 rows and later larger taus had not displaced `lambda_tau=0.002`.
 - Current `metrics_wide.csv` ARAF selection uses `test_auc`; this is acceptable only as diagnostic ranking, not as final fair hyperparameter selection.
 - [ ] Patch large-db ARAF reporting so hyperparameter summaries can select by validation metrics instead of held-out test metrics.
+
+### Interim Diagnostic Results (test-selected tau, optimistic)
+
+**Status**: K=10,30 (all dropouts) complete; K=64 d=0.0 running (~160/321 configs, tau up to 0.085); K=128 queued.
+
+**kNN baseline**: seeds 0,1,2 mean AUC **0.8204**, validation-only k=10 selection.
+
+**ARAF best per K/dropout** (best tau per seed, then mean — diagnostic only, tau selected on test):
+
+| K  | dropout | complete | mean AUC | gap vs kNN | best tau |
+|----|----------|----------|----------|------------|----------|
+| 64 | 0.0      | partial  | **0.8177** | -0.003   | 0.002 (all seeds) |
+| 30 | 0.0      | yes      | 0.8119   | -0.009     | 0.002 (all seeds) |
+| 30 | 0.2      | yes      | 0.8117   | -0.009     | 0.002 (all seeds) |
+| 30 | 0.5      | yes      | 0.8110   | -0.009     | 0.002 (all seeds) |
+| 10 | 0.0      | yes      | 0.8031   | -0.017     | 0.002 (all seeds) |
+
+**Key observations**:
+- K=64 d=0.0 is the most promising ARAF config so far, approaching kNN but still ~0.003 AUC below.
+- Best tau is consistently 0.002 (smallest tested), suggesting weaker regularization may help.
+- Dropout consistently hurts: d=0.0 outperforms d=0.2/0.5 at every K.
+- K=10 is undertrained for 39K items.
+- **Fairness issue**: ARAF has no validation metrics; tau is selected on test in the diagnostic ranking above. kNN selects k on validation. This overstates ARAF's advantage.
+
+**Next steps**:
+- Wait for K=64 to complete and check if larger tau values improve or degrade performance.
+- Consider adding ARAF validation split and fair tau selection before claiming any win.
+- Evaluate whether K=128 is worth the GPU-hours given K=64 already approaches kNN.
+- If gap persists, document as negative finding: kNN remains strongest on this RAW-embedding corpus.
+
+### K=64 Completion and Focused K=128 Pivot
+
+- [x] K=64/dropout=0.0 completed all 321 seed/tau rows.
+- K=64/dropout=0.0 best diagnostic AUC is still below kNN: ARAF mean AUC 0.817740 vs kNN mean AUC 0.820419 on seeds 0,1,2.
+- K=64/dropout=0.0 slightly improves RMSE: ARAF mean RMSE 0.404128 vs kNN mean RMSE 0.405470, but n=3 paired tests are not significant.
+- Wrote paired analysis artifacts:
+  - `model/result/measurement_db_raw/summaries/k64_dropout0_vs_knn_analysis.md`
+  - `model/result/measurement_db_raw/summaries/k64_dropout0_vs_knn_paired.csv`
+  - `model/result/measurement_db_raw/summaries/k64_dropout0_vs_knn_significance.csv`
+- [x] Stop broad K=64 dropout continuation after K=64/dropout=0.2 started and underperformed early, to avoid delaying the useful K=128 check.
+- [x] Run focused K=128/dropout=0.0 lower-tau sweep around the observed boundary (`lambda_tau <= 0.01`) in `long_1`.
+- K=128/dropout=0.0 with `lambda_tau=0` beats kNN on all 3 seeds: ARAF mean AUC 0.825123 vs kNN mean AUC 0.820419, paired mean gap +0.004704.
+- K=128/dropout=0.0 with `lambda_tau=0` also improves RMSE: ARAF mean RMSE 0.399909 vs kNN mean RMSE 0.405470.
+- Significance is promising but limited by n=3: paired AUC t-test p=0.059849; paired RMSE t-test p=0.018616; exact sign test p=0.25 for both due only 3 seeds.
+- Wrote K=128 paired analysis artifacts:
+  - `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_analysis.md`
+  - `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_paired.csv`
+  - `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_significance.csv`
+- [ ] Next fair confirmation: add validation-selected ARAF hyperparameter reporting or run more split seeds using the now-identified `K=128`, `dropout=0.0`, `lambda_tau=0` candidate.
+- [ ] Run held-out confirmation seeds 3-9 with fixed candidate `K=128`, `dropout=0.0`, `lambda_tau=0` and matching validation-selected kNN baselines; use these as out-of-selection evidence for significance.
+
+### K=128 Focused Lower-Tau Result
+
+After K=64/dropout=0.0 completed below kNN, the broad queued dropout run was stopped because K=64/dropout=0.2 was already worse and dropout had consistently hurt in K=10/K=30/K=64. A focused K=128/dropout=0.0 lower-tau sweep was launched with `lambda_tau=0,0.00025,0.0005,0.001,0.0015,0.002,0.003,0.004,0.005,0.006,0.008,0.01`.
+
+**Best diagnostic result so far:** K=128/dropout=0.0/tau=0 beats kNN on AUC for all three seeds.
+
+| seed | ARAF AUC | kNN AUC | AUC diff | ARAF RMSE | kNN RMSE | RMSE diff |
+|------|----------|---------|----------|-----------|----------|-----------|
+| 0 | 0.827499 | 0.821105 | +0.006394 | 0.398673 | 0.405230 | -0.006557 |
+| 1 | 0.824041 | 0.821672 | +0.002370 | 0.401114 | 0.405161 | -0.004047 |
+| 2 | 0.823829 | 0.818480 | +0.005350 | 0.399939 | 0.406019 | -0.006080 |
+
+Summary: mean AUC gap +0.004704; paired t-test p=0.059849 with n=3, exact sign test p=0.25. Mean RMSE gap -0.005561; paired t-test p=0.018616. This is promising and directionally consistent, but AUC significance remains borderline because only three seeds are available and tau/K selection is still diagnostic/test-informed. Next fair step is to add validation-selected ARAF hyperparameter reporting or run additional split seeds for stronger significance.
+
+Artifacts:
+- `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_analysis.md`
+- `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_paired.csv`
+- `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_significance.csv`
+
+### K=128 Fixed-Candidate 10-Seed Confirmation
+
+A confirmation run was completed for new split seeds 3-9 using the fixed candidate discovered by the focused lower-tau sweep: `K=128`, `dropout=0.0`, `lambda_tau=0`. Combined with seeds 0-2, this gives 10 split seeds for ARAF vs validation-selected kNN.
+
+Result: ARAF beats kNN on AUC for 9/10 seeds and RMSE for 10/10 seeds.
+
+Summary across seeds 0-9:
+
+| metric | ARAF mean | kNN mean | mean diff (ARAF-kNN) | wins | paired t p | Wilcoxon p | sign p |
+|--------|-----------|----------|----------------------|------|------------|------------|--------|
+| AUC | 0.825752 | 0.823039 | +0.002713 | 9/10 | 0.012197 | 0.019531 | 0.021484 |
+| RMSE | 0.399687 | 0.403745 | -0.004058 | 10/10 | 0.000038 | 0.001953 | 0.001953 |
+
+Interpretation: This is now a statistically significant AUC and RMSE improvement over the validation-selected kNN baseline for the fixed ARAF candidate on 10 split seeds. The caveat is that the candidate was found diagnostically from earlier sweeps; the fixed-candidate confirmation seeds support that the improvement generalizes, but publication-quality model selection should still report that K/tau were selected by an exploratory sweep or add a validation-selection layer for ARAF hyperparameters.
+
+Artifacts:
+- `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_10seed_analysis.md`
+- `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_10seed_paired.csv`
+- `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_10seed_significance.csv`
+
+### Additional Fixed-Candidate Confirmation Seeds 10-19
+
+The 10-seed combined result is significant, but the first 3 seeds were used to identify the K=128/tau=0 candidate. Confirmation-only seeds 3-9 remain positive on AUC (6/7 wins, mean +0.00186) but not significant alone (paired t p=0.1125). To strengthen the out-of-selection evidence, launched another fixed-candidate run for seeds 10-19 with matching kNN baselines:
+
+`model/reproduce_large_db.sh --source hf --all-ready --parallel 100 --araf-parallel 4 --quiet --seed 10,11,12,13,14,15,16,17,18,19 --araf-latent-dims 128 --araf-dropouts 0.0 --lambda-tau 0`
+
+- [x] Observe active seed 10-19 run status and analyze already materialized fixed-candidate results before the run finishes.
+  - Current process is in ARAF K=128/dropout=0/tau=0 phase with 4 worker processes.
+  - kNN CSV for the seed 10-19 command already includes seeds 0-19 plus 42; compare by filtering exact seeds, not by filename alone.
+  - Partial ARAF CSV currently contains completed rows for seeds 10-17; seeds 18-19 are still running.
+- [x] Compute interim paired stats for completed seed 10-19 results after the run finished before the interim script completed.
+- [x] Analyze seeds 10-19 and combined out-of-selection seeds 3-19 once the run completes.
+
+### Seeds 10-19 Interim Checkpoint (2026-05-14 19:14)
+
+- `long_1` ARAF K=128/dropout=0.0/tau=0 for seeds 10-19 is actively running.
+- kNN baseline file now contains seeds 0-19 plus 42 (21 rows, validation-selected k=10 for all).
+- ARAF seed 10-19 CSV has 8 rows so far (seeds 10-17 complete), seeds 18-19 still running.
+- Baseline artifact sizes: kNN 2491 bytes, ARAF 26362 bytes (growing as seeds finish).
+- Next: compute interim paired statistics for completed seeds 10-17 and update the 10-seed analysis.
+
+
+### K=128 Fixed-Candidate 20-Seed Result
+
+- [x] Seed 10-19 run completed in `long_1`; no measurement-db RAW process remains active.
+- [x] Wrote final 20-seed analysis artifacts:
+  - `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_20seed_analysis.md`
+  - `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_20seed_paired.csv`
+  - `model/result/measurement_db_raw/summaries/k128_dropout0_tau0_vs_knn_20seed_significance.csv`
+- 20-seed AUC: ARAF 0.824640 vs kNN 0.822717; mean diff +0.001922; wins 16/20; paired t p=0.017502; Wilcoxon p=0.017181; sign p=0.005909.
+- 20-seed RMSE: ARAF 0.400153 vs kNN 0.404006; mean diff -0.003853; wins 20/20; paired t p=2.19e-08; Wilcoxon p=1.91e-06; sign p=9.54e-07.
+- Out-of-selection seeds 3-19 AUC: ARAF 0.824554 vs kNN 0.823123; mean diff +0.001432; wins 13/17; paired t p=0.090164; Wilcoxon p=0.079681; sign p=0.024521.
+- Out-of-selection seeds 3-19 RMSE: ARAF 0.400196 vs kNN 0.403748; mean diff -0.003552; wins 17/17; paired t p=5.58e-07; Wilcoxon p=1.53e-05; sign p=7.63e-06.
+- Interpretation: full N=20 is significant for AUC/RMSE; out-of-selection AUC is directionally positive but paired tests are just above 0.05, while RMSE remains strongly significant.
+
+### Seeds 20-29 Extended Confirmation
+
+The 20-seed result is significant overall (paired t p=0.0175), but out-of-selection seeds 3-19 AUC paired tests are just above 0.05 (p=0.090). To strengthen the fair claim without changing the model, launching seeds 20-29 for N=30 total, giving out-of-selection N=27 (seeds 3-29).
+
+- [x] Launch seeds 20-29 with fixed K=128/dropout=0/tau=0 in `long_1`.
+- [ ] Wait for completion and compute 30-seed plus out-of-selection 3-29 paired stats.
+- [ ] Update final analysis artifacts with N=30 result.
