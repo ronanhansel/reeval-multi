@@ -1,0 +1,9 @@
+embedding_type,model_type,pre_revision,n_samples,j_percentage,train_retention,user_count,no_tau,araf_latent_dim,araf_dropout,lambda_tau,artifact_path,mean_auc,mean_rmse,rows,seeds
+pca,bernoulli,false,1,1.0,1.0,35,false,30,0.0,0.0155,model/result/default_araf_flat/araf/araf_pca_bernoulli_pre-false_n-1_k-30_d-0p0_875611ed83a0.csv,0.6855374926743326,0.4061266825951024,3,3
+pca,beta,false,54,1.0,1.0,35,false,10,0.0,0.054,model/result/default_araf_flat/araf/araf_pca_beta_pre-false_n-max_k-10_d-0p0_89c93049c5a1.csv,0.6826197645526492,0.2943793901158691,3,3
+raw,bernoulli,false,1,1.0,1.0,35,false,30,0.5,0.0151,model/result/default_araf_flat/araf/araf_raw_bernoulli_pre-false_n-1_k-30_d-0p5_84bbf6966c52.csv,0.7214640198511166,0.3980131507490831,1,1
+raw,beta,false,54,1.0,1.0,35,false,10,0.5,0.029,model/result/default_araf_flat/araf/araf_raw_beta_pre-false_n-max_k-10_d-0p5_92bd5ba5a99d.csv,0.6757280123226749,0.30030367241718675,3,3
+sae,bernoulli,false,1,1.0,1.0,35,false,30,0.5,0.0159,model/result/default_araf_flat/araf/araf_sae_bernoulli_pre-false_n-1_k-30_d-0p5_e76597032c02.csv,0.6903586008164572,0.4127080103901667,1,1
+sae,beta,32,1,0.1,1.0,286,false,10,0.2,0.07,model/result/default_araf_flat/araf/araf_sae_beta_pre-32_n-max_k-10_d-0p2_dc97fba90b3d.csv,0.5800435228090814,0.5128849980919503,14,14
+sae,beta,false,54,1.0,1.0,35,false,30,0.5,0.0535,model/result/default_araf_flat/araf/araf_sae_beta_pre-false_n-max_k-30_d-0p5_ff461c3a9850.csv,0.6870367405747219,0.2818509542650719,1,1
+sae,beta,max,1,1.0,1.0,286,false,30,0.5,0.16,model/result/default_araf_flat/araf/araf_sae_beta_pre-max_n-max_k-30_d-0p5_f41344321608.csv,0.7130819990631965,0.4214127445250902,1,1

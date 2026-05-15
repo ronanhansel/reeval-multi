@@ -1,0 +1,23 @@
+{
+  "araf_dropout": "0.0",
+  "araf_latent_dim": "128",
+  "baseline_embedding_type": "raw",
+  "baseline_profile": "full",
+  "cross_revision_araf_mode": "transfer",
+  "cross_revision_post_binary": "false",
+  "data_source": "local",
+  "embedding_type": "sae",
+  "epochs": "1000",
+  "j_percentage": "1.0",
+  "kind": "default_response_matrix_araf",
+  "knn_k": "10",
+  "knn_k_grid": "5,10,20,50",
+  "lambda_tau": "0.0535",
+  "model_type": "beta",
+  "n_samples": "max",
+  "no_tau": "false",
+  "pre_revision": "false",
+  "seeds": "0,1,2",
+  "train_retention": "1.0",
+  "user_count": ""
+}

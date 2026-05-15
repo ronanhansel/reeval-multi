@@ -360,3 +360,311 @@ Goal: implement `TABPFN.md` and run a first 3-seed evaluation against the existi
 - [ ] Add optional TabPFN launcher flags to `model/reproduce_large_db.sh`.
 - [ ] Run smoke/static checks.
 - [ ] Run TabPFN for seeds 0,1,2 and compare against existing baselines.
+
+## Default Response-Matrix ARAF: Flatten + Latent/Dropout Tuning
+
+Objective (2026-05-15): apply the same ARAF tuning knobs (latent dim + dropout sweeps) to the **default/local response matrix** pipeline (not measurement-db), and flatten artifacts so one run covers all cases without repeated work across studies.
+
+Deliverables:
+
+- [ ] Flatten default-db artifacts to config-keyed, reusable paths (like `model/result/measurement_db_raw/*`):
+  - [ ] Stable flat output directory under `model/result/main/` (and/or `model/result/*_study/`) with per-run CSV plus exact `.config.json` sidecar.
+  - [ ] Skip/resume rules: if artifact exists, config matches exactly, and expected metric columns are present/non-null -> skip.
+  - [ ] Avoid repeated runs across studies by keying on all inputs that affect results (embedding type, model type, pre/post, seed list, tau list, retention, j/user subsampling, cross-revision mode, latent K, dropout, epochs).
+- [ ] Add ARAF sweep controls to default launcher:
+  - [ ] `model/reproduce.sh`: add `--araf-latent-dims` and `--araf-dropouts` (defaults preserve current behavior: K=30, dropout=0.5).
+  - [ ] Ensure support-thinning + sample-size runs can reuse the flattened artifacts without recomputing.
+- [ ] Fill missing default-db ARAF configs: run the flattened launcher to backfill any missing result combinations in the canonical default settings, using the existing response matrix.
+
+Verification:
+
+- [ ] `bash -n model/reproduce.sh`
+- [ ] `python -m py_compile model/amortized_irt.py` (in `conda activate hal`)
+- [ ] Quick smoke: one seed, small tau list, 1-2 latent dims/dropouts; confirm artifacts written + skips on rerun.
+
+### Implementation Progress (2026-05-15)
+
+- [x] Add `--araf-latent-dims` and `--araf-dropouts` flags to `model/reproduce.sh`.
+- [x] Add `--epochs` flag to `model/reproduce.sh`.
+- [x] Define `DEFAULT_ARAF_FLAT_DIR` for flat artifact storage.
+- [x] Implement `default_araf_slug()` helper for deterministic config-keyed naming.
+- [x] Implement `write_default_araf_config()` helper for exact config JSON sidecars.
+- [x] Implement `default_araf_result_complete()` helper for skip/resume logic.
+- [x] Patch `run_exp()` to loop over K/dropout sweeps, write flat artifacts, and copy to legacy paths.
+- [x] Syntax checks pass: `bash -n model/reproduce.sh` and `python -m py_compile model/amortized_irt.py`.
+- [ ] Smoke test: one seed, small tau list, K=10,30, dropout=0.5, confirm flat artifacts + skip on rerun.
+- [ ] Add ARAF validation split for fair hyperparameter selection (deferred to next iteration).
+- [ ] Run backfill for missing default-db ARAF configs.
+
+Smoke test command:
+
+```bash
+cd /Data/home/v-qizhengli/workspace/reeval-multi
+conda activate hal
+bash model/reproduce.sh \
+  --seed 42 \
+  --araf-latent-dims 10,30 \
+  --araf-dropouts 0.5 \
+  --epochs 100 \
+  --parallel 2 \
+  --quiet
+```
+
+Expected behavior:
+- Flat artifacts written to `model/result/default_araf_flat/araf/araf_emb-*_k-10_*.csv` and `k-30_*.csv`.
+- Legacy artifacts copied to `model/result/main/amortized_irt_*.csv`.
+- Rerun skips completed configs.
+
+### Full Default-DB ARAF Backfill (2026-05-15)
+
+Launched in `tmux` session `long_1`:
+
+```bash
+conda activate hal && bash model/reproduce.sh --full --continue \
+  --araf-latent-dims 10,30,64,128 \
+  --araf-dropouts 0.0,0.2,0.5 \
+  --parallel 100 --quiet --skip-plots \
+  2>&1 | tee model/result/default_araf_flat/logs/backfill_full_20260515_031211.log
+```
+
+- [x] Command launched in `long_1`, user monitoring.
+- [ ] Baseline priming (50 seeds, Post-32 Bernoulli + Post-max Beta).
+- [ ] Main experiments: SAE/PCA/RAW x Beta/Bernoulli x K=10,30,64,128 x dropout=0.0,0.2,0.5.
+- [ ] Support-thinning backfill (auto-detected as incomplete).
+- [ ] Sample-size study (auto-enabled for --full).
+- [ ] After completion: aggregate flat results, select best K/dropout per config, update legacy paths.
+
+### Default-DB ARAF Aggregator (2026-05-15)
+
+Added `model/analysis/default_araf_aggregate.py` to aggregate flat artifacts:
+
+```bash
+conda activate hal
+python model/analysis/default_araf_aggregate.py \
+  --flat-root model/result/default_araf_flat \
+  --output-dir model/result/default_araf_flat/summaries
+```
+
+Outputs:
+- `result_manifest.csv`: one row per flat artifact with status, rows, seeds, and config metadata.
+- `metrics_long.csv`: all seed/tau rows with full config and metrics.
+- `best_by_config.csv`: best ARAF per embedding/model/pre/n/j configuration (by mean AUC, then RMSE, then K).
+
+Current 14 flat CSVs produce 8 best-config rows covering:
+- SAE/PCA/RAW embeddings
+- Beta/Bernoulli models
+- Pre=false (post-revision) and pre=max (pre-revision)
+- N=1 and N=max
+
+The aggregator is lightweight and can be re-run at any time to inspect progress during the long backfill.
+
+### Full Default-DB ARAF Backfill (2026-05-15)
+
+Launched in `tmux` session `long_1`:
+
+```bash
+conda activate hal && bash model/reproduce.sh --full --continue \
+  --araf-latent-dims 10,30,64,128 \
+  --araf-dropouts 0.0,0.2,0.5 \
+  --parallel 100 --quiet --skip-plots \
+  2>&1 | tee model/result/default_araf_flat/logs/backfill_full_20260515_031211.log
+```
+
+- [x] Command launched in `long_1`, user monitoring.
+- [x] Baseline priming (50 seeds, Post-32 Bernoulli + Post-max Beta).
+- [ ] Main experiments: SAE/PCA/RAW x Beta/Bernoulli x K=10,30,64,128 x dropout=0.0,0.2,0.5.
+- [ ] Support-thinning backfill (auto-detected as incomplete).
+- [ ] Sample-size study (auto-enabled for --full).
+- [ ] After completion: aggregate flat results, select best K/dropout per config, update legacy paths.
+
+### Final Status (2026-05-15 03:27 UTC)
+
+**Implementation complete and verified:**
+- Flat config-keyed ARAF cache: `model/result/default_araf_flat/araf/`
+- Launcher flags: `--araf-latent-dims`, `--araf-dropouts`, `--epochs`, `--seed`, `--lambda-tau`, `--skip-plots`
+- Skip/resume logic with exact config matching
+- Legacy path compatibility with tuned suffixes
+- Aggregator tool with seed/tau verification: `model/analysis/default_araf_aggregate.py`
+
+**Long backfill running in `tmux` session `long_1`:**
+- Command: `bash model/reproduce.sh --full --continue --araf-latent-dims 10,30,64,128 --araf-dropouts 0.0,0.2,0.5 --parallel 100 --quiet --skip-plots`
+- Started: 2026-05-15 03:12 UTC
+- Current time: 2026-05-15 03:27 UTC (15 minutes elapsed)
+- Flat artifacts: 15 total
+  - 14 complete (1 seed, 1 tau each)
+  - 1 in-progress (1081 rows, 50 seeds, 28/107 taus)
+- Log: `model/result/default_araf_flat/logs/backfill_full_20260515_031211.log`
+
+**Monitor progress:**
+```bash
+tmux attach -t long_1
+conda activate hal
+python model/analysis/default_araf_aggregate.py --flat-root model/result/default_araf_flat
+```
+
+**Next steps after backfill completes:**
+1. Rerun aggregator to refresh manifest/best-by-config
+2. Select best K/dropout per embedding/model combination
+3. Copy best variants to legacy `model/result/main/` paths
+4. Add ARAF validation split for fair hyperparameter selection (symmetric to kNN)
+
+### Narrow Resume Mode (2026-05-15)
+
+Added `--default-araf-backfill-only` flag to `model/reproduce.sh`. This runs only the canonical post-revision ARAF configs (SAE/PCA/RAW × Beta/Bernoulli, single tau each) without the item-scaling, pre-revision, support-thinning, or sample-size studies.
+
+**Safer resume command for future backfills:**
+
+```bash
+conda activate hal
+bash model/reproduce.sh --continue \
+  --araf-latent-dims 10,30,64,128 \
+  --araf-dropouts 0.0,0.2,0.5 \
+  --parallel 100 --quiet --skip-plots \
+  --default-araf-backfill-only
+```
+
+This skips the expensive study sweeps and focuses on the canonical default-db configs only.
+
+### User Redirect: 3-Seed Comparison Only (2026-05-15)
+
+User requested limiting comparison to seeds `0,1,2` only.
+
+Actions taken:
+- Stopped the broad 50-seed `--full` run in `long_1` with `SIGTERM` after Ctrl-C did not fully stop the child process.
+- Launched a new 3-seed canonical default-db run in `long_1`:
+
+```bash
+conda activate hal && bash model/reproduce.sh --continue \
+  --seed 0,1,2 \
+  --araf-latent-dims 10,30,64,128 \
+  --araf-dropouts 0.0,0.2,0.5 \
+  --parallel 100 --quiet --skip-plots \
+  --default-araf-backfill-only \
+  2>&1 | tee model/result/default_araf_flat/logs/backfill_3seed_20260515_041944.log
+```
+
+Verified active process uses `--seed 0,1,2` and `--default-araf-backfill-only`. It is currently running canonical post-revision default configs only.
+
+### 3-Seed Default-DB Comparison Results (2026-05-15)
+
+User requested analysis for seeds `0,1,2` only.
+
+Generated comparison artifacts:
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_same_seed_rows.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_same_seed_summary.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_same_seed_best_by_embedding.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_same_seed_best_overall.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_same_seed_coverage.csv`
+
+Coverage audit:
+- Complete 3-seed ARAF artifacts: 84
+- Compared ARAF rows: 252
+- Baseline config rows: 75
+- Coverage groups: 7 configs, each with 12 K/dropout variants and 3 seeds
+- Missing same-seed baseline rows: 0
+
+Overall best ARAF vs same-seed raw kNN:
+- Bernoulli post, n=1: best ARAF `raw K=10 dropout=0.0 tau=0.0151`, mean AUC 0.690214 vs kNN 0.631997 (+0.058217); RMSE 0.413772 vs kNN 0.411604 (+0.002168).
+- Beta pre=max, n=1: best ARAF `sae K=10 dropout=0.0 tau=0.16`, mean AUC 0.704093 vs kNN 0.714316 (-0.010223); RMSE 0.438868 vs kNN 0.411916 (+0.026951).
+- Beta post, n=54: best ARAF `pca K=10 dropout=0.0 tau=0.054`, mean AUC 0.682620 vs kNN 0.733543 (-0.050923); RMSE 0.294379 vs kNN 0.281403 (+0.012976).
+
+Interpretation:
+- ARAF beats kNN on AUC for post-revision Bernoulli n=1, but not on RMSE.
+- kNN remains stronger for beta post n=54 and beta pre=max n=1 on both AUC and RMSE.
+- K=10/dropout=0.0 is selected as best overall in each of the three model/pre/n groups.
+
+### 3-Seed Comparison Across Studies (2026-05-15)
+
+Full 3-seed (0,1,2) comparison across default-db flat, sample-size, and support-thinning studies.
+
+**Coverage:**
+- 180 ARAF artifacts, 10,080 rows total
+- Default-db flat: 84 artifacts, 252 rows, 0 missing baselines
+- Sample-size: 66 artifacts, 198 rows, 198 missing baselines
+- Support-thinning: 30 artifacts, 9,630 rows, 9,630 missing baselines
+
+**Generated artifacts:**
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_rows.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_summary.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_best.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_coverage.csv`
+
+**Interpretation:**
+- Default-db flat ARAF has complete same-seed baseline coverage.
+- Sample-size and support-thinning ARAF outputs exist but lack same-seed baseline CSVs in their respective `baselines/` directories.
+- The default-db flat comparison is the only one with like-for-like ARAF vs kNN on the same seeds.
+
+**Best ARAF per default-db config vs kNN (3 seeds):**
+- Bernoulli post, n=1: `raw K=10 d=0.0 tau=0.0151`, AUC 0.690214 vs kNN 0.631997 (+0.058217)
+- Beta pre=max, n=1: `sae K=10 d=0.0 tau=0.16`, AUC 0.704093 vs kNN 0.714316 (-0.010223)
+- Beta post, n=54: `pca K=10 d=0.0 tau=0.054`, AUC 0.682620 vs kNN 0.733543 (-0.050923)
+
+### Corrected 3-Seed All-Studies Comparison (2026-05-15)
+
+Regenerated all-studies 3-seed comparison after fixing joins for sample-size defaults and support-thinning retention values.
+
+Generated/updated artifacts:
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_rows.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_summary.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_best.csv`
+- `model/result/default_araf_flat/summaries/araf_vs_baselines_3seed_all_studies_coverage.csv`
+
+Coverage:
+- Total ARAF artifacts compared: 180
+- Total ARAF rows: 10,080
+- Default-flat: 84 artifacts, 252 rows, 0 missing baseline rows
+- Sample-size: 66 artifacts, 198 rows, 0 missing baseline rows
+- Support-thinning: 30 artifacts, 9,630 rows, 3,210 missing baseline rows
+
+Remaining gap:
+- Missing support-thinning baseline rows are the beta `n=1` legacy pre branch (`pca/raw beta n=1`) across retentions; matching same-seed baseline files were not found by current keys.
+- Support-thinning `n=54` beta and bernoulli branches do have same-seed baseline coverage.
+
+Key result pattern:
+- Default-flat: ARAF beats raw kNN on post Bernoulli AUC, but kNN is stronger for beta post and beta pre=max.
+- Sample-size: kNN is stronger than legacy ARAF for most groups; SAE beta at users_4 is the notable AUC win for ARAF (+0.044 AUC vs kNN) but with worse RMSE.
+- Support-thinning: ARAF beats kNN at low retention (0.05/0.10) for n=54 beta and bernoulli, then kNN catches/exceeds ARAF at higher retention.
+
+### Complete 3-Seed All-Studies Comparison Audit (2026-05-15)
+
+Objective: finish the 3-seed (`0,1,2`) ARAF-vs-baseline comparison across default-flat, sample-size, and support-thinning outputs with no missing same-seed baseline rows.
+
+- [x] Re-audit current all-studies comparison coverage from generated artifacts.
+- [x] Identify remaining support-thinning gap: legacy `beta_pre_max_n_max` ARAF files encoded `pre_revision=none`, while matching same-seed kNN baselines live under per-embedding `knn_raw_k10` / `knn_pca_k10` directories with `pre_revision=max`.
+- [x] Add reproducible all-studies comparison script: `model/analysis/compare_araf_3seed_across_studies.py`.
+- [x] Regenerate all-studies rows, summary, best, and coverage CSVs with corrected support-thinning baseline lookup.
+- [x] Verify zero missing baseline rows, seeds restricted to `0,1,2`, and syntax/compile checks.
+
+### Final 3-Seed All-Studies Comparison (2026-05-15)
+
+**Status: Complete**
+
+Added reproducible comparison script `model/analysis/compare_araf_3seed_across_studies.py` with corrected support-thinning baseline lookup for the pre-max beta branch.
+
+**Coverage audit:**
+- Total ARAF artifacts: 180
+- Total ARAF rows: 10,080
+- Seeds restricted to: 0, 1, 2
+- Missing same-seed baseline rows: 0 (fixed)
+  - Default-flat: 84 artifacts, 252 rows, 0 missing
+  - Sample-size: 66 artifacts, 198 rows, 0 missing
+  - Support-thinning: 30 artifacts, 9,630 rows, 0 missing
+
+**Key results (best configs per group):**
+
+Default-flat:
+- Bernoulli post n=1: ARAF raw K=10 d=0.0 beats kNN by +0.058 AUC (0.690 vs 0.632)
+- Beta post n=54: kNN beats ARAF by +0.051 AUC (0.734 vs 0.683)
+- Beta pre=max n=1: kNN beats ARAF by +0.010 AUC (0.714 vs 0.704)
+
+Sample-size:
+- kNN stronger for most groups; ARAF wins only at users_4 SAE beta (+0.044 AUC)
+
+Support-thinning (retention sweep):
+- Retention 0.05: ARAF +0.079 AUC, -0.049 RMSE (wins 6/6)
+- Retention 0.10: ARAF +0.083 AUC, -0.056 RMSE (wins 6/6)
+- Retention 0.25: ARAF +0.033 AUC, -0.017 RMSE (wins 4/6)
+- Retention 0.50: ARAF +0.012 AUC, +0.001 RMSE (wins 2/6)
+- Retention 1.00: ARAF -0.009 AUC, +0.012 RMSE (wins 0/6)
+
+Pattern: ARAF advantage strongest at low support retention; kNN recovers at full retention.

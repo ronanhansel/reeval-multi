@@ -32,6 +32,8 @@ NUM_SEEDS=50
 SHARED_TAUS="0.002 0.004 0.005 0.006 0.008 0.010 0.012 0.014 0.015 0.0151 0.0155 0.0159 0.016 0.018 0.020 0.022 0.024 0.025 0.026 0.028 0.029 0.030 0.032 0.034 0.035 0.036 0.038 0.040 0.042 0.044 0.045 0.046 0.048 0.050 0.052 0.0535 0.054 0.055 0.056 0.058 0.060 0.062 0.064 0.065 0.066 0.068 0.070 0.072 0.074 0.075 0.076 0.078 0.080 0.082 0.084 0.085 0.086 0.088 0.090 0.092 0.094 0.095 0.096 0.098 0.100 0.105 0.110 0.115 0.120 0.125 0.130 0.135 0.140 0.145 0.150 0.155 0.160 0.165 0.170 0.175 0.180 0.185 0.190 0.195 0.200 0.210 0.220 0.230 0.250 0.30 0.40 0.50 0.75 1.0 1.5 2.0 3.0 5.0 10.0 20.0 30.0 50.0 75.0 100.0 200.0 500.0 1000.0"
 FULL_SWEEP=false
 ONLY_PLOT=false
+DEFAULT_ARAF_BACKFILL_ONLY=false
+SKIP_PLOTS=false
 PARALLEL=1
 CLEAN_RESULTS=false
 OVERRIDE_RESULTS=false
@@ -47,6 +49,10 @@ THIN_K_VALUES=("5" "10" "20" "50")
 SAMPLE_USER_LEVELS=("4" "8" "16" "32" "max")
 SAMPLE_J_LEVELS=("0.1" "0.3" "0.5" "0.7" "0.9")
 MAIN_KNN_GRID="${MAIN_KNN_GRID:-5,10,20,50}"
+ARAF_LATENT_DIMS="${ARAF_LATENT_DIMS:-30}"
+ARAF_DROPOUTS="${ARAF_DROPOUTS:-0.5}"
+EPOCHS="${EPOCHS:-1000}"
+DEFAULT_ARAF_FLAT_DIR="${DEFAULT_ARAF_FLAT_DIR:-${RESULT_ROOT}/default_araf_flat/araf}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -76,6 +82,22 @@ while [[ $# -gt 0 ]]; do
             QUIET=true
             shift
             ;;
+        --seed)
+            SEEDS="${2//,/ }"
+            shift 2
+            ;;
+        --lambda-tau)
+            SHARED_TAUS="${2//,/ }"
+            shift 2
+            ;;
+        --skip-plots)
+            SKIP_PLOTS=true
+            shift
+            ;;
+        --default-araf-backfill-only)
+            DEFAULT_ARAF_BACKFILL_ONLY=true
+            shift
+            ;;
         --support-thinning-study)
             SUPPORT_THINNING_STUDY=true
             shift
@@ -83,6 +105,18 @@ while [[ $# -gt 0 ]]; do
         --sample-size-study|--sample-size|--sample_size)
             SAMPLE_SIZE_STUDY=true
             shift
+            ;;
+        --araf-latent-dims)
+            ARAF_LATENT_DIMS="$2"
+            shift 2
+            ;;
+        --araf-dropouts)
+            ARAF_DROPOUTS="$2"
+            shift 2
+            ;;
+        --epochs)
+            EPOCHS="$2"
+            shift 2
             ;;
         *)
             shift
@@ -182,6 +216,8 @@ echo "  Working dir : ${SCRIPT_DIR}"
 echo "  Main dir    : ${MAIN_RESULT_DIR}"
 echo "  Result root : ${RESULT_ROOT}"
 echo "  MIRT sweep  : ${MIRT_DIM_MIN}-${MIRT_DIM_MAX} dims (cache: ${MIRT_SWEEP_CSV})"
+echo "  ARAF sweep  : K=${ARAF_LATENT_DIMS}; dropout=${ARAF_DROPOUTS}"
+echo "  ARAF epochs : ${EPOCHS}"
 echo ""
 
 restore_main_results_from_commit() {
@@ -226,6 +262,115 @@ for rel in paths:
     restored += 1
 
 print(f"Restored {restored} file(s).")
+PY
+}
+
+default_araf_slug() {
+    python - "$@" <<'PY'
+import hashlib
+import re
+import sys
+
+vals = list(sys.argv[1:])
+keys = [
+    "emb", "model", "pre", "n", "seeds", "taus", "j_pct", "retention",
+    "baseline_emb", "knn_k", "baseline_profile", "cross_binary",
+    "cross_mode", "user_count", "no_tau", "araf_k", "araf_dropout", "epochs",
+]
+cfg = {}
+for key, value in zip(keys, vals):
+    cfg[key] = value
+
+def safe(text: str) -> str:
+    t = str(text) if str(text) else "na"
+    t = re.sub(r"[^A-Za-z0-9._+-]+", "-", t).strip("-")
+    return t.replace(".", "p").replace(",", "-")
+
+prefix_parts = [
+    safe(cfg.get("emb", "na")),
+    safe(cfg.get("model", "na")),
+    f"pre-{safe(cfg.get('pre', 'na'))}",
+    f"n-{safe(cfg.get('n', 'na'))}",
+    f"k-{safe(cfg.get('araf_k', 'na'))}",
+    f"d-{safe(cfg.get('araf_dropout', 'na'))}",
+]
+digest = hashlib.sha256("|".join(vals).encode("utf-8")).hexdigest()[:12]
+print("araf_" + "_".join(prefix_parts) + "_" + digest)
+PY
+}
+
+write_default_araf_config() {
+    local config_path=$1
+    shift
+    mkdir -p "$(dirname "${config_path}")"
+    python - "${config_path}" "$@" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+keys = [
+    "embedding_type", "model_type", "pre_revision", "n_samples", "seeds",
+    "lambda_tau", "j_percentage", "train_retention", "baseline_embedding_type",
+    "knn_k", "knn_k_grid", "baseline_profile", "cross_revision_post_binary",
+    "cross_revision_araf_mode", "user_count", "no_tau", "araf_latent_dim",
+    "araf_dropout", "epochs",
+]
+cfg = {"kind": "default_response_matrix_araf", "data_source": "local"}
+for key, value in zip(keys, sys.argv[2:]):
+    cfg[key] = value
+config_path.write_text(json.dumps(cfg, indent=2, sort_keys=True) + "\n")
+PY
+}
+
+default_araf_result_complete() {
+    local csv_path=$1
+    local config_path=$2
+    local expected_config_path=$3
+    local seeds=$4
+    local taus=$5
+    local araf_k=$6
+    local araf_dropout=$7
+
+    python - "${csv_path}" "${config_path}" "${expected_config_path}" "${seeds}" "${taus}" "${araf_k}" "${araf_dropout}" <<'PY'
+import json
+import math
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+csv_path = Path(sys.argv[1])
+config_path = Path(sys.argv[2])
+expected_config_path = Path(sys.argv[3])
+seeds = [int(x) for x in sys.argv[4].replace(",", " ").split() if x]
+taus = [float(x) for x in sys.argv[5].replace(",", " ").split() if x]
+araf_k = int(float(sys.argv[6]))
+araf_dropout = float(sys.argv[7])
+
+if not csv_path.exists() or not config_path.exists() or not expected_config_path.exists():
+    raise SystemExit(1)
+if json.loads(config_path.read_text()) != json.loads(expected_config_path.read_text()):
+    raise SystemExit(1)
+try:
+    df = pd.read_csv(csv_path)
+except Exception:
+    raise SystemExit(1)
+required = {"seed", "lambda_tau", "rmse_amortized", "auc_amortized", "araf_latent_dim", "araf_dropout"}
+if df.empty or not required.issubset(df.columns):
+    raise SystemExit(1)
+if df[["rmse_amortized", "auc_amortized"]].isna().any().any():
+    raise SystemExit(1)
+if not (df["araf_latent_dim"].astype(float).round().astype(int) == araf_k).all():
+    raise SystemExit(1)
+if not (df["araf_dropout"].astype(float).sub(araf_dropout).abs() < 1e-9).all():
+    raise SystemExit(1)
+for seed in seeds:
+    for tau in taus:
+        m = df[(df["seed"].astype(int) == seed) & (df["lambda_tau"].astype(float).sub(tau).abs() < 1e-9)]
+        if m.empty:
+            raise SystemExit(1)
+raise SystemExit(0)
 PY
 }
 
@@ -414,7 +559,7 @@ run_exp() {
     local taus_csv=${taus// /,}
     local seeds_csv=${seeds// /,}
 
-    local cmd="${AMORTIZED_IRT_CMD} --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
+    local cmd="${AMORTIZED_IRT_CMD} --embedding-type $emb --baseline-embedding-type ${baseline_emb} --knn-k ${knn_k} --knn-k-grid ${MAIN_KNN_GRID} --baseline-profile ${baseline_profile} --n-samples $n --model-type $model --lambda-tau $taus_csv --seed $seeds_csv --epochs ${EPOCHS} --baseline-output ${BASELINE_CSV} --mirt-sweep-output ${MIRT_SWEEP_CSV} --mirt-dim-min ${MIRT_DIM_MIN} --mirt-dim-max ${MIRT_DIM_MAX}"
     if [[ "$pre" != "false" ]]; then
         cmd="$cmd --pre-revision $pre"
     fi
@@ -430,6 +575,7 @@ run_exp() {
     if [[ "$j_pct" != "1.0" ]]; then
         cmd="$cmd --j-percentage $j_pct"
     fi
+    local legacy_out_file=""
     if [[ -n "$out_dir" ]]; then
         mkdir -p "$out_dir"
         local suffix=""
@@ -446,9 +592,7 @@ run_exp() {
         fi
         local user_suffix=""
         if [[ -n "${user_count}" ]]; then user_suffix="_u${user_count}"; fi
-        local out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${user_suffix}${n_suffix}${notau_suffix}${j_suffix}${baseline_suffix}.csv"
-
-        cmd="$cmd --output $out_file"
+        legacy_out_file="${out_dir}/amortized_irt_${emb}_${model}${suffix}${user_suffix}${n_suffix}${notau_suffix}${j_suffix}${baseline_suffix}.csv"
     fi
     if [[ -n "$pair_efficiency_output" ]]; then
         mkdir -p "$(dirname "$pair_efficiency_output")"
@@ -480,8 +624,61 @@ run_exp() {
         cmd="$cmd --parallel $PARALLEL"
     fi
 
-    echo " -> Running: $emb (N=$n, pre=$pre, match=${pre_match}, eff_pre=${pre:-none}, users=${user_count:-all}, $model, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}, cross_mode=${cross_revision_araf_mode}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
-    eval "$cmd"
+    local araf_k_list_csv="${ARAF_LATENT_DIMS// /,}"
+    local araf_dropout_list_csv="${ARAF_DROPOUTS// /,}"
+    IFS=',' read -r -a araf_k_list <<< "${araf_k_list_csv}"
+    IFS=',' read -r -a araf_dropout_list <<< "${araf_dropout_list_csv}"
+
+    if [[ ${#araf_k_list[@]} -eq 0 || ${#araf_dropout_list[@]} -eq 0 ]]; then
+        echo "Error: empty ARAF sweep list (K=${ARAF_LATENT_DIMS}, dropout=${ARAF_DROPOUTS})"
+        exit 1
+    fi
+
+    for araf_k in "${araf_k_list[@]}"; do
+        for araf_dropout in "${araf_dropout_list[@]}"; do
+            local run_cmd="${cmd} --araf-latent-dim ${araf_k} --araf-dropout ${araf_dropout}"
+            if [[ -n "${legacy_out_file}" ]]; then
+                local legacy_copy_file="${legacy_out_file}"
+                if [[ "${#araf_k_list[@]}" -gt 1 || "${#araf_dropout_list[@]}" -gt 1 || "${araf_k}" != "30" || "${araf_dropout}" != "0.5" ]]; then
+                    local tuned_suffix
+                    tuned_suffix=$(python - "${araf_k}" "${araf_dropout}" <<'PY'
+import re
+import sys
+suffix = f"_arafk{sys.argv[1]}_dropout{sys.argv[2]}"
+print(re.sub(r"[^A-Za-z0-9_+-]+", "p", suffix))
+PY
+)
+                    legacy_copy_file="${legacy_out_file%.csv}${tuned_suffix}.csv"
+                fi
+                local run_slug
+                run_slug=$(default_araf_slug "$emb" "$model" "$pre" "$n" "$seeds_csv" "$taus_csv" "$j_pct" "$train_retention" "$baseline_emb" "$knn_k" "$baseline_profile" "$cross_revision_post_binary" "$cross_revision_araf_mode" "$user_count" "$no_tau" "$araf_k" "$araf_dropout" "${EPOCHS}")
+                local flat_csv="${DEFAULT_ARAF_FLAT_DIR}/${run_slug}.csv"
+                local flat_cfg="${flat_csv}.config.json"
+                local flat_cfg_expected="${flat_csv}.config.expected.json"
+                write_default_araf_config "${flat_cfg_expected}" "$emb" "$model" "$pre" "$n" "$seeds_csv" "$taus_csv" "$j_pct" "$train_retention" "$baseline_emb" "$knn_k" "${MAIN_KNN_GRID}" "$baseline_profile" "$cross_revision_post_binary" "$cross_revision_araf_mode" "$user_count" "$no_tau" "$araf_k" "$araf_dropout" "${EPOCHS}"
+
+                if default_araf_result_complete "${flat_csv}" "${flat_cfg}" "${flat_cfg_expected}" "${seeds_csv}" "${taus_csv}" "${araf_k}" "${araf_dropout}"; then
+                    cp "${flat_csv}" "${legacy_copy_file}"
+                    cp "${flat_cfg}" "${legacy_copy_file}.config.json"
+                    rm -f "${flat_cfg_expected}"
+                    echo " -> Skip/reuse flat ARAF artifact for ${run_slug}"
+                    continue
+                fi
+
+                mkdir -p "$(dirname "${flat_csv}")"
+                run_cmd="${run_cmd} --output ${flat_csv}"
+                echo " -> Running: $emb (N=$n, pre=$pre, users=${user_count:-all}, $model, K=${araf_k}, d=${araf_dropout}, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+                eval "$run_cmd"
+                cp "${flat_cfg_expected}" "${flat_cfg}"
+                cp "${flat_csv}" "${legacy_copy_file}"
+                cp "${flat_cfg}" "${legacy_copy_file}.config.json"
+                rm -f "${flat_cfg_expected}"
+            else
+                echo " -> Running: $emb (N=$n, pre=$pre, users=${user_count:-all}, $model, K=${araf_k}, d=${araf_dropout}, base_emb=${baseline_emb}, k=${knn_k}, profile=${baseline_profile}) Taus=[$taus_csv] Seeds=[$seeds_csv]"
+                eval "$run_cmd"
+            fi
+        done
+    done
 }
 
 seed_support_thinning_araf_file() {
@@ -687,6 +884,20 @@ if ! $ONLY_PLOT && $RUN_MAIN_EXPERIMENTS; then
     run_baseline 32 bernoulli false "$SEEDS" 1.0
     run_baseline max beta false "$SEEDS" 1.0
 
+
+    if $DEFAULT_ARAF_BACKFILL_ONLY; then
+        echo " -> [DEFAULT_ARAF_BACKFILL_ONLY] Running only canonical post-revision ARAF configs..."
+        run_tau_sweep pca max beta 0.054 false
+        run_tau_sweep pca 1 bernoulli 0.0155 false
+        run_tau_sweep sae max beta 0.0535 false
+        run_tau_sweep sae 1 bernoulli 0.0159 false
+        run_tau_sweep raw max beta 0.029 false
+        run_tau_sweep raw 1 bernoulli 0.0151 false
+        RUN_SUPPORT_THINNING_STUDY=false
+        RUN_SAMPLE_SIZE_STUDY=false
+        FULL_SWEEP=false
+    fi
+
     # [SCALING LAW]: Item Scaling Study (N=32)
     if $FULL_SWEEP; then
         echo " -> Starting Item Scaling Law Study (N=32, Full Tau Sweep)..."
@@ -817,6 +1028,16 @@ if ! $ONLY_PLOT && ! $RUN_MAIN_EXPERIMENTS; then
 fi
 
 # ── Generate plots ───────────────────────────────────────────────────────────
+if $SKIP_PLOTS; then
+    echo ""
+    echo "=========================================================="
+    echo "  SKIPPING PLOTS"
+    echo "=========================================================="
+    echo "Main CSV results in model/result/main/"
+    echo "Study CSV results in model/result/*_study/"
+    exit 0
+fi
+
 echo ""
 echo "=========================================================="
 echo "  GENERATING PLOTS"

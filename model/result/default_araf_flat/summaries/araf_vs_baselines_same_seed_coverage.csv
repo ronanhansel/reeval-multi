@@ -1,0 +1,8 @@
+embedding_type,model_type,pre_join,n_join,j_join,artifacts,missing_baseline_rows,seeds_min,seeds_max
+pca,bernoulli,none,1,1.0,12,0,3,3
+pca,beta,none,54,1.0,12,0,3,3
+raw,bernoulli,none,1,1.0,12,0,3,3
+raw,beta,none,54,1.0,12,0,3,3
+sae,bernoulli,none,1,1.0,12,0,3,3
+sae,beta,max,1,1.0,12,0,3,3
+sae,beta,none,54,1.0,12,0,3,3
